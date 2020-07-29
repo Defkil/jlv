@@ -33,7 +33,7 @@ if you use another log format then [winston](https://github.com/winstonjs/winsto
 ## :wrench: Transformers
 List of supported transformers. Default is [winston](https://github.com/winstonjs/winston).
 
-log library| JVL transformer
+log library| JLV transformer
 --- | ---
 :evergreen_tree:[pino](https://github.com/pinojs/pino) | [jlv-pino](https://github.com/Defkil/jlv-pino)
 
