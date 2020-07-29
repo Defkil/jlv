@@ -1,0 +1,27 @@
+{
+  "name": "jlv",
+  "version": "1.0.0",
+  "description": "wrapper around json-log-viewer for easy usage",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Defkil/jlv.git"
+  },
+  "keywords": [
+    "json",
+    "log",
+    "viewer",
+    "jlv",
+    "pino",
+    "winston"
+  ],
+  "author": "Oliver Grüttner",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Defkil/jlv/issues"
+  },
+  "homepage": "https://github.com/Defkil/jlv#readme"
+}
