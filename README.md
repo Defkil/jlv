@@ -37,6 +37,9 @@ log library| JVL transformer
 --- | ---
 :evergreen_tree:[pino](https://github.com/pinojs/pino) | [jlv-pino](https://github.com/Defkil/jlv-pino)
 
+See [Contributing](#memo-contributing) if you would like to add your own transformers to the list. You can use
+[jlv-pino](https://github.com/Defkil/jlv-pino) as example.
+
 ## :hammer_and_wrench: Support
 
 Please [open an issue](https://github.com/Defkil/jlv/issues/new) for support.
