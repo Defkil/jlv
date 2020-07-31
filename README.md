@@ -7,6 +7,7 @@ Adds following features to [json-log-viewer](https://github.com/gistia/json-log-
 - use a custom log transformer (for supporting log libraries with another output then 
 [winston](https://github.com/winstonjs/winston) like :evergreen_tree:[pino](https://github.com/pinojs/pino))
 - use an existing log [transformer](#wrench-transformers) from npn
+- opens [json-log-viewer](https://github.com/gistia/json-log-viewer) in a new terminal (I have not found another way to start a process and pass the input to [json-log-viewer](https://github.com/gistia/json-log-viewer))
 
 ## :books: Table of Contents
 
@@ -28,14 +29,15 @@ if you use another log format then [winston](https://github.com/winstonjs/winsto
 [transformer](#wrench-transformers).
 
 ## :rocket: Usage
+It will open a new a shell with json-view-logger
 //todo
 
 ## :wrench: Transformers
 List of supported transformers. Default is [winston](https://github.com/winstonjs/winston).
 
-log library| JLV transformer
---- | ---
-:evergreen_tree:[pino](https://github.com/pinojs/pino) | [jlv-pino](https://github.com/Defkil/jlv-pino)
+log library| JLV transformer| install with
+--- | --- | ---
+:evergreen_tree:[pino](https://github.com/pinojs/pino) | [jlv-pino](https://github.com/Defkil/jlv-pino) | npm i jlv-pino -D
 
 See [Contributing](#memo-contributing) if you would like to add your own transformers to the list. You can use
 [jlv-pino](https://github.com/Defkil/jlv-pino) as example.
