@@ -28,6 +28,11 @@ npm i jlv -D
 if you use another log format then [winston](https://github.com/winstonjs/winston), you need to install a
 [transformer](#wrench-transformers).
 
+[json-log-viewer](https://github.com/gistia/json-log-viewer) is not up to date on npm. 
+You need to install the new version from the git with:
+```sh
+npm i gistia/json-log-viewer#master
+```
 ## :rocket: Usage
 It will open a new a shell with json-view-logger
 //todo
