@@ -1,0 +1,11 @@
+{
+  "plugins": ["plugins/markdown"],
+  "opts": {
+     "destination": "./docs/"
+  },
+  "templates": {
+    "systemName": "JLV",
+    "systemSummary": "wrapper around json-log-viewer for easy usage",
+    "copyright": "MIT © Oliver Grüttner"
+  }
+}

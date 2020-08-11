@@ -3,8 +3,23 @@
   "version": "1.0.0",
   "description": "wrapper around json-log-viewer for easy usage",
   "main": "src/index.js",
+  "files": [
+    "README.md",
+    "./src/cli.js",
+    "./src/helper.js",
+    "./src/index.js",
+    "./src/jlv.js"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "mocha './test/**/**.test.js'",
+    "coverage": "npm run coverage:text",
+    "coverage:text": "nyc --reporter text npm test",
+    "coverage:html": "nyc --reporter html --report-dir ./docs/coverage npm test",
+    "lint": "npm run lint:check",
+    "lint:check": "eslint ./src/**.js ./test/**.test.js -c .eslintrc",
+    "lint:fix": "npm run lint:check -- --fix",
+    "lint:watch": "esw ./src/**.js ./test/**.test.js -c .eslintrc",
+    "jsdoc": "jsdoc -c ./jsdoc.json -t ./node_modules/foodoc/template -R README.md -r ./src/"
   },
   "repository": {
     "type": "git",
@@ -23,5 +38,29 @@
   "bugs": {
     "url": "https://github.com/Defkil/jlv/issues"
   },
-  "homepage": "https://github.com/Defkil/jlv#readme"
+  "homepage": "https://github.com/Defkil/jlv#readme",
+  "dependencies": {
+    "commander": "^6.0.0",
+    "event-stream": "^4.0.1",
+    "glob": "^7.1.6",
+    "jlv-pino": "^1.0.1",
+    "json-log-viewer": "github:gistia/json-log-viewer#master",
+    "merge-files": "^0.1.2",
+    "tmp": "^0.2.1"
+  },
+  "devDependencies": {
+    "chai": "^4.2.0",
+    "eslint": "^7.2.0",
+    "eslint-config-airbnb": "^18.2.0",
+    "eslint-plugin-import": "^2.21.2",
+    "eslint-plugin-jsdoc": "^30.0.3",
+    "eslint-plugin-jsx-a11y": "^6.3.0",
+    "eslint-plugin-react": "^7.20.0",
+    "eslint-plugin-react-hooks": "^4.0.0",
+    "foodoc": "0.0.9",
+    "jsdoc": "^3.6.5",
+    "mocha": "^8.0.1",
+    "mock-require": "^3.0.3",
+    "nyc": "^15.1.0"
+  }
 }

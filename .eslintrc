@@ -1,0 +1,16 @@
+{
+  "extends": ["plugin:jsdoc/recommended", "airbnb"],
+  "settings": {
+    "react": {
+      "version": "FixReactWarning"
+    }
+  },
+  "plugins": [
+    "jsdoc"
+  ],
+  "rules": {
+    "no-return-await": "off",
+    "global-require": "off",
+    "no-console": "off"
+  }
+}
