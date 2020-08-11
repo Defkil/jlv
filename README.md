@@ -42,9 +42,22 @@ You need to install the new version from the git with:
 npm i gistia/json-log-viewer#master
 ```
 ## :rocket: Usage
-It will open a new a shell with json-view-logger
-//todo
+argument| short| description
+--- | --- | ---
+--param \<param>|-p \<param>|json-log-viewer parameter
+--files \<glob>|-f \<glob>|log files to view as glob
+--config \<path>|-c \<path>|path to .json-log-viewer config file
+--reset|-r|reset .json-log-viewer in HOME folder
+--transformer \<name>|-t \<name>|load transformer from a npm module
+--transformer-js \<path>|-tjs \<path>|load transformer from a javascript file
+--open|-o|open json-log-viewer in a new shell
+--save \<path>|-s \<path>|save merged log file to path
+--backup \<path>|-b \<path>|backup .json-log-viewer to given path
 
+Example
+```sh
+jlv -f ./example/**.log -o
+```
 ## :wrench: Transformers
 List of supported transformers. Default is [winston](https://github.com/winstonjs/winston).
 
