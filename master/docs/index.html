@@ -1,0 +1,181 @@
+<!-- start:readme.hbs -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width">
+		<title>JLV</title>
+		<!--[if lt IE 9]>
+		<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+		<![endif]-->
+		<link href="https://fonts.googleapis.com/css?family=PT+Mono" rel="stylesheet">
+		<link type="text/css" rel="stylesheet" href="css/bootstrap.min.css">
+		<link type="text/css" rel="stylesheet" href="css/prism.min.css">
+		<link type="text/css" rel="stylesheet" href="css/template.min.css">
+		<script type="text/javascript">
+			window.TEMPLATE_OPTIONS = {"includeDate":true,"dateFormat":"Do MMM YYYY","systemName":"JLV","systemSummary":"wrapper around json-log-viewer for easy usage","systemLogo":"","systemColor":"","navMembers":[{"kind":"class","title":"Classes","summary":"All documented classes."},{"kind":"external","title":"Externals","summary":"All documented external members."},{"kind":"global","title":"Globals","summary":"All documented globals."},{"kind":"mixin","title":"Mixins","summary":"All documented mixins."},{"kind":"interface","title":"Interfaces","summary":"All documented interfaces."},{"kind":"module","title":"Modules","summary":"All documented modules."},{"kind":"namespace","title":"Namespaces","summary":"All documented namespaces."},{"kind":"tutorial","title":"Tutorials","summary":"All available tutorials."}],"footer":"","copyright":"MIT © Oliver Grüttner","linenums":true,"collapseSymbols":true,"inverseNav":true,"inlineNav":false,"outputSourceFiles":true,"sourceRootPath":null,"disablePackagePath":true,"outputSourcePath":false,"showTableOfContents":true,"showAccessFilter":true,"analytics":null,"methodHeadingReturns":true,"sort":"linenum, longname, version, since","search":true,"favicon":null,"stylesheets":[],"scripts":[],"monospaceLinks":false,"cleverLinks":false};
+			window.DOCLET_TOC_ENABLED = true;
+			window.DOCLET_AFILTER_ENABLED = false;
+		</script>
+</head>
+<body>
+	<!-- start:navbar.hbs -->
+	<header class="navbar navbar-default navbar-fixed-top navbar-inverse">
+		<div class="container">
+			<div class="navbar-header">
+				<a class="navbar-brand" href="index.html">
+					JLV
+				</a>
+				<!-- displayed on small devices -->
+				<button class="navbar-toggle" type="button" data-toggle="collapse" data-target="#topNavigation">
+					<span class="icon-bar"></span>
+					<span class="icon-bar"></span>
+					<span class="icon-bar"></span>
+				</button>
+			</div>
+			<div class="navbar-collapse collapse" id="topNavigation">
+				<ul class="nav navbar-nav">
+								<li class="dropdown">
+									<a href="global.html" class="dropdown-toggle" data-toggle="dropdown">Globals<b class="caret"></b></a>
+									<ul class="dropdown-menu">
+											<li><a href="global.html#backupConfig">backupConfig</a></li>
+											<li><a href="global.html#createLogFile">createLogFile</a></li>
+											<li><a href="global.html#loadConfig">loadConfig</a></li>
+											<li><a href="global.html#resetConfig">resetConfig</a></li>
+											<li><a href="global.html#run">run</a></li>
+											<li><a href="global.html#runTransformer">runTransformer</a></li>
+											<li><a href="global.html#runTransformerNpm">runTransformerNpm</a></li>
+											<li><a href="global.html#runTransformerPath">runTransformerPath</a></li>
+											<li><a href="global.html#saveLogFile">saveLogFile</a></li>
+									</ul>
+								</li>
+								<li class="dropdown">
+									<a href="list_module.html" class="dropdown-toggle" data-toggle="dropdown">Modules<b class="caret"></b></a>
+									<ul class="dropdown-menu">
+											<li><a href="module-cli.html">cli</a></li>
+											<li><a href="module-helper.html">helper</a></li>
+									</ul>
+								</li>
+				</ul>
+					<!-- start:lunr-search-navbar.hbs -->
+					<form class="navbar-form navbar-right" role="search">
+						<div class="input-group">
+							<input type="text" class="form-control" placeholder="Search" id="lunr-search-input">
+							<div class="input-group-btn">
+								<button class="btn btn-default" id="lunr-search-submit">
+									<i class="glyphicon glyphicon-search"></i>
+								</button>
+							</div>
+						</div>
+					</form>
+					<!-- start:lunr-search-navbar.hbs -->		</div>
+		</div>
+	</header>
+	<!-- end:navbar.hbs -->		<div class="page-header">
+			<div class="container">
+				<span class="kind">readme</span>
+				<h1><span class="name">JLV</span></h1>
+				<div class="summary"><p>wrapper around json-log-viewer for easy usage</p></div>			</div>
+		</div>
+	<div class="container content">
+		<div class="row">
+			<div class="col-md-9 main-content">
+		<section class="readme-section">
+			<article><h1>JLV <img src="https://img.shields.io/badge/language-javascript-blue.svg" alt="language"></h1>
+<blockquote>
+<p>wrapper around <a href="https://github.com/gistia/json-log-viewer">json-log-viewer</a> for easy usage</p>
+</blockquote>
+<p>Adds following features to <a href="https://github.com/gistia/json-log-viewer">json-log-viewer</a>:</p>
+<ul>
+<li>copies .json-log-viewer from the current folder or argument to your HOME path</li>
+<li>merge multiple files to see all at once in <a href="https://github.com/gistia/json-log-viewer">json-log-viewer</a></li>
+<li>use a custom log transformer (for supporting log libraries with another output then
+<a href="https://github.com/winstonjs/winston">winston</a> like :evergreen_tree:<a href="https://github.com/pinojs/pino">pino</a>)</li>
+<li>use an existing log <a href="#wrench-transformers">transformer</a> from npn</li>
+<li>opens <a href="https://github.com/gistia/json-log-viewer">json-log-viewer</a> in a new terminal (I have not found another way to start a process and pass the input to <a href="https://github.com/gistia/json-log-viewer">json-log-viewer</a>)</li>
+</ul>
+<h2>:books: Table of Contents</h2>
+<ul>
+<li><a href="#package-installation">Installation</a></li>
+<li><a href="#rocket-usage">Usage</a></li>
+<li><a href="#wrench-transformers">Transformers</a></li>
+<li><a href="#hammer_and_wrench-support">Support</a></li>
+<li><a href="#memo-contributing">Contributing</a></li>
+<li><a href="#scroll-license">License</a></li>
+</ul>
+<h2>:package: Installation</h2>
+<p>install JLV as dev dependency</p>
+<pre class="prettyprint source lang-sh"><code>npm i jlv -D
+</code></pre>
+<p>if you use another log format then <a href="https://github.com/winstonjs/winston">winston</a>, you need to install a
+<a href="#wrench-transformers">transformer</a>.</p>
+<p><a href="https://github.com/gistia/json-log-viewer">json-log-viewer</a> is not up to date on npm.
+You need to install the new version from the git with:</p>
+<pre class="prettyprint source lang-sh"><code>npm i gistia/json-log-viewer#master
+</code></pre>
+<h2>:rocket: Usage</h2>
+<p>It will open a new a shell with json-view-logger
+//todo</p>
+<h2>:wrench: Transformers</h2>
+<p>List of supported transformers. Default is <a href="https://github.com/winstonjs/winston">winston</a>.</p>
+<table>
+<thead>
+<tr>
+<th>log library</th>
+<th>JLV transformer</th>
+<th>install with</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>:evergreen_tree:<a href="https://github.com/pinojs/pino">pino</a></td>
+<td><a href="https://github.com/Defkil/jlv-pino">jlv-pino</a></td>
+<td>npm i jlv-pino -D</td>
+</tr>
+</tbody>
+</table>
+<p>See <a href="#memo-contributing">Contributing</a> if you would like to add your own transformers to the list. You can use
+<a href="https://github.com/Defkil/jlv-pino">jlv-pino</a> as example.</p>
+<h2>:hammer_and_wrench: Support</h2>
+<p>Please <a href="https://github.com/Defkil/jlv/issues/new">open an issue</a> for support.</p>
+<h2>:memo: Contributing</h2>
+<p>Please contribute using <a href="https://guides.github.com/introduction/flow/">Github Flow</a>. Create a branch, add commits, and <a href="https://github.com/Defkil/jlv/compare/">open a pull request</a>.</p>
+<h2>:scroll: License</h2>
+<p><a href="https://github.com/Defkil/jlv/blob/master/LICENSE">MIT</a> © <a href="https://github.com/Defkil/">Oliver Grüttner</a></p></article>
+		</section>
+			</div>
+				<div class="col-md-3 side-content">
+					<nav class="toc hidden-print hidden-sm hidden-xs"></nav>
+				</div>
+		</div>
+	</div>
+	<footer>
+				<div class="copyright">MIT © Oliver Grüttner</div>
+			<div class="generated-by">Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.5</a> on 11th Aug 2020 using the <a href="https://github.com/steveush/foodoc">FooDoc template</a>.</div>
+	</footer>
+	<script src="js/jquery.min.js"></script>
+	<script src="js/bootstrap.min.js"></script>
+	<script src="js/clipboard.min.js"></script>
+	<script src="js/prism.min.js"></script>
+	<script src="js/template.min.js"></script>
+		<!-- start:lunr-search-modal.hbs -->
+		<div class="modal fade" id="lunr-search-modal">
+			<div class="modal-dialog">
+				<div class="modal-content">
+					<div class="modal-header">
+						<button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+						<h4 class="modal-title">Search results</h4>
+					</div>
+					<div class="modal-body" id="lunr-search-body">
+					</div>
+					<div class="modal-footer" id="lunr-search-footer">
+						<button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+					</div>
+				</div><!-- /.modal-content -->
+			</div><!-- /.modal-dialog -->
+		</div>
+		<!-- end:lunr-search-modal.hbs -->		<script src="js/lunr.min.js"></script>
+	
+</body>
+</html>
+<!-- end:readme.hbs -->

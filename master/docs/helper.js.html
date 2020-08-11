@@ -1,0 +1,262 @@
+<!-- start:source.tmpl.hbs -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width">
+		<title>helper.js</title>
+		<!--[if lt IE 9]>
+		<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+		<![endif]-->
+		<link href="https://fonts.googleapis.com/css?family=PT+Mono" rel="stylesheet">
+		<link type="text/css" rel="stylesheet" href="css/bootstrap.min.css">
+		<link type="text/css" rel="stylesheet" href="css/prism.min.css">
+		<link type="text/css" rel="stylesheet" href="css/template.min.css">
+		<script type="text/javascript">
+			window.TEMPLATE_OPTIONS = {"includeDate":true,"dateFormat":"Do MMM YYYY","systemName":"JLV","systemSummary":"wrapper around json-log-viewer for easy usage","systemLogo":"","systemColor":"","navMembers":[{"kind":"class","title":"Classes","summary":"All documented classes."},{"kind":"external","title":"Externals","summary":"All documented external members."},{"kind":"global","title":"Globals","summary":"All documented globals."},{"kind":"mixin","title":"Mixins","summary":"All documented mixins."},{"kind":"interface","title":"Interfaces","summary":"All documented interfaces."},{"kind":"module","title":"Modules","summary":"All documented modules."},{"kind":"namespace","title":"Namespaces","summary":"All documented namespaces."},{"kind":"tutorial","title":"Tutorials","summary":"All available tutorials."}],"footer":"","copyright":"MIT © Oliver Grüttner","linenums":true,"collapseSymbols":true,"inverseNav":true,"inlineNav":false,"outputSourceFiles":true,"sourceRootPath":null,"disablePackagePath":true,"outputSourcePath":false,"showTableOfContents":true,"showAccessFilter":true,"analytics":null,"methodHeadingReturns":true,"sort":"linenum, longname, version, since","search":true,"favicon":null,"stylesheets":[],"scripts":[],"monospaceLinks":false,"cleverLinks":false};
+			window.DOCLET_TOC_ENABLED = false;
+			window.DOCLET_AFILTER_ENABLED = false;
+		</script>
+</head>
+<body>
+	<!-- start:navbar.hbs -->
+	<header class="navbar navbar-default navbar-fixed-top navbar-inverse">
+		<div class="container">
+			<div class="navbar-header">
+				<a class="navbar-brand" href="index.html">
+					JLV
+				</a>
+				<!-- displayed on small devices -->
+				<button class="navbar-toggle" type="button" data-toggle="collapse" data-target="#topNavigation">
+					<span class="icon-bar"></span>
+					<span class="icon-bar"></span>
+					<span class="icon-bar"></span>
+				</button>
+			</div>
+			<div class="navbar-collapse collapse" id="topNavigation">
+				<ul class="nav navbar-nav">
+								<li class="dropdown">
+									<a href="global.html" class="dropdown-toggle" data-toggle="dropdown">Globals<b class="caret"></b></a>
+									<ul class="dropdown-menu">
+											<li><a href="global.html#backupConfig">backupConfig</a></li>
+											<li><a href="global.html#createLogFile">createLogFile</a></li>
+											<li><a href="global.html#loadConfig">loadConfig</a></li>
+											<li><a href="global.html#resetConfig">resetConfig</a></li>
+											<li><a href="global.html#run">run</a></li>
+											<li><a href="global.html#runTransformer">runTransformer</a></li>
+											<li><a href="global.html#runTransformerNpm">runTransformerNpm</a></li>
+											<li><a href="global.html#runTransformerPath">runTransformerPath</a></li>
+											<li><a href="global.html#saveLogFile">saveLogFile</a></li>
+									</ul>
+								</li>
+								<li class="dropdown">
+									<a href="list_module.html" class="dropdown-toggle" data-toggle="dropdown">Modules<b class="caret"></b></a>
+									<ul class="dropdown-menu">
+											<li><a href="module-cli.html">cli</a></li>
+											<li><a href="module-helper.html">helper</a></li>
+									</ul>
+								</li>
+				</ul>
+					<!-- start:lunr-search-navbar.hbs -->
+					<form class="navbar-form navbar-right" role="search">
+						<div class="input-group">
+							<input type="text" class="form-control" placeholder="Search" id="lunr-search-input">
+							<div class="input-group-btn">
+								<button class="btn btn-default" id="lunr-search-submit">
+									<i class="glyphicon glyphicon-search"></i>
+								</button>
+							</div>
+						</div>
+					</form>
+					<!-- start:lunr-search-navbar.hbs -->		</div>
+		</div>
+	</header>
+	<!-- end:navbar.hbs -->		<div class="page-header">
+			<div class="container">
+				<span class="kind">source</span>
+				<h1><span class="name">helper.js</span></h1>
+			</div>
+		</div>
+	<div class="container content">
+		<div class="row">
+			<div class="col-md-12 main-content">
+		<section class="source-section">
+			<article></article>
+			<pre class="prettyprint source language-javascript line-numbers"><code class="language-javascript">const glob = require('glob');
+const { merge } = require('event-stream');
+const tmp = require('tmp');
+const { spawn } = require('child_process');
+const fs = require('fs');
+
+/** @module helper */
+
+tmp.setGracefulCleanup();
+
+/**
+ * Parsing the glob and returns selected files
+ *
+ * @param {!string} data glob string for log files
+ * @returns {Promise.&lt;Array.&lt;string>>} Array of selected paths
+ */
+function parseGlob(data) {
+  return new Promise(((resolve, reject) => {
+    glob(data, {}, (err, files) => {
+      if (err !== null) reject(err); else resolve(files);
+    });
+  }));
+}
+
+/**
+ * Merge multiple files to one file
+ *
+ * @param {!Array.&lt;string>} inputPathList list of files
+ * @param {!string} outputPath file path where the merged file will be saved
+ * @returns {Promise} Promise for merging
+ */
+function mergeFiles(inputPathList, outputPath) {
+  return new Promise((resolve, reject) => {
+    const streams = [];
+    inputPathList.forEach((path) => {
+      streams.push(fs.createReadStream(path));
+    });
+    merge(streams).pipe(fs.createWriteStream(outputPath))
+      .on('finish', () => { resolve(); })
+      .on('error', (err) => { reject(err); });
+  });
+}
+
+/**
+ * Creates a temporary folder
+ *
+ * @returns {Promise.&lt;string>} folder path
+ */
+function createTmpFolder() {
+  return new Promise((resolve, reject) => {
+    tmp.dir({ unsafeCleanup: true }, (err, path) => {
+      if (err) reject(err);
+      resolve(path);
+    });
+  });
+}
+
+/**
+ * Open json-log-viewer
+ *
+ * @param {boolean=} openNew if true open json-log-viewer in a new console
+ * @param {!string} filePath path to log file
+ * @param {string=} param json-log-viewer parameter
+ * @returns {Promise} Promise for the shell
+ */
+function openShell(openNew, filePath, param) {
+  return new Promise((resolve) => {
+    if (openNew) {
+      const command = `./node_modules/json-log-viewer/src/index.js ${filePath} ${param}`;
+      spawn('node', [command], {
+        cwd: process.cwd(),
+        detached: true,
+        stdio: 'inherit',
+        shell: true,
+      });
+      resolve();
+    } else {
+      global.process.argv.slice = () => [filePath, ...param.split(' ')]; // overwrites param
+      // without the timeout the file will be empty
+      // nextTick dont work too
+      setTimeout(() => {
+        require('json-log-viewer');
+        resolve();
+      }, 0);
+    }
+  });
+}
+
+/**
+ * Copy a file to a new location
+ *
+ * @param {!string} src path to file
+ * @param {!string} dist path where to save the file
+ * @returns {Promise} Promise for coping a file
+ */
+function copyFile(src, dist) {
+  return new Promise((resolve, reject) => {
+    fs.copyFile(src, dist, (err) => {
+      if (err) reject(err);
+      resolve();
+    });
+  });
+}
+
+/**
+ * Delete a file
+ *
+ * @param {!string} src path to file
+ * @returns {Promise} Promise for deleting a file
+ */
+function deleteFile(src) {
+  return new Promise((resolve, reject) => {
+    fs.unlink(src, (err) => {
+      if (err) reject(err);
+      resolve();
+    });
+  });
+}
+
+/**
+ * Check if file exist
+ *
+ * @param {!string} src path to file
+ * @returns {Promise.&lt;boolean>} Promise returns true if file exist
+ */
+function existFile(src) {
+  return new Promise((resolve) => {
+    fs.access(src, fs.F_OK, (err) => {
+      if (err) return resolve(false);
+      return resolve(true);
+    });
+  });
+}
+
+module.exports = {
+  parseGlob,
+  createTmpFolder,
+  mergeFiles,
+  openShell,
+  copyFile,
+  deleteFile,
+  existFile,
+};
+</code></pre>
+		</section>
+			</div>
+		</div>
+	</div>
+	<footer>
+				<div class="copyright">MIT © Oliver Grüttner</div>
+			<div class="generated-by">Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.5</a> on 11th Aug 2020 using the <a href="https://github.com/steveush/foodoc">FooDoc template</a>.</div>
+	</footer>
+	<script src="js/jquery.min.js"></script>
+	<script src="js/bootstrap.min.js"></script>
+	<script src="js/clipboard.min.js"></script>
+	<script src="js/prism.min.js"></script>
+	<script src="js/template.min.js"></script>
+		<!-- start:lunr-search-modal.hbs -->
+		<div class="modal fade" id="lunr-search-modal">
+			<div class="modal-dialog">
+				<div class="modal-content">
+					<div class="modal-header">
+						<button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+						<h4 class="modal-title">Search results</h4>
+					</div>
+					<div class="modal-body" id="lunr-search-body">
+					</div>
+					<div class="modal-footer" id="lunr-search-footer">
+						<button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+					</div>
+				</div><!-- /.modal-content -->
+			</div><!-- /.modal-dialog -->
+		</div>
+		<!-- end:lunr-search-modal.hbs -->		<script src="js/lunr.min.js"></script>
+	
+</body>
+</html>
+<!-- end:source.tmpl.hbs -->
