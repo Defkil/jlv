@@ -15,6 +15,7 @@
     "coverage": "npm run coverage:text",
     "coverage:text": "nyc --reporter text npm test",
     "coverage:html": "nyc --reporter html --report-dir ./docs/coverage npm test",
+    "coverage:coveralls": "npm run coverage && nyc report --reporter=text-lcov | coveralls",
     "lint": "npm run lint:check",
     "lint:check": "eslint ./src/**.js ./test/**.test.js -c .eslintrc",
     "lint:fix": "npm run lint:check -- --fix",
@@ -43,13 +44,12 @@
     "commander": "^6.0.0",
     "event-stream": "^4.0.1",
     "glob": "^7.1.6",
-    "jlv-pino": "^1.0.1",
     "json-log-viewer": "github:gistia/json-log-viewer#master",
-    "merge-files": "^0.1.2",
-    "tmp": "^0.2.1"
+    "merge-files": "^0.1.2"
   },
   "devDependencies": {
     "chai": "^4.2.0",
+    "coveralls": "^3.1.0",
     "eslint": "^7.2.0",
     "eslint-config-airbnb": "^18.2.0",
     "eslint-plugin-import": "^2.21.2",
@@ -61,6 +61,7 @@
     "jsdoc": "^3.6.5",
     "mocha": "^8.0.1",
     "mock-require": "^3.0.3",
-    "nyc": "^15.1.0"
+    "nyc": "^15.1.0",
+    "tmp": "^0.2.1"
   }
 }
