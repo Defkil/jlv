@@ -121,8 +121,65 @@ You need to install the new version from the git with:</p>
 <pre class="prettyprint source lang-sh"><code>npm i gistia/json-log-viewer#master
 </code></pre>
 <h2>:rocket: Usage</h2>
-<p>It will open a new a shell with json-view-logger
-//todo</p>
+<table>
+<thead>
+<tr>
+<th>argument</th>
+<th>short</th>
+<th>description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>--param &lt;param&gt;</td>
+<td>-p &lt;param&gt;</td>
+<td>json-log-viewer parameter</td>
+</tr>
+<tr>
+<td>--files &lt;glob&gt;</td>
+<td>-f &lt;glob&gt;</td>
+<td>log files to view as glob</td>
+</tr>
+<tr>
+<td>--config &lt;path&gt;</td>
+<td>-c &lt;path&gt;</td>
+<td>path to .json-log-viewer config file</td>
+</tr>
+<tr>
+<td>--reset</td>
+<td>-r</td>
+<td>reset .json-log-viewer in HOME folder</td>
+</tr>
+<tr>
+<td>--transformer &lt;name&gt;</td>
+<td>-t &lt;name&gt;</td>
+<td>load transformer from a npm module</td>
+</tr>
+<tr>
+<td>--transformer-js &lt;path&gt;</td>
+<td>-tjs &lt;path&gt;</td>
+<td>load transformer from a javascript file</td>
+</tr>
+<tr>
+<td>--open</td>
+<td>-o</td>
+<td>open json-log-viewer in a new shell</td>
+</tr>
+<tr>
+<td>--save &lt;path&gt;</td>
+<td>-s &lt;path&gt;</td>
+<td>save merged log file to path</td>
+</tr>
+<tr>
+<td>--backup &lt;path&gt;</td>
+<td>-b &lt;path&gt;</td>
+<td>backup .json-log-viewer to given path</td>
+</tr>
+</tbody>
+</table>
+<p>Example</p>
+<pre class="prettyprint source lang-sh"><code>jlv -f ./example/**.log -o
+</code></pre>
 <h2>:wrench: Transformers</h2>
 <p>List of supported transformers. Default is <a href="https://github.com/winstonjs/winston">winston</a>.</p>
 <table>
