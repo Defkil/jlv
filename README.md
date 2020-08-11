@@ -1,4 +1,12 @@
-# JLV ![language](https://img.shields.io/badge/language-javascript-blue.svg)
+# JLV 
+![language](https://img.shields.io/badge/language-javascript-blue.svg)
+[![NPM](https://badgen.net/badge/icon/npm?icon=npm&label)](https://www.npmjs.com/package/jlv)
+[![Github](https://badgen.net/badge/icon/github?icon=github&label)](https://github.com/Defkil/jlv)
+[![Docs](https://badgen.net/badge/docs/online/blue)](https://defkil.github.io/jlv/master/docs/)
+[![Build Status](https://travis-ci.org/Defkil/jlv.svg?branch=master)](https://travis-ci.org/Defkil/jlv)
+[![Coverage Status](https://coveralls.io/repos/github/Defkil/jlv/badge.svg?branch=master)](https://coveralls.io/github/Defkil/jlv?branch=master)
+[![dependencies Status](https://david-dm.org/defkil/jlv/status.svg)](https://david-dm.org/defkil/jlv)
+
 > wrapper around [json-log-viewer](https://github.com/gistia/json-log-viewer) for easy usage
 
 Adds following features to [json-log-viewer](https://github.com/gistia/json-log-viewer):
