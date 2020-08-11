@@ -11,7 +11,7 @@ tmp.setGracefulCleanup();
 /**
  * Parsing the glob and returns selected files
  *
- * @param {string} data string of data
+ * @param {!string} data glob string for log files
  * @returns {Promise.<Array.<string>>} Array of selected paths
  */
 function parseGlob(data) {
@@ -25,8 +25,8 @@ function parseGlob(data) {
 /**
  * Merge multiple files to one file
  *
- * @param {Array.<string>} inputPathList list of files
- * @param {string} outputPath file path where the merged file will be saved
+ * @param {!Array.<string>} inputPathList list of files
+ * @param {!string} outputPath file path where the merged file will be saved
  * @returns {Promise} Promise for merging
  */
 function mergeFiles(inputPathList, outputPath) {
@@ -58,9 +58,9 @@ function createTmpFolder() {
 /**
  * Open json-log-viewer
  *
- * @param {boolean} openNew if true open json-log-viewer in a new console
- * @param {string} filePath path to log file
- * @param {string} param json-log-viewer parameter
+ * @param {boolean=} openNew if true open json-log-viewer in a new console
+ * @param {!string} filePath path to log file
+ * @param {string=} param json-log-viewer parameter
  * @returns {Promise} Promise for the shell
  */
 function openShell(openNew, filePath, param) {
@@ -89,8 +89,8 @@ function openShell(openNew, filePath, param) {
 /**
  * Copy a file to a new location
  *
- * @param {string} src path to file
- * @param {string} dist path where to save the file
+ * @param {!string} src path to file
+ * @param {!string} dist path where to save the file
  * @returns {Promise} Promise for coping a file
  */
 function copyFile(src, dist) {
@@ -105,7 +105,7 @@ function copyFile(src, dist) {
 /**
  * Delete a file
  *
- * @param {string} src path to file
+ * @param {!string} src path to file
  * @returns {Promise} Promise for deleting a file
  */
 function deleteFile(src) {
@@ -120,7 +120,7 @@ function deleteFile(src) {
 /**
  * Check if file exist
  *
- * @param {string} src path to file
+ * @param {!string} src path to file
  * @returns {Promise.<boolean>} Promise returns true if file exist
  */
 function existFile(src) {
