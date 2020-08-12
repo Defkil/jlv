@@ -1,6 +1,6 @@
 {
   "name": "jlv",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "wrapper around json-log-viewer for easy usage",
   "main": "src/index.js",
   "files": [
