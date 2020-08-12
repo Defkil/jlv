@@ -14,7 +14,7 @@ Adds following features to [json-log-viewer](https://github.com/gistia/json-log-
 - merge multiple files to see all at once in [json-log-viewer](https://github.com/gistia/json-log-viewer)
 - use a custom log transformer (for supporting log libraries with another output then 
 [winston](https://github.com/winstonjs/winston) like :evergreen_tree:[pino](https://github.com/pinojs/pino))
-- use an existing log [transformer](#wrench-transformers) from npn
+- use an existing log [transformer](#wrench-transformers) from npm
 - opens [json-log-viewer](https://github.com/gistia/json-log-viewer) in a new terminal (I have not found another way to start a process and pass the input to [json-log-viewer](https://github.com/gistia/json-log-viewer))
 
 ## :books: Table of Contents
@@ -30,7 +30,7 @@ Adds following features to [json-log-viewer](https://github.com/gistia/json-log-
 
 install JLV as dev dependency
 ```sh
-npm i jlv -D
+npm i jlv -g
 ```
 
 if you use another log format then [winston](https://github.com/winstonjs/winston), you need to install a
