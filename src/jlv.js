@@ -130,4 +130,7 @@ module.exports = {
   loadConfig,
   runTransformerPath,
   runTransformerNpm,
+  CONFIG_FILENAME,
+  TEMP_LOG_FILENAME,
+  TEMP_TRANSFORMED_LOG_FILENAME,
 };
