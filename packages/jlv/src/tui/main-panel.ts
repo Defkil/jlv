@@ -552,9 +552,6 @@ class MainPanel extends BaseWidget {
   }
 
   pageUp (): void {
-    if (this.row < this.pageHeight) {
-      return
-    }
     const relativeRow = this.relativeRow
     this.row = Math.max(0, this.row - this.pageHeight)
     this.initialRow = Math.max(0, this.row - relativeRow)

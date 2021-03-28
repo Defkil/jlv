@@ -63,10 +63,16 @@ describe('paging', () => {
     assert.equal(viewer.panel.initialRow, 0)
   })
 
-  it('ignores PageUp on a first page that does not start at row zero (upstream defect)', async t => {
+  // Upstream ignored PageUp while the cursor was less than a page from the top (fixed by
+  // farolanf/json-log-viewer 80eade9).
+  it('moves to the first record on PageUp from a partial first page', async t => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, keys.down, keys.down, keys.down, keys.pageUp)
-    assert.equal(viewer.panel.row, 3)
+    assert.equal(viewer.panel.row, 0)
+    assert.equal(viewer.panel.initialRow, 0)
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/32 | 20 | sort: -timestamp')
+    await press(viewer, '$', keys.up, keys.pageUp, keys.pageUp)
+    assert.equal(viewer.panel.row, 0)
     assert.equal(viewer.panel.initialRow, 0)
   })
 
