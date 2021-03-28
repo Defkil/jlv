@@ -1,9 +1,10 @@
 // Successor of upstream src/widgets/LogDetails.js: a dialog with the data of one record as an indented tree or as
-// pretty-printed JSON. j toggles the view; Enter and Escape close the dialog.
+// pretty-printed JSON. j toggles the view; the arrows, PageUp, PageDown, Home and End scroll; Enter and Escape close
+// the dialog.
 import type { Widgets } from 'blessed'
 import type { LogEntry } from '../log.js'
 import { BaseWidget } from './base-widget.js'
-import { createElement } from './blessed-boundary.js'
+import { createElement, toCells } from './blessed-boundary.js'
 import { markup } from './formatting.js'
 
 const formatKey = (key: string, padding?: number): string => {
@@ -66,11 +67,45 @@ class LogDetails extends BaseWidget {
       this.screen.render()
       return
     }
-    if (key.name !== 'j') {
+    if (key.name === 'j') {
+      this.json = !this.json
+      this.update()
       return
     }
-    this.json = !this.json
-    this.update()
+    this.scrollByKey(key)
+  }
+
+  // Home and End jump to the first and the last line of the data. PageUp and PageDown move by the height of the
+  // dialog less three lines, five pages at once with Shift.
+  scrollByKey (key: Widgets.Events.IKeyEventArg): void {
+    const { element } = this
+    if (element === undefined) {
+      return
+    }
+    const pages = key.shift ? 5 : 1
+    const step = toCells(this.height) * pages - pages * 3
+    switch (key.name) {
+      case 'home': {
+        element.scroll(-element.getScrollHeight())
+        break
+      }
+      case 'end': {
+        element.scroll(element.getScrollHeight())
+        break
+      }
+      case 'pageup': {
+        element.scroll(-step)
+        break
+      }
+      case 'pagedown': {
+        element.scroll(step)
+        break
+      }
+      default: {
+        return
+      }
+    }
+    this.screen.render()
   }
 
   display (entry: LogEntry): void {

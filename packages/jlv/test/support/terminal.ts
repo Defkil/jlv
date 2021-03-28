@@ -54,6 +54,9 @@ export const keys = {
   down: '\u{1B}[B',
   pageUp: '\u{1B}[5~',
   pageDown: '\u{1B}[6~',
+  shiftPageDown: '\u{1B}[6;2~',
+  home: '\u{1B}[H',
+  end: '\u{1B}[F',
   enter: '\r',
   escape: '\u{1B}'
 } as const

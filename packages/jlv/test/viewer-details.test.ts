@@ -1,6 +1,9 @@
-// Characterization of the details view: tree and JSON rendering, toggling and closing.
+// Characterization of the details view: tree and JSON rendering, toggling, scrolling and closing.
 import assert from 'node:assert/strict'
-import { describe, it } from 'node:test'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { describe, it, type TestContext } from 'node:test'
 import { fixturePath, legacyViewerFixtures } from '../../format-fixtures/src/catalog.js'
 import { LogDetails } from '../src/tui/log-details.js'
 import { keys, openFileViewer, press, screenText } from './support/terminal.js'
@@ -12,6 +15,23 @@ const contentOf = (details: LogDetails): string | undefined => details.element?.
 
 // The details box spans columns 4 to 75.
 const detailsBox = (rows: readonly string[], from: number, to: number): string[] => rows.slice(from, to).map(row => row.slice(4, 76))
+
+// A log with one record whose 40 data fields need 41 lines, more than the 17 lines inside the details dialog of a
+// 24-row screen. The directory is removed after the test.
+const longRecordLog = (context: TestContext): string => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'jlv-details-'))
+  context.after(() => {
+    process.chdir(tmpdir())
+    rmSync(directory, { recursive: true, force: true })
+  })
+  const fields = Object.fromEntries(Array.from({ length: 40 }, (_, index) => [`field${String(index).padStart(2, '0')}`, `value ${String(index)}`]))
+  const file = path.join(directory, 'long.log')
+  writeFileSync(file, `${JSON.stringify({ timestamp: '2026-10-11T10:00:00.000Z', level: 'info', message: 'long', ...fields })}\n`)
+  return file
+}
+
+// The first and the last line inside the details dialog, which shows 17 lines on screen rows 4 to 20.
+const visibleFields = (rows: readonly string[]): [string, string] => [rows[4]?.slice(6, 23).trim() ?? '', rows[20]?.slice(6, 23).trim() ?? '']
 
 describe('details', () => {
   it('opens the cursor record with Enter and shows nested data as an indented tree', async t => {
@@ -65,6 +85,27 @@ describe('details', () => {
     ])
     await press(viewer, 'j')
     assert.equal(detailsBox(screenText(viewer.screen), 4, 5)[0], '│ {}                                                                   │')
+  })
+
+  // Adopted from farolanf/json-log-viewer 7758d95, with the PageUp step of 9d478af.
+  it('scrolls by a page with PageUp and PageDown and to the ends with Home and End', async t => {
+    const viewer = openFileViewer(t, longRecordLog(t))
+    await press(viewer, keys.enter)
+    assert.deepEqual(visibleFields(screenText(viewer.screen)), ['', 'field15: value 15'])
+    await press(viewer, keys.pageDown)
+    assert.deepEqual(visibleFields(screenText(viewer.screen)), ['field15: value 15', 'field31: value 31'])
+    await press(viewer, keys.pageUp)
+    assert.deepEqual(visibleFields(screenText(viewer.screen)), ['', 'field15: value 15'])
+    await press(viewer, keys.end)
+    assert.deepEqual(visibleFields(screenText(viewer.screen)), ['field23: value 23', 'field39: value 39'])
+    await press(viewer, keys.home)
+    assert.deepEqual(visibleFields(screenText(viewer.screen)), ['', 'field15: value 15'])
+    await press(viewer, keys.shiftPageDown)
+    assert.deepEqual(visibleFields(screenText(viewer.screen)), ['field23: value 23', 'field39: value 39'])
+    await press(viewer, keys.up)
+    assert.deepEqual(visibleFields(screenText(viewer.screen)), ['field22: value 22', 'field38: value 38'])
+    await press(viewer, keys.escape)
+    assert.equal(screenText(viewer.screen)[1], '│ 2026-10-11T10:00:00.000Z  info  *  long                                      │')
   })
 
   it('throws a TypeError when Enter reaches a details dialog that shows no record', t => {
