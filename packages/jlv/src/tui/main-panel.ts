@@ -351,6 +351,7 @@ class MainPanel extends BaseWidget {
 
   setSort (sort: string): void {
     this.sort = sort
+    this.setUpdated()
     this.renderLines()
   }
 

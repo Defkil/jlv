@@ -1,4 +1,4 @@
-// Characterization of sorting in the upstream viewer, including the stale cache after a sort change.
+// Characterization of sorting in the upstream viewer.
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { fixturePath, legacyViewerFixtures } from '../../format-fixtures/src/catalog.js'
@@ -33,19 +33,21 @@ describe('sort', () => {
     ])
   })
 
-  it('shows a new sort in the status line but renders the old order until the next render (upstream defect)', async t => {
+  // Upstream showed the new sort in the status line but kept the old order until the next render (fixed by
+  // farolanf/json-log-viewer ae42be2).
+  it('renders the new order as soon as the sort changes', async t => {
     const viewer = openFileViewer(t, characterization)
-    const before = screenText(viewer.screen).slice(1, 22)
     await press(viewer, 's', 'l')
     assert.equal(viewer.panel.sort, 'level')
     assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/32 | 20 | sort: level')
-    assert.deepEqual(screenText(viewer.screen).slice(1, 22), before)
-    await press(viewer, keys.down)
     assert.deepEqual(screenText(viewer.screen).slice(1, 4), [
       '│ 2026-10-11T10:05:00.000Z  INFO  *  foxtrot 05                                │',
       '│ 2026-10-11T10:00:00.000Z  debug     alpha 00                                 │',
       '│ 2026-10-11T10:28:00.000Z  debug  *  echo 28                                  │'
     ])
+    await press(viewer, 's', 'l')
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/32 | 20 | sort: -level')
+    assert.equal(screenText(viewer.screen)[1], '│ undefined                               undefined                            │')
   })
 
   it('sorts levels as text: uppercase first, equal levels in file order, missing levels last', t => {
