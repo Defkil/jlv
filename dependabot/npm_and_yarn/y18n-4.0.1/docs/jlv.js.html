@@ -1,0 +1,255 @@
+<!-- start:source.tmpl.hbs -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width">
+		<title>jlv.js</title>
+		<!--[if lt IE 9]>
+		<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+		<![endif]-->
+		<link href="https://fonts.googleapis.com/css?family=PT+Mono" rel="stylesheet">
+		<link type="text/css" rel="stylesheet" href="css/bootstrap.min.css">
+		<link type="text/css" rel="stylesheet" href="css/prism.min.css">
+		<link type="text/css" rel="stylesheet" href="css/template.min.css">
+		<script type="text/javascript">
+			window.TEMPLATE_OPTIONS = {"includeDate":true,"dateFormat":"Do MMM YYYY","systemName":"JLV","systemSummary":"wrapper around json-log-viewer for easy usage","systemLogo":"","systemColor":"","navMembers":[{"kind":"class","title":"Classes","summary":"All documented classes."},{"kind":"external","title":"Externals","summary":"All documented external members."},{"kind":"global","title":"Globals","summary":"All documented globals."},{"kind":"mixin","title":"Mixins","summary":"All documented mixins."},{"kind":"interface","title":"Interfaces","summary":"All documented interfaces."},{"kind":"module","title":"Modules","summary":"All documented modules."},{"kind":"namespace","title":"Namespaces","summary":"All documented namespaces."},{"kind":"tutorial","title":"Tutorials","summary":"All available tutorials."}],"footer":"","copyright":"MIT © Oliver Grüttner","linenums":true,"collapseSymbols":true,"inverseNav":true,"inlineNav":false,"outputSourceFiles":true,"sourceRootPath":null,"disablePackagePath":true,"outputSourcePath":false,"showTableOfContents":true,"showAccessFilter":true,"analytics":null,"methodHeadingReturns":true,"sort":"linenum, longname, version, since","search":true,"favicon":null,"stylesheets":[],"scripts":[],"monospaceLinks":false,"cleverLinks":false};
+			window.DOCLET_TOC_ENABLED = false;
+			window.DOCLET_AFILTER_ENABLED = false;
+		</script>
+</head>
+<body>
+	<!-- start:navbar.hbs -->
+	<header class="navbar navbar-default navbar-fixed-top navbar-inverse">
+		<div class="container">
+			<div class="navbar-header">
+				<a class="navbar-brand" href="index.html">
+					JLV
+				</a>
+				<!-- displayed on small devices -->
+				<button class="navbar-toggle" type="button" data-toggle="collapse" data-target="#topNavigation">
+					<span class="icon-bar"></span>
+					<span class="icon-bar"></span>
+					<span class="icon-bar"></span>
+				</button>
+			</div>
+			<div class="navbar-collapse collapse" id="topNavigation">
+				<ul class="nav navbar-nav">
+								<li class="dropdown">
+									<a href="global.html" class="dropdown-toggle" data-toggle="dropdown">Globals<b class="caret"></b></a>
+									<ul class="dropdown-menu">
+											<li><a href="global.html#backupConfig">backupConfig</a></li>
+											<li><a href="global.html#createLogFile">createLogFile</a></li>
+											<li><a href="global.html#loadConfig">loadConfig</a></li>
+											<li><a href="global.html#resetConfig">resetConfig</a></li>
+											<li><a href="global.html#run">run</a></li>
+											<li><a href="global.html#runTransformer">runTransformer</a></li>
+											<li><a href="global.html#runTransformerNpm">runTransformerNpm</a></li>
+											<li><a href="global.html#runTransformerPath">runTransformerPath</a></li>
+											<li><a href="global.html#saveLogFile">saveLogFile</a></li>
+									</ul>
+								</li>
+								<li class="dropdown">
+									<a href="list_module.html" class="dropdown-toggle" data-toggle="dropdown">Modules<b class="caret"></b></a>
+									<ul class="dropdown-menu">
+											<li><a href="module-cli.html">cli</a></li>
+											<li><a href="module-helper.html">helper</a></li>
+									</ul>
+								</li>
+				</ul>
+					<!-- start:lunr-search-navbar.hbs -->
+					<form class="navbar-form navbar-right" role="search">
+						<div class="input-group">
+							<input type="text" class="form-control" placeholder="Search" id="lunr-search-input">
+							<div class="input-group-btn">
+								<button class="btn btn-default" id="lunr-search-submit">
+									<i class="glyphicon glyphicon-search"></i>
+								</button>
+							</div>
+						</div>
+					</form>
+					<!-- start:lunr-search-navbar.hbs -->		</div>
+		</div>
+	</header>
+	<!-- end:navbar.hbs -->		<div class="page-header">
+			<div class="container">
+				<span class="kind">source</span>
+				<h1><span class="name">jlv.js</span></h1>
+			</div>
+		</div>
+	<div class="container content">
+		<div class="row">
+			<div class="col-md-12 main-content">
+		<section class="source-section">
+			<article></article>
+			<pre class="prettyprint source language-javascript line-numbers"><code class="language-javascript">const { join, dirname } = require('path');
+const { homedir } = require('os');
+const fs = require('fs');
+const {
+  parseGlob, createTmpFolder, mergeFiles, openShell, copyFile, deleteFile, existFile,
+} = require('./helper.js');
+
+const TEMP_LOG_FILENAME = 'result.log';
+const TEMP_TRANSFORMED_LOG_FILENAME = 'transformed_result.log';
+const CONFIG_FILENAME = '.json-log-viewer';
+
+/**
+ * Run json-log-viewer with parameter in the same or a new tab
+ *
+ * @param {!string} filePath path to log file
+ * @param {string=} param json-log-view parameter
+ * @param {!boolean} open if true open json-log-viewer in a new console
+ */
+async function run(filePath, param, open) {
+  await openShell(open, filePath, (param) || '');
+}
+
+/**
+ * Merge multiple files and save it optional
+ *
+ * @param {!string} filesGlob glob string for log files
+ * @returns {string} path to merged log file
+ */
+async function createLogFile(filesGlob) {
+  const files = await parseGlob(filesGlob);
+  const path = await createTmpFolder();
+  const filePath = join(path, TEMP_LOG_FILENAME);
+  await mergeFiles(files, filePath);
+  return filePath;
+}
+
+/**
+ * Save file to dist path
+ *
+ * @param {!string} src source file path
+ * @param {!string} dist destination file path
+ */
+async function saveLogFile(src, dist) {
+  await copyFile(src, dist);
+}
+
+/**
+ * Copy old config to a new path
+ *
+ * @param {!string} backupPath path where config file will be saved
+ * @returns {Promise} Promise for coping a file
+ */
+async function backupConfig(backupPath) {
+  return await copyFile(join(homedir(), CONFIG_FILENAME), join(backupPath, CONFIG_FILENAME));
+}
+
+/**
+ * Delete config file
+ */
+async function resetConfig() {
+  const path = join(homedir(), CONFIG_FILENAME);
+  if (await existFile(path)) await deleteFile(path);
+}
+
+/**
+ * Load config from parameter or if parameter is empty loads from actual path
+ *
+ * @param {string=} pathConfig config to .json-log-viewer file
+ */
+async function loadConfig(pathConfig) {
+  if (pathConfig &amp;&amp; await existFile(pathConfig)) {
+    await copyFile(pathConfig, join(homedir(), CONFIG_FILENAME));
+  } else {
+    const path = join(process.cwd(), CONFIG_FILENAME);
+    if (await existFile(path)) {
+      await copyFile(path, join(homedir(), CONFIG_FILENAME));
+    }
+  }
+}
+
+/**
+ * Run transformer over a log file
+ *
+ * @param {!string} transformer string for require the transformer
+ * @param {!string} filePath path to log file
+ * @returns {Promise.&lt;string>} path to merged log file
+ */
+async function runTransformer(transformer, filePath) {
+  return new Promise((resolve) => {
+    // eslint-disable-next-line import/no-dynamic-require
+    const tf = require(transformer);
+    const newFilePath = join(dirname(filePath), TEMP_TRANSFORMED_LOG_FILENAME);
+    const stream = fs.createReadStream(filePath);
+    const writeStream = fs.createWriteStream(newFilePath);
+    tf(stream).pipe(writeStream).on('close', () => {
+      resolve(newFilePath);
+    });
+  });
+}
+
+/**
+ * Return transform promise from path
+ *
+ * @param {!string} transformer path to transform file
+ * @param {!string} filePath path to log file
+ * @returns {Promise} Transform promise
+ */
+function runTransformerPath(transformer, filePath) {
+  return runTransformer(join(process.cwd(), transformer), filePath);
+}
+
+/**
+ * Return transform promise from module name
+ *
+ * @param {!string} transformer name of transform module
+ * @param {!string} filePath path to log file
+ * @returns {Promise} Transform promise
+ */
+async function runTransformerNpm(transformer, filePath) {
+  await loadConfig(require.resolve(`${transformer}/.json-log-viewer`));
+  return runTransformer(transformer, filePath);
+}
+
+module.exports = {
+  createLogFile,
+  saveLogFile,
+  run,
+  backupConfig,
+  resetConfig,
+  loadConfig,
+  runTransformerPath,
+  runTransformerNpm,
+  CONFIG_FILENAME,
+  TEMP_LOG_FILENAME,
+  TEMP_TRANSFORMED_LOG_FILENAME,
+};
+</code></pre>
+		</section>
+			</div>
+		</div>
+	</div>
+	<footer>
+				<div class="copyright">MIT © Oliver Grüttner</div>
+			<div class="generated-by">Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.5</a> on 1st Apr 2021 using the <a href="https://github.com/steveush/foodoc">FooDoc template</a>.</div>
+	</footer>
+	<script src="js/jquery.min.js"></script>
+	<script src="js/bootstrap.min.js"></script>
+	<script src="js/clipboard.min.js"></script>
+	<script src="js/prism.min.js"></script>
+	<script src="js/template.min.js"></script>
+		<!-- start:lunr-search-modal.hbs -->
+		<div class="modal fade" id="lunr-search-modal">
+			<div class="modal-dialog">
+				<div class="modal-content">
+					<div class="modal-header">
+						<button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+						<h4 class="modal-title">Search results</h4>
+					</div>
+					<div class="modal-body" id="lunr-search-body">
+					</div>
+					<div class="modal-footer" id="lunr-search-footer">
+						<button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+					</div>
+				</div><!-- /.modal-content -->
+			</div><!-- /.modal-dialog -->
+		</div>
+		<!-- end:lunr-search-modal.hbs -->		<script src="js/lunr.min.js"></script>
+	
+</body>
+</html>
+<!-- end:source.tmpl.hbs -->
