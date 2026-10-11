@@ -129,4 +129,26 @@ describe('details', () => {
       ' {blue-fg}{bold}age: {/bold}{/blue-fg} 12'
     ].join('\n'))
   })
+
+  // Plan section 6.3: the tree is bounded. Upstream padded keys with Math.max(...keys), which throws for very many
+  // keys, and showed every value in full.
+  it('shows nesting below 16 levels as JSON, the first 1000 entries of an object and the first 4096 characters of a value', t => {
+    const viewer = openFileViewer(t, characterization)
+    const details = new LogDetails({ screen: viewer.screen })
+    let deep: unknown = 'leaf'
+    for (let level = 0; level < 20; level += 1) {
+      deep = { a: deep }
+    }
+    const many = Object.fromEntries(Array.from({ length: 150_000 }, (_, index) => [`key${String(index)}`, index]))
+    details.display({ timestamp: 'now', level: 'info', message: 'bounds', data: { deep, many, long: 'x'.repeat(10_000), ['k'.repeat(100)]: 'wide key', short: 1 } })
+    const lines = (contentOf(details) ?? '').split('\n')
+    // Sixteen levels of tree, then the rest as JSON text with its braces escaped for blessed.
+    assert.ok(lines.some(line => line.endsWith(' {open}"a":{open}"a":{open}"a":{open}"a":"leaf"{close}{close}{close}{close}')), lines.slice(0, 20).join('\n'))
+    assert.equal(lines.filter(line => line.includes('{bold}key')).length, 1000)
+    assert.ok(lines.some(line => line.endsWith('… 149000 more')))
+    const long = lines.find(line => line.includes('long:')) ?? ''
+    assert.ok(long.endsWith(`${'x'.repeat(4096)}…`) && !long.includes('x'.repeat(4097)))
+    // A wide key pads the others to 32 cells at most.
+    assert.ok(lines.some(line => line.includes('{bold}' + 'short:'.padEnd(33) + '{/bold}')))
+  })
 })
