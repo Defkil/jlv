@@ -103,6 +103,7 @@ describe('timestamp text', () => {
     const base = Date.UTC(2026, 9, 11, 10)
     const cases = [
       ['2026-10-11T10:00:00Z', base], ['2026-10-11T10:00:00.000Z', base], ['2026-10-11t10:00:00z', base],
+      ['2026-10-11t10:00:00.000z', base], ['2026-10-11 10:00:00.000Z', base],
       ['2026-10-11 10:00:00Z', base], ['2026-10-11T12:00:00+02:00', base], ['2026-10-11T12:00:00+0200', base],
       ['2026-10-11T12:00:00+02', base], ['2026-10-11T04:30:00-05:30', base], ['2026-10-11T10:00:00-00:00', base],
       ['2017-12-06T09:23:42.253060Z', Date.UTC(2017, 11, 6, 9, 23, 42) + 253.06],
@@ -117,6 +118,7 @@ describe('timestamp text', () => {
   it('accepts leap days, leap seconds and years before 100', () => {
     assert.deepEqual(normalizeTimestamp('2024-02-29T00:00:00Z', milliseconds), { timestamp: Date.UTC(2024, 1, 29) })
     assert.deepEqual(normalizeTimestamp('2016-12-31T23:59:60Z', milliseconds), { timestamp: Date.UTC(2017, 0, 1) })
+    assert.deepEqual(normalizeTimestamp('2016-12-31T23:59:60.500Z', milliseconds), { timestamp: Date.UTC(2017, 0, 1) + 500 })
     const early = new Date(0)
     early.setUTCFullYear(50, 0, 1)
     assert.deepEqual(normalizeTimestamp('0050-01-01T00:00:00Z', milliseconds), { timestamp: early.getTime() })
@@ -125,8 +127,18 @@ describe('timestamp text', () => {
   // Date.parse accepts 30 February and 24:00 and moves them to later days.
   it('keeps dates and times that do not exist as invalid text', () => {
     for (const text of ['2026-02-30T00:00:00Z', '2026-02-29T00:00:00Z', '2026-04-31T00:00:00Z', '2026-10-11T24:00:00Z',
-      '2026-13-01T00:00:00Z', '2026-10-11T10:60:00Z', '2026-10-11T10:00:61Z', '2026-10-11T10:00:00+25:00']) {
+      '2026-13-01T00:00:00Z', '2026-10-11T10:60:00Z', '2026-10-11T10:00:61Z', '2026-10-11T10:00:00+25:00',
+      '2026-02-30T00:00:00.000Z', '2026-10-11T24:00:00.000Z', '2026-00-11T10:00:00.000Z', '2026-10-11T10:00:61.000Z']) {
       assert.deepEqual(normalizeTimestamp(text, milliseconds), { timestampText: text, problem: 'invalid' }, text)
+    }
+  })
+
+  // The usual form takes a shorter way than the regular expression; both must agree with Date.
+  it('reads the usual form of toISOString like Date does', () => {
+    for (let index = 0; index < 1000; index += 1) {
+      const time = Math.round((index * 7919 % 1000 / 1000 - 0.3) * 8e12) + index
+      const text = new Date(time).toISOString()
+      assert.deepEqual(normalizeTimestamp(text, milliseconds), { timestamp: time }, text)
     }
   })
 

@@ -140,9 +140,58 @@ const fractionOf = (digits: string | undefined): number => digits === undefined 
 
 const isWithinRange = (milliseconds: number): boolean => Number.isFinite(milliseconds) && Math.abs(milliseconds) <= maximumEpochMilliseconds
 
+// The usual form 2026-10-11T10:00:00.000Z, which JSON loggers write, character by character; 0 stands for a digit.
+const canonicalForm = '0000-00-00T00:00:00.000Z'
+const zeroCode = 48
+const nineCode = 57
+
+// The decimal number of the digits at a position, which the caller has checked.
+const digitsAt = (text: string, index: number, count: number): number => {
+  let value = 0
+  for (let offset = index; offset < index + count; offset += 1) {
+    value = value * 10 + (text.codePointAt(offset) ?? zeroCode) - zeroCode
+  }
+  return value
+}
+
+// Whether text has the usual form, checked without a regular expression.
+const hasCanonicalForm = (text: string): boolean => {
+  if (text.length !== canonicalForm.length) {
+    return false
+  }
+  for (let index = 0; index < canonicalForm.length; index += 1) {
+    const expected = canonicalForm.codePointAt(index)
+    const actual = text.codePointAt(index) ?? 0
+    if (expected === zeroCode ? actual < zeroCode || actual > nineCode : actual !== expected) {
+      return false
+    }
+  }
+  return true
+}
+
+// Reads the usual form: epoch milliseconds, NaN for a date or time that does not exist, or undefined for text of
+// another form.
+const parseCanonicalTime = (text: string): number | undefined => {
+  if (!hasCanonicalForm(text)) {
+    return undefined
+  }
+  const year = digitsAt(text, 0, 4)
+  const month = digitsAt(text, 5, 2)
+  const day = digitsAt(text, 8, 2)
+  const hour = digitsAt(text, 11, 2)
+  const minute = digitsAt(text, 14, 2)
+  const second = digitsAt(text, 17, 2)
+  const isInvalid = month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month) || hour > 23 || minute > 59 || second > 60
+  return isInvalid ? NaN : utcMilliseconds(year, month, day, hour, minute, second) + digitsAt(text, 20, 3)
+}
+
 // Parses RFC 3339 text with a zone into epoch milliseconds with the full fraction; a calendar date that does not
 // exist, such as 30 February or 24:00, gives undefined.
 const parseZonedTime = (text: string): number | undefined => {
+  const canonical = parseCanonicalTime(text)
+  if (canonical !== undefined) {
+    return Number.isNaN(canonical) ? undefined : canonical
+  }
   const match = zonedPattern.exec(text)
   if (match === null) {
     return undefined
@@ -268,9 +317,33 @@ const partNames: Readonly<Record<Part, string>> = {
   correlationIdentifier: 'correlation identifier'
 }
 
-interface FoundField {
-  readonly path: FieldPath
-  readonly value: JsonValue
+// The value at a path of a record. One segment, the usual case, needs no loop.
+const fieldAt = (value: JsonObject, path: FieldPath): JsonValue | undefined => {
+  if (path.length !== 1) {
+    return valueAtPath(value, path)
+  }
+  const [segment] = path
+  const key = typeof segment === 'string' ? segment : String(segment)
+  return Object.hasOwn(value, key) ? value[key] : undefined
+}
+
+// The first path of the candidates that a record has, and its value.
+interface Lookup {
+  path: FieldPath | undefined
+  value: JsonValue | undefined
+}
+
+const lookUp = (value: JsonObject, candidates: readonly FieldPath[], lookup: Lookup): void => {
+  lookup.path = undefined
+  lookup.value = undefined
+  for (const path of candidates) {
+    const found = fieldAt(value, path)
+    if (found !== undefined) {
+      lookup.path = path
+      lookup.value = found
+      return
+    }
+  }
 }
 
 type MutableDraft = { -readonly [Key in keyof LogDraft]: LogDraft[Key] }
@@ -284,37 +357,32 @@ const normalizeFields = (value: JsonObject, profile: FieldProfile, context: Form
   let diagnostics: ParseDiagnostic[] | undefined
   const paths: MutablePaths = {}
   const { mapping } = context
-  const find = (part: Part, defaults: readonly FieldPath[]): FoundField | undefined => {
-    const explicit = mapping[part]
-    const candidates = explicit === undefined ? defaults : [explicit]
-    for (const path of candidates) {
-      const found = valueAtPath(value, path)
-      if (found !== undefined) {
-        if (part !== 'correlationIdentifier') {
-          paths[part] = path
-        }
-        return { path, value: found }
-      }
-    }
-    if (explicit !== undefined) {
+  const lookup: Lookup = { path: undefined, value: undefined }
+  // Looks up a part by its explicit path or its default paths, and gives its value.
+  const part = (name: Part, defaults: readonly FieldPath[]): JsonValue | undefined => {
+    const explicit = mapping[name]
+    lookUp(value, explicit === undefined ? defaults : [explicit], lookup)
+    if (name !== 'correlationIdentifier' && lookup.path !== undefined) {
+      paths[name] = lookup.path
+    } else if (explicit !== undefined && lookup.path === undefined) {
       diagnostics ??= []
-      diagnostics.push(warning('mapping-missing', `no field at ${formatPath(explicit)} for the ${partNames[part]}`))
+      diagnostics.push(warning('mapping-missing', `no field at ${formatPath(explicit)} for the ${partNames[name]}`))
     }
-    return undefined
+    return lookup.value
   }
-  const timestampField = find('timestamp', profile.timestamp)
-  const levelField = find('level', profile.level)
-  const messageField = find('message', profile.message)
-  const correlationField = find('correlationIdentifier', correlationPaths)
+  const rawTimestamp = part('timestamp', profile.timestamp)
+  const rawLevel = part('level', profile.level)
+  const rawMessage = part('message', profile.message)
+  const rawCorrelation = part('correlationIdentifier', correlationPaths)
   const unit = context.timestampUnit ?? profile.timestampUnit
-  const time = normalizeTimestamp(timestampField?.value, { unit, isUnitExplicit: context.timestampUnit !== undefined })
+  const time = normalizeTimestamp(rawTimestamp, { unit, isUnitExplicit: context.timestampUnit !== undefined })
   const draft: MutableDraft = {
-    level: normalizeLevel(levelField?.value, {
+    level: normalizeLevel(rawLevel, {
       hasNumericLevels: profile.hasNumericLevels,
       levelNames: profile.levelNames,
       customLevels: context.levels
     }),
-    message: messageOf(messageField?.value),
+    message: messageOf(rawMessage),
     fields: value
   }
   if (time.timestamp !== undefined) {
@@ -328,7 +396,7 @@ const normalizeFields = (value: JsonObject, profile: FieldProfile, context: Form
     diagnostics ??= []
     diagnostics.push(warning(`timestamp-${time.problem}`, message))
   }
-  const correlationIdentifier = correlationOf(correlationField?.value)
+  const correlationIdentifier = correlationOf(rawCorrelation)
   if (correlationIdentifier !== undefined) {
     draft.correlationIdentifier = correlationIdentifier
   }
@@ -357,9 +425,18 @@ const jsonProblem = (value: unknown, depth: number = maximumJsonDepth): JsonProb
   if (depth <= 0) {
     return 'too-deep'
   }
-  const children: readonly unknown[] = Array.isArray(value) ? value : Object.values(value)
-  for (const child of children) {
-    const problem = jsonProblem(child, depth - 1)
+  if (Array.isArray(value)) {
+    for (const child of value) {
+      const problem = jsonProblem(child, depth - 1)
+      if (problem !== undefined) {
+        return problem
+      }
+    }
+    return undefined
+  }
+  // JSON.parse gives objects with own enumerable properties only, which for...in visits without a copy.
+  for (const key in value) {
+    const problem = jsonProblem(Reflect.get(value, key), depth - 1)
     if (problem !== undefined) {
       return problem
     }
