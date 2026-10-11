@@ -430,6 +430,54 @@ describe('saving records', () => {
   })
 })
 
+// A record with a timestamp without a zone, as Monolog writes it.
+const naive = (minute: number): string => `${JSON.stringify({ timestamp: `2026-10-11 10:0${String(minute)}:00`, message: `naive ${String(minute)}` })}\n`
+
+describe('diagnostics', () => {
+  it('report each kind of warning once per source, then the totals', async () => {
+    const stdout = new TextOutput()
+    const { stdin, stderr, environment } = harness({ stdout })
+    const running = runApplication(applicationOptions({ output: 'plain' }), environment)
+    stdin.end(`${naive(1)}${naive(2)}not json\n${naive(3)}`)
+    assert.equal(await running, 0)
+    assert.equal(stdout.text, '2026-10-11 10:01:00 - naive 1\n2026-10-11 10:02:00 - naive 2\n2026-10-11 10:03:00 - naive 3\n')
+    assert.equal(stderr.text, [
+      'jv: stdin:1: warning: the timestamp "2026-10-11 10:01:00" has no zone; it is shown as text and sorts last',
+      'jv: stdin:3: skipped a line that is no JSON',
+      'jv: 3 warnings in total, the first of each kind shown above',
+      ''
+    ].join('\n'))
+  })
+
+  it('stop at the first error with --strict and end with 1', async () => {
+    const stdout = new TextOutput()
+    const { stdin, stderr, environment } = harness({ stdout })
+    const running = runApplication(applicationOptions({ output: 'plain', isStrict: true }), environment)
+    stdin.end(`${record(1, 'kept')}{"truncated":\n${record(2, 'never read')}`)
+    assert.equal(await running, 1)
+    assert.equal(stdout.text, '2026-10-11T10:01:00.000Z info kept\n')
+    assert.equal(stderr.text, 'jv: stdin:2: skipped a line that is no JSON\njv: --strict stops at the first record that cannot be read\n')
+  })
+
+  it('close the viewer at the first error with --strict and report it afterwards', async () => {
+    const { stdin, stderr, state, environment } = harness()
+    const running = runApplication(applicationOptions({ isStrict: true }), environment)
+    stdin.write(`${record(1, 'kept')}not json\n`)
+    assert.equal(await running, 1)
+    assert.equal(state.isKeyboardClosed, true)
+    assert.equal(stderr.text, 'jv: stdin:2: skipped a line that is no JSON\njv: --strict stops at the first record that cannot be read\n')
+  })
+
+  it('read numeric timestamps in the unit of --timestamp-unit', async () => {
+    const stdout = new TextOutput()
+    const { stdin, environment } = harness({ stdout })
+    const running = runApplication(applicationOptions({ output: 'plain', timestampUnit: 'seconds' }), environment)
+    stdin.end('{"timestamp":1791712800,"message":"seconds"}\n{"timestamp":"1791712801.5","message":"numeric text"}\n')
+    assert.equal(await running, 0)
+    assert.equal(stdout.text, '2026-10-11T10:00:00.000Z - seconds\n2026-10-11T10:00:01.500Z - numeric text\n')
+  })
+})
+
 // The names, sizes and modification times of the home directory's entries, to see that nothing wrote into it.
 const homeSnapshot = (): string[] => readdirSync(home, { recursive: true }).map(name => {
   const status = statSync(path.join(home, String(name)))

@@ -388,6 +388,9 @@ class Ingestion {
   activity: InputActivity = 'loading'
   // The formats of the sources so far.
   readonly formats = new Set<string>()
+  // In strict mode, the first error diagnostic. The batch ends there; the run ends once the records before it are
+  // written.
+  strictFailure: StrictModeError | undefined
 
   constructor (options: IngestionOptions = {}) {
     this.store = options.store
@@ -404,7 +407,7 @@ class Ingestion {
     }
     this.onDiagnostic?.(source.information, diagnostic)
     if (this.isStrict && diagnostic.severity === 'error') {
-      throw new StrictModeError(source.information, diagnostic)
+      this.strictFailure ??= new StrictModeError(source.information, diagnostic)
     }
   }
 
@@ -417,6 +420,9 @@ class Ingestion {
     }
     const { format } = source
     for (const event of events) {
+      if (this.strictFailure !== undefined) {
+        break
+      }
       if (event.kind === 'diagnostic') {
         this.#diagnose(source, event)
         continue

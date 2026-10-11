@@ -361,6 +361,9 @@ const runMachineOutput = async (run: Run, format: MachineFormat): Promise<number
         }
       }
       await Promise.all([writer.write(text, controller.signal), saveWriter?.write(saveText(records, isMatch), controller.signal)])
+      if (ingestion.strictFailure !== undefined) {
+        throw ingestion.strictFailure
+      }
     }
   } catch (error) {
     if (error instanceof StrictModeError) {
@@ -456,6 +459,9 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
         const records = ingestion.accept(batch)
         refresh.schedule()
         await saveWriter?.write(saveText(records, isMatch), controller.signal)
+        if (ingestion.strictFailure !== undefined) {
+          throw ingestion.strictFailure
+        }
       }
       ingestion.activity = 'done'
       if (!state.isFinished) {
