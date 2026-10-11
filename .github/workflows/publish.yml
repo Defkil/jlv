@@ -3,9 +3,12 @@ name: CI and publish
 # Every push to master runs the gates and then publishes the tested tarball of jlv, if its version is not on npm yet.
 # npm trusted publishing (OIDC) trusts this repository and this workflow file name without a GitHub environment;
 # renaming the file or adding an environment needs the trusted publisher on npmjs.com to change first. A manual run
-# checks any branch and publishes only on master. docs/release.md describes the release.
+# checks any branch; pull requests get read-only checks; publication requires Defkil/jlv's master. docs/release.md
+# describes the release.
 on:
   push:
+    branches: [master]
+  pull_request:
     branches: [master]
   workflow_dispatch:
 
@@ -129,8 +132,8 @@ jobs:
   publish:
     name: Publish to npm
     needs: [quality, runtime]
-    # Only master publishes; a manual run on another branch ends after the checks.
-    if: github.ref == 'refs/heads/master'
+    # Pull requests and forks get read-only checks; only a push or manual run on this repository's master publishes.
+    if: github.repository == 'Defkil/jlv' && github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

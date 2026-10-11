@@ -13,7 +13,8 @@
 //     stops the run; it never counts as a missing version.
 // A version that is on npm already is skipped, which makes a rerun safe. Otherwise it runs
 // `npm publish <tarball> --access public --provenance --tag latest` and waits until the registry lists the version.
-// A real publication also requires GitHub Actions on refs/heads/master. Exit code 0 means published or skipped.
+// Registry requests explicitly use the public npm registry. A real publication also requires a push or manual run
+// in GitHub Actions on Defkil/jlv's refs/heads/master. Exit code 0 means published or skipped.
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
@@ -22,6 +23,9 @@ import { parseArgs } from 'node:util'
 import { gunzipSync } from 'node:zlib'
 
 const packageName = 'jlv'
+const registry = 'https://registry.npmjs.org/'
+// Registry versions may include prereleases and build metadata; an arbitrary string is not a version lookup.
+const registryVersion = /^\d+\.\d+\.\d+(?:-[\dA-Za-z-]+(?:\.[\dA-Za-z-]+)*)?(?:\+[\dA-Za-z-]+(?:\.[\dA-Za-z-]+)*)?$/u
 const minimumNpm: readonly number[] = [11, 5, 1]
 const confirmationAttempts = 12
 const confirmationDelay = 5000
@@ -92,7 +96,7 @@ const textProperty = (value: unknown, key: string): string | undefined => {
 // The published versions of the package. npm answers one version as a string and several as an array; an error, an
 // unknown package or anything else stops the run.
 const publishedVersions = (): readonly string[] => {
-  const result = npm(['view', packageName, 'versions', '--json'])
+  const result = npm(['view', packageName, 'versions', '--json', '--registry', registry])
   if (result.code !== 0) {
     throw new ReleaseError(`npm view ${packageName} versions failed with exit code ${String(result.code)}; nothing was published.\n${result.output}${result.errors}`)
   }
@@ -103,7 +107,7 @@ const publishedVersions = (): readonly string[] => {
     throw new ReleaseError(`npm view ${packageName} versions answered no JSON; nothing was published.\n${result.output}`)
   }
   const answers: unknown[] = Array.isArray(answer) ? answer : [answer]
-  const versions = answers.filter(version => typeof version === 'string')
+  const versions = answers.filter((version): version is string => typeof version === 'string' && registryVersion.test(version))
   if (versions.length === 0 || versions.length !== answers.length) {
     throw new ReleaseError(`npm view ${packageName} versions answered no list of versions; nothing was published.\n${result.output}`)
   }
@@ -162,12 +166,15 @@ const release = async (): Promise<void> => {
   const label = `${packageName}@${version}`
   const changelog = existsSync(values.changelog) ? readFileSync(values.changelog, 'utf8') : ''
   const heading = new RegExp(String.raw`^## \[${version.replaceAll('.', String.raw`\.`)}\] - (\d{4}-\d{2}-\d{2})$`, 'mu').exec(changelog)
-  if (heading?.[1] === undefined || Number.isNaN(Date.parse(heading[1]))) {
+  const date = heading?.[1]
+  const dateValue = date === undefined ? NaN : Date.parse(date)
+  if (date === undefined || Number.isNaN(dateValue) || new Date(dateValue).toISOString().slice(0, 10) !== date) {
     throw new ReleaseError(`${values.changelog} has no dated section "## [${version}] - YYYY-MM-DD" for ${label}`)
   }
 
-  const npmVersion = npm(['--version']).output.trim()
-  if (!/^\d+\.\d+\.\d+/u.test(npmVersion) || !isAtLeast(npmVersion, minimumNpm)) {
+  const npmResult = npm(['--version'])
+  const npmVersion = npmResult.output.trim()
+  if (npmResult.code !== 0 || !/^\d+\.\d+\.\d+$/u.test(npmVersion) || !isAtLeast(npmVersion, minimumNpm)) {
     throw new ReleaseError(`trusted publishing needs npm ${minimumNpm.join('.')} or later, found ${npmVersion === '' ? 'none' : npmVersion}`)
   }
 
@@ -180,12 +187,14 @@ const release = async (): Promise<void> => {
     notice(`${label} is not on npm yet; the publish job on master publishes ${path.basename(tarball)} (SHA-256 ${digest}) with npm ${npmVersion}.`)
     return
   }
-  if (process.env['GITHUB_ACTIONS'] !== 'true' || process.env['GITHUB_REF'] !== 'refs/heads/master') {
-    throw new ReleaseError(`${label} is published only by the publish job on refs/heads/master, not from ${process.env['GITHUB_REF'] ?? 'outside GitHub Actions'}`)
+  if (process.env['GITHUB_ACTIONS'] !== 'true' || process.env['GITHUB_REPOSITORY'] !== 'Defkil/jlv' ||
+      process.env['GITHUB_REF'] !== 'refs/heads/master' ||
+      !['push', 'workflow_dispatch'].includes(process.env['GITHUB_EVENT_NAME'] ?? '')) {
+    throw new ReleaseError(`${label} is published only by the publish job on refs/heads/master in Defkil/jlv after a push or manual run, not from ${process.env['GITHUB_REPOSITORY'] ?? 'outside GitHub Actions'} ${process.env['GITHUB_REF'] ?? ''} (${process.env['GITHUB_EVENT_NAME'] ?? 'no event'})`)
   }
 
   process.stdout.write(`Publishing ${label} from ${path.basename(tarball)} (SHA-256 ${digest}) with npm ${npmVersion}\n`)
-  const published = npm(['publish', tarball, '--access', 'public', '--provenance', '--tag', 'latest'], true)
+  const published = npm(['publish', tarball, '--access', 'public', '--provenance', '--tag', 'latest', '--registry', registry], true)
   if (published.code !== 0) {
     throw new ReleaseError(`npm publish of ${label} failed with exit code ${String(published.code)}. Check npm view ${packageName} versions before running this job again; a version on npm is skipped then.`)
   }

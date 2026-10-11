@@ -49,6 +49,7 @@ state.calls.push(parameters)
 let code = 0
 if (parameters[0] === '--version') {
   process.stdout.write(state.npmVersion + '\n')
+  code = state.npmVersionCode ?? 0
 } else if (parameters[0] === 'view') {
   if (state.view === 'fail') {
     process.stderr.write('npm error code E500\n')
@@ -78,6 +79,7 @@ interface State {
   readonly versions: readonly string[]
   readonly view?: 'ok' | 'fail' | 'missing' | 'garbage' | 'object'
   readonly npmVersion?: string
+  readonly npmVersionCode?: number
   readonly publish?: 'ok' | 'fail'
 }
 
@@ -113,7 +115,9 @@ const release = async (subject: Tarball, state: State, parameters: readonly stri
       [pathKey]: `${stub}${path.delimiter}${process.env[pathKey] ?? ''}`,
       STUB_STATE: stateFile,
       GITHUB_ACTIONS: 'true',
+      GITHUB_REPOSITORY: 'Defkil/jlv',
       GITHUB_REF: 'refs/heads/master',
+      GITHUB_EVENT_NAME: 'push',
       ...environment
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -138,7 +142,8 @@ describe('publishing the tested tarball', { concurrency: true }, () => {
   it('publishes a version that is not on npm yet, with provenance, and waits until the registry lists it', async () => {
     const outcome = await release(release200, { versions: ['1.0.0', '1.0.1'] })
     assert.equal(outcome.code, 0, outcome.errors)
-    assert.deepEqual(outcome.calls.find(call => call[0] === 'publish'), ['publish', release200.file, '--access', 'public', '--provenance', '--tag', 'latest'])
+    assert.deepEqual(outcome.calls.find(call => call[0] === 'publish'), ['publish', release200.file, '--access', 'public', '--provenance', '--tag', 'latest', '--registry', 'https://registry.npmjs.org/'])
+    assert.ok(outcome.calls.filter(call => call[0] === 'view').every(call => call.slice(-2).join(' ') === '--registry https://registry.npmjs.org/'))
     assert.deepEqual(commands(outcome), ['--version', 'view jlv', `publish ${release200.file}`, 'view jlv'])
     assert.match(outcome.output, /::notice::jlv@2\.0\.0 is on npm\./u)
   })
@@ -167,6 +172,10 @@ describe('publishing the tested tarball', { concurrency: true }, () => {
       assert.match(outcome.errors, /::error::publish-package: npm view jlv versions .*nothing was published/u, view)
       assert.deepEqual(commands(outcome), ['--version', 'view jlv'], view)
     }
+    const wrongStrings = await release(release200, { versions: ['unavailable'] })
+    assert.equal(wrongStrings.code, 1)
+    assert.match(wrongStrings.errors, /answered no list of versions/u)
+    assert.deepEqual(commands(wrongStrings), ['--version', 'view jlv'])
   })
 
   it('stops before npm when the tarball is not the tested one, or not a stable jlv release', async () => {
@@ -193,8 +202,31 @@ describe('publishing the tested tarball', { concurrency: true }, () => {
     assert.deepEqual(commands(outcome), ['--version'])
   })
 
+  it('rejects a failed or malformed npm version command before consulting the registry', async () => {
+    for (const state of [
+      { npmVersion: '12.2.0', npmVersionCode: 1 },
+      { npmVersion: '12.2.0-garbage' }, { npmVersion: '12.2.0 additional output' }
+    ]) {
+      const outcome = await release(release200, { versions: [], ...state })
+      assert.equal(outcome.code, 1)
+      assert.deepEqual(commands(outcome), ['--version'])
+    }
+  })
+
+  it('rejects impossible calendar dates in the changelog before running npm', async () => {
+    const changelog = path.join(directory, 'invalid-date.md')
+    writeFileSync(changelog, '## [2.0.0] - 2026-02-30\n')
+    const outcome = await release(release200, { versions: [] }, ['--changelog', changelog])
+    assert.equal(outcome.code, 1)
+    assert.match(outcome.errors, /has no dated section/u)
+    assert.deepEqual(outcome.calls, [])
+  })
+
   it('publishes only from the publish job on master', async () => {
-    for (const environment of [{ GITHUB_REF: 'refs/heads/feat/branch' }, { GITHUB_ACTIONS: undefined }]) {
+    for (const environment of [
+      { GITHUB_REF: 'refs/heads/feat/branch' }, { GITHUB_ACTIONS: undefined },
+      { GITHUB_REPOSITORY: 'someone/jlv' }, { GITHUB_EVENT_NAME: 'pull_request' }
+    ]) {
       const outcome = await release(release200, { versions: ['1.0.1'] }, [], environment)
       assert.equal(outcome.code, 1)
       assert.match(outcome.errors, /jlv@2\.0\.0 is published only by the publish job on refs\/heads\/master/u)
