@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-12
+
 jlv 2 is the viewer itself. It continues [json-log-viewer](https://github.com/gistia/json-log-viewer) by Felipe Coury
 and contributors, whose history it imports, and replaces the jlv 1 wrapper and jlv-pino. Read **Changed** and
 **Removed** before upgrading; [Migrating to jlv 2](docs/migration.md) lists every change.
@@ -106,5 +108,6 @@ and contributors, whose history it imports, and replaces the jlv 1 wrapper and j
   a new terminal. Its manifest declared no command.
 
 [Unreleased]: https://github.com/Defkil/jlv/commits/master
+[2.0.0]: https://www.npmjs.com/package/jlv/v/2.0.0
 [1.0.1]: https://www.npmjs.com/package/jlv/v/1.0.1
 [1.0.0]: https://www.npmjs.com/package/jlv/v/1.0.0

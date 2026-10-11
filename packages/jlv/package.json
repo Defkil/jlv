@@ -1,6 +1,6 @@
 {
   "name": "jlv",
-  "version": "0.1.2",
+  "version": "2.0.0",
   "description": "Terminal viewer for JSON and other structured logs from files, globs and pipes: pino, bunyan, Winston, logfmt, CSV and Docker",
   "keywords": [
     "log",
