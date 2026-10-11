@@ -70,11 +70,13 @@ describe('cursor targets past the records', () => {
     assertCursorInView(viewer)
   })
 
-  // C still takes the middle of the page start and the page height (an upstream defect), but no longer leaves the
-  // cursor above the viewport.
-  it('keeps the cursor in view after C on a later page', async t => {
+  it('moves C to the center without scrolling a later viewport', async t => {
     const viewer = openFileViewer(t, characterization, { rows: 8 })
-    await press(viewer, '$', 'C')
+    await press(viewer, '$')
+    const start = viewer.panel.initialRow
+    await press(viewer, 'C')
+    assert.equal(viewer.panel.initialRow, start)
+    assert.equal(viewer.panel.row, start + Math.floor(viewer.panel.pageHeight / 2))
     assertCursorInView(viewer)
     await press(viewer, keys.enter)
     assert.equal(viewer.screen.children.length, 3)

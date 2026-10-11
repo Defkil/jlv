@@ -80,14 +80,20 @@ const cutStartToWidth = (text: string, width: number): string => {
   // The characters by code point, as for...of gives them; a combining mark takes no cell of its own.
   const characters = text.match(/./gsu) ?? []
   let kept = ''
+  let marks = ''
   let used = 0
   for (let index = characters.length - 1; index >= 0; index -= 1) {
     const character = characters[index] ?? ''
     const cells = displayWidth(character)
+    if (cells === 0) {
+      marks = `${character}${marks}`
+      continue
+    }
     if (used + cells > width - 1) {
       break
     }
-    kept = `${character}${kept}`
+    kept = `${character}${marks}${kept}`
+    marks = ''
     used += cells
   }
   return `${ellipsis}${kept}`

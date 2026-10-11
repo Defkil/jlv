@@ -2,6 +2,7 @@
 // removed, other control characters show as JSON escapes, and everything else, slashes, backslashes and braces
 // included, stays literal text.
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { describe, it } from 'node:test'
 import { escapeControls, hasControls, visibleText } from '../src/terminal-text.js'
 
@@ -57,6 +58,23 @@ describe('visible text', () => {
     assert.equal(visibleText(`${escape}]0;no end`), String.raw`\u001b]0;no end`)
     assert.equal(visibleText(`end with ${escape}`), String.raw`end with \u001b`)
     assert.equal(visibleText(`${escape}Pno end`), String.raw`\u001bPno end`)
+  })
+
+  it('escapes interrupted control strings and removes the complete sequence after them', () => {
+    assert.equal(visibleText('\u{9D}unfinished\u{9D}0;title\u{9C}after'), String.raw`\u009dunfinishedafter`)
+    assert.equal(visibleText('\u{90}unfinished\u{90}command\u{9C}after'), String.raw`\u0090unfinishedafter`)
+  })
+
+  it('bounds the work of sanitizing repeated unterminated control strings', () => {
+    // An external deadline can interrupt synchronous regex backtracking. This input took over a minute before
+    // control-string candidates stopped at another introducer; the fixed scan takes far below the generous limit.
+    const sanitizer = new URL('../src/terminal-text.js', import.meta.url).href
+    const script = `import { visibleText } from ${JSON.stringify(sanitizer)};
+      for (const point of [0x90, 0x98, 0x9d, 0x9e, 0x9f]) {
+        const text = String.fromCodePoint(point).repeat(65536);
+        if (visibleText(text).length !== 65536 * 6) throw new Error('lost control characters');
+      }`
+    execFileSync(process.execPath, ['--input-type=module', '-e', script], { timeout: 15_000, windowsHide: true })
   })
 
   it('shows the remaining control characters as JSON escapes', () => {

@@ -585,8 +585,9 @@ class MainPanel extends BaseWidget {
   openCustomFilter (): void {
     this.prompt('Field to filter:', '', field => {
       if (field.includes(':')) {
-        // Like upstream, text after a second colon is dropped.
-        const [key = '', value = ''] = field.split(':', 2)
+        const separator = field.indexOf(':')
+        const key = field.slice(0, separator)
+        const value = field.slice(separator + 1)
         this.addClause({ field: ['fields', ...parsePath(key)], operator: 'contains', value })
         return
       }
@@ -767,9 +768,7 @@ class MainPanel extends BaseWidget {
   }
 
   moveToCenterViewportLine (): void {
-    // Upstream truncated with parseInt. The sum is a whole number (or NaN after an invalid line number), so its
-    // half truncates to the same row with Math.trunc.
-    this.row = Math.trunc((this.initialRow + this.pageHeight) / 2)
+    this.row = this.initialRow + Math.floor(this.pageHeight / 2)
     this.renderLines()
   }
 

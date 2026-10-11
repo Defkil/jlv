@@ -148,11 +148,11 @@ describe('viewport keys', () => {
     assert.equal(viewer.panel.row, 10)
   })
 
-  it('computes the middle row from the page start and the page height, not the viewport (upstream defect)', async t => {
+  it('moves to the middle of a viewport that starts after the first record', async t => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, '$', 'C')
     assert.equal(viewer.panel.initialRow, 10)
-    assert.equal(viewer.panel.row, 15)
+    assert.equal(viewer.panel.row, 20)
   })
 })
 

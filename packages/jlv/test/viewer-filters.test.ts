@@ -142,6 +142,13 @@ describe('filter manager', () => {
     assert.deepEqual(messages(viewer), ['bravo 07'])
   })
 
+  it('keeps colons inside a custom filter value', async t => {
+    const viewer = openFileViewer(t, characterization)
+    await press(viewer, 'f', 'a', 'o', 'requestId:REQ-2:missing', keys.enter)
+    assert.deepEqual(messages(viewer), [])
+    assert.deepEqual(viewer.panel.filterDescriptions, ['fields.requestId~REQ-2:missing'])
+  })
+
   // lodash.get found the Object function as data.constructor of every record, so upstream kept all 32.
   it('finds no inherited member such as constructor in the fields', async t => {
     const viewer = openFileViewer(t, characterization)

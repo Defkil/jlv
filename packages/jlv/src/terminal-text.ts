@@ -23,8 +23,10 @@ const controlCharacters = new RegExp(controlPattern.source, 'gu')
 // drops text after a color, so that its result depends on the Node version.
 const escapeSequences = new RegExp([
   String.raw`(?:\u{1B}\[|\u{9B})[\u{30}-\u{3F}]*[\u{20}-\u{2F}]*[\u{40}-\u{7E}]`,
-  String.raw`(?:\u{1B}\]|\u{9D})[^\u{7}\u{1B}\u{9C}]*(?:\u{7}|\u{1B}\\|\u{9C})`,
-  String.raw`(?:\u{1B}[PX\^_]|[\u{90}\u{98}\u{9E}\u{9F}])[^\u{1B}\u{9C}]*(?:\u{1B}\\|\u{9C})`,
+  // A new escape/control-string introducer ends an unfinished candidate. Otherwise repeated unterminated 8-bit
+  // introducers retry every remaining suffix, making a single hostile log line take quadratic time to sanitize.
+  String.raw`(?:\u{1B}\]|\u{9D})[^\u{7}\u{1B}\u{90}\u{98}\u{9B}-\u{9F}]*(?:\u{7}|\u{1B}\\|\u{9C})`,
+  String.raw`(?:\u{1B}[PX\^_]|[\u{90}\u{98}\u{9E}\u{9F}])[^\u{1B}\u{90}\u{98}\u{9B}-\u{9F}]*(?:\u{1B}\\|\u{9C})`,
   String.raw`\u{1B}[\u{20}-\u{2F}]*[\u{30}-\u{4F}\u{51}-\u{57}\u{59}\u{5A}\u{5C}\u{60}-\u{7E}]`
 ].join('|'), 'gu')
 

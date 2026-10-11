@@ -68,6 +68,8 @@ describe('widths', () => {
     assert.equal(cutStartToWidth('😀😀😀😀', 3), '…😀😀')
     assert.equal(cutStartToWidth('name', 8), 'name')
     assert.equal(cutStartToWidth('name', 0), '')
+    assert.equal(cutStartToWidth('q\u{308}q\u{308}q\u{308}', 2), '…q\u{308}')
+    assert.equal(cutStartToWidth('漢\u{308}字', 3), '…字')
   })
 
   it('pad to a number of cells', () => {
