@@ -2,10 +2,10 @@
 // pretty-printed JSON. j toggles the view; the arrows, PageUp, PageDown, Home and End scroll; Enter and Escape close
 // the dialog.
 import type { Widgets } from 'blessed'
-import type { LogEntry } from '../log.js'
 import { BaseWidget } from './base-widget.js'
 import { createElement, destroyElement, toCells } from './blessed-boundary.js'
 import { markup } from './formatting.js'
+import type { LogRow } from './log-row.js'
 
 const formatKey = (key: string, padding?: number): string => {
   const label = padding ? `${key}:`.padEnd(padding + 1) : `${key}:`
@@ -41,7 +41,7 @@ interface LogDetailsOptions {
 class LogDetails extends BaseWidget {
   json = false
   // The data of the record; display() sets it before update() runs.
-  entryData!: LogEntry['data']
+  entryData!: LogRow['data']
   // The scrollable element with the formatted data, replaced by every update.
   element: Widgets.BoxElement | undefined
 
@@ -110,8 +110,8 @@ class LogDetails extends BaseWidget {
     this.screen.render()
   }
 
-  display (entry: LogEntry): void {
-    this.setLabel(markup`{bold} ${String(entry.timestamp)} - ${String(entry.level)} - ${String(entry.message)} {/}`)
+  display (entry: Pick<LogRow, 'timestamp' | 'level' | 'message' | 'data'>): void {
+    this.setLabel(markup`{bold} ${String(entry.timestamp)} - ${String(entry.level)} - ${entry.message} {/}`)
     this.entryData = entry.data
     this.update()
   }

@@ -9,8 +9,9 @@ import { cellStyle, keys, openFileViewer, press, screenText, topBorder } from '.
 
 const characterization = fixturePath(legacyViewerFixtures.characterization)
 
-// A log whose newest record has a message array. The panel pads the array by its number of elements but prints its
-// text, so that row is longer than the panel. The directory is removed after the test.
+// A log whose newest record has a message with tabs. The panel cuts the message by its number of characters, but
+// blessed shows each tab as four spaces, so that row is longer than the panel. Upstream got the same from a message
+// array, which it padded by its number of elements. The directory is removed after the test.
 const overlongLog = (context: TestContext): string => {
   const directory = mkdtempSync(path.join(tmpdir(), 'jlv-wrap-'))
   context.after(() => {
@@ -18,7 +19,7 @@ const overlongLog = (context: TestContext): string => {
     rmSync(directory, { recursive: true, force: true })
   })
   const records = [
-    { timestamp: '2026-10-11T10:02:00.000Z', level: 'info', message: ['an array message whose text is longer than the panel is wide'] },
+    { timestamp: '2026-10-11T10:02:00.000Z', level: 'info', message: 'tabs\tare\twider\tthan\tthey\tcount\tso\tthis\trow\twraps' },
     { timestamp: '2026-10-11T10:01:00.000Z', level: 'warn', message: 'short' },
     { timestamp: '2026-10-11T10:00:00.000Z', level: 'error', message: 'last' }
   ]
@@ -37,8 +38,8 @@ describe('arrows', () => {
     assert.equal(viewer.panel.row, 3)
     assert.equal(viewer.panel.initialRow, 0)
     const rows = screenText(viewer.screen)
-    assert.equal(rows[0], topBorder('characterization.log', '4/32'))
-    assert.equal(rows[23], '  NORMAL  4/32 | 20 | sort: -timestamp | 3 skipped')
+    assert.equal(rows[0], topBorder('characterization.log', '4/31'))
+    assert.equal(rows[23], '  NORMAL  4/31 | 20 | sort: -timestamp | 4 skipped')
     // The fourth record sits on screen row 4.
     assert.equal(cellStyle(viewer.screen, 2, 4).background, 7)
     await press(viewer, keys.up)
@@ -60,19 +61,19 @@ describe('paging', () => {
     assert.equal(viewer.panel.row, 23)
     assert.equal(viewer.panel.initialRow, 20)
     assert.deepEqual(screenText(viewer.screen).slice(0, 14), [
-      topBorder('characterization.log', '24/32'),
+      topBorder('characterization.log', '24/31'),
       '│ 2026-10-11T10:09:00.000Z  info      delta 09                                 │',
       '│ 2026-10-11T10:08:00.000Z  debug  *  charlie 08                               │',
       '│ 2026-10-11T10:07:00.000Z  error  *  bravo 07                                 │',
       '│ 2026-10-11T10:06:00.000Z  warn      alpha 06                                 │',
-      '│ 2026-10-11T10:05:00.000Z  INFO  *  foxtrot 05                                │',
+      '│ 2026-10-11T10:05:00.000Z  info   *  foxtrot 05                               │',
       '│ 2026-10-11T10:04:00.000Z  debug  *  echo 04                                  │',
       '│ 2026-10-11T10:03:00.000Z  error     delta 03                                 │',
       '│ 2026-10-11T10:02:00.000Z  warn   *  charlie 02                               │',
       '│ 2026-10-11T10:01:00.000Z  info   *  bravo 01                                 │',
       '│ 2026-10-11T10:00:00.000Z  debug     alpha 00                                 │',
-      `│${' '.repeat(78)}│`,
       '│                           warn      no timestamp                             │',
+      `│${' '.repeat(78)}│`,
       `│${' '.repeat(78)}│`
     ])
   })
@@ -91,7 +92,7 @@ describe('paging', () => {
     await press(viewer, keys.down, keys.down, keys.down, keys.pageUp)
     assert.equal(viewer.panel.row, 0)
     assert.equal(viewer.panel.initialRow, 0)
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/32 | 20 | sort: -timestamp | 3 skipped')
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/31 | 20 | sort: -timestamp | 4 skipped')
     await press(viewer, '$', keys.up, keys.pageUp, keys.pageUp)
     assert.equal(viewer.panel.row, 0)
     assert.equal(viewer.panel.initialRow, 0)
@@ -100,9 +101,9 @@ describe('paging', () => {
   it('jumps to the last record with $ and back to the first with 0', async t => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, '$')
-    assert.equal(viewer.panel.row, 31)
-    assert.equal(viewer.panel.initialRow, 11)
-    assert.equal(screenText(viewer.screen)[19], '│ 2026-10-11T10:00:00.000Z  debug     alpha 00                                 │')
+    assert.equal(viewer.panel.row, 30)
+    assert.equal(viewer.panel.initialRow, 10)
+    assert.equal(screenText(viewer.screen)[20], '│ 2026-10-11T10:00:00.000Z  debug     alpha 00                                 │')
     assert.equal(screenText(viewer.screen)[21], '│                           warn      no timestamp                             │')
     await press(viewer, '0')
     assert.equal(viewer.panel.row, 0)
@@ -127,7 +128,7 @@ describe('go to line', () => {
       '│                                      │',
       '└──────────────────────────────────────┘'
     ])
-    assert.equal(screenText(viewer.screen)[23], '  GOTO  1/32 | 20 | sort: -timestamp | 3 skipped')
+    assert.equal(screenText(viewer.screen)[23], '  GOTO  1/31 | 20 | sort: -timestamp | 4 skipped')
     await press(viewer, '5', keys.enter)
     assert.equal(viewer.panel.row, 4)
     assert.equal(viewer.panel.initialRow, 4)
@@ -150,7 +151,7 @@ describe('viewport keys', () => {
   it('computes the middle row from the page start and the page height, not the viewport (upstream defect)', async t => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, '$', 'C')
-    assert.equal(viewer.panel.initialRow, 11)
+    assert.equal(viewer.panel.initialRow, 10)
     assert.equal(viewer.panel.row, 15)
   })
 })
@@ -162,8 +163,8 @@ describe('wrap toggle', () => {
     const wrapped = screenText(viewer.screen)
     // The first record is longer than the panel and continues on row 2.
     assert.deepEqual(wrapped.slice(1, 5).map(row => row.slice(0, 50)), [
-      '│ 2026-10-11T10:02:00.000Z  info      an array mes',
-      '│ than the panel is wide                          ',
+      '│ 2026-10-11T10:02:00.000Z  info      tabs    are ',
+      '│ count    so    this                             ',
       '│ 2026-10-11T10:01:00.000Z  warn      short       ',
       '│ 2026-10-11T10:00:00.000Z  error     last        '
     ])

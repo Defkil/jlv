@@ -12,7 +12,7 @@ describe('search', () => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, '/')
     assert.equal(viewer.panel.mode, 'search')
-    assert.equal(screenText(viewer.screen)[23], '  SEARCH  1/32 | 20 | sort: -timestamp | 3 skipped')
+    assert.equal(screenText(viewer.screen)[23], '  SEARCH  1/31 | 20 | sort: -timestamp | 4 skipped')
     assert.equal(dialog(screenText(viewer.screen), 8, 9)[0], '│  Search:                             │')
     await press(viewer, 'CHARLIE', keys.enter)
     assert.equal(viewer.panel.row, 3)

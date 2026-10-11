@@ -6,22 +6,28 @@
 import { readFileSync } from 'node:fs'
 import os from 'node:os'
 import { parseArgs } from 'node:util'
+import type { LogLevel, TimestampUnit } from './api.js'
 import { runApplication, type ApplicationOptions, type OutputMode } from './application.js'
+import { builtInFormatIdentifiers } from './formats/registry.js'
+import { commonLevelNames, logLevels, timestampUnits } from './record.js'
 import { openKeyboard } from './terminal.js'
 
 const usage = 'usage: jv [options] [file | \'glob\' | -]...'
 
 const help = `${usage}
 
-Shows JSON lines from files, quoted glob patterns or standard input (-) in a terminal viewer, or writes them as text
-or JSON lines when there is no terminal.
+Shows log records from files, quoted glob patterns or standard input (-) in a terminal viewer, or writes them as
+text or JSON lines when there is no terminal.
 
 options:
   -f, --files <glob>     read the files that a pattern matches; repeatable
   --follow               keep reading files that grow, are truncated or replaced
-  --sort <order>         timestamp, level, message, arrival or another field; a leading - sorts descending,
-                         as in --sort=-level (default: -timestamp for files, arrival for pipes and --follow)
-  -l, --level <level>    show only records of this level
+  --format <format>      auto, jsonl or pino (default: auto, recognized for each input)
+  --sort <order>         timestamp, level, message or arrival; a leading - sorts descending, as in
+                         --sort=-level (default: -timestamp for files, arrival for pipes and --follow)
+  -l, --level <level>    show only records of this level: trace, debug, info, warn, error, fatal or unknown
+  --timestamp-unit <u>   seconds, milliseconds, microseconds or nanoseconds for numeric timestamps
+  --strict               stop with exit code 1 at the first record that cannot be read
   --output <mode>        auto, tui, plain or jsonl (default: auto, the viewer when the terminal allows it)
   --max-records <n>      records the viewer keeps (default: 50000)
   --max-bytes <n>        bytes of records the viewer keeps (default: 67108864)
@@ -39,8 +45,11 @@ Exit codes: 0 done, 1 an input or the output failed, 2 usage error, 130 interrup
 const optionDefinitions = {
   files: { type: 'string', short: 'f', multiple: true },
   follow: { type: 'boolean' },
+  format: { type: 'string' },
   sort: { type: 'string' },
   level: { type: 'string', short: 'l' },
+  'timestamp-unit': { type: 'string' },
+  strict: { type: 'boolean' },
   output: { type: 'string' },
   'max-records': { type: 'string' },
   'max-bytes': { type: 'string' },
@@ -58,12 +67,40 @@ class UsageError extends Error {}
 const isParseError = (error: unknown): error is Error =>
   error instanceof TypeError && 'code' in error && typeof error.code === 'string' && error.code.startsWith('ERR_PARSE_ARGS_')
 
-// minimist read numeric values as numbers, which the level filter compares as they are, so -l 30 matches pino's
-// numeric level 30. The level keeps minimist's number test; every other value stays text.
-const hexadecimalPattern = /^0x[\da-f]+$/i
-const decimalPattern = /^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?$/
-const levelValue = (text: string | undefined): string | number | undefined =>
-  text !== undefined && (hexadecimalPattern.test(text) || decimalPattern.test(text)) ? Number(text) : text
+// The orders of --sort, each with a leading - for descending.
+const sortKeys: ReadonlySet<string> = new Set(['timestamp', 'level', 'message', 'arrival'])
+
+// A level name or one of its aliases, ignoring case. Numeric levels are normalized by their format, so -l info
+// matches pino's 30; upstream compared the raw value.
+const levelValue = (text: string | undefined): LogLevel | undefined => {
+  if (text === undefined) {
+    return undefined
+  }
+  const key = text.toLowerCase()
+  const level = key === 'unknown' ? 'unknown' : commonLevelNames[key]
+  if (level === undefined) {
+    throw new UsageError(`--level takes ${logLevels.join(', ')}, not '${text}'`)
+  }
+  return level
+}
+
+const timestampUnitNames: ReadonlySet<string> = new Set(timestampUnits)
+
+const isTimestampUnit = (text: string): text is TimestampUnit => timestampUnitNames.has(text)
+
+const timestampUnitValue = (text: string | undefined): TimestampUnit | undefined => {
+  if (text === undefined || isTimestampUnit(text)) {
+    return text
+  }
+  throw new UsageError(`--timestamp-unit takes ${timestampUnits.join(', ')}, not '${text}'`)
+}
+
+const formatValue = (text: string | undefined): string | undefined => {
+  if (text === undefined || text === 'auto' || builtInFormatIdentifiers.includes(text)) {
+    return text
+  }
+  throw new UsageError(`--format takes auto, ${builtInFormatIdentifiers.join(', ')}, not '${text}'`)
+}
 
 // The store's limits are positive integers below 2^32.
 const limitValue = (name: string, text: string | undefined): number | undefined => {
@@ -98,6 +135,9 @@ const readOptions = (): ApplicationOptions | 'help' | 'version' => {
     throw new UsageError('--overwrite needs --save')
   }
   const sort = values.sort
+  if (sort !== undefined && !sortKeys.has(sort.replace(/^-/, ''))) {
+    throw new UsageError(`--sort takes timestamp, level, message or arrival, with a leading - to sort descending, not '${sort}'`)
+  }
   if (sort !== undefined && sort !== 'arrival' && (output === 'plain' || output === 'jsonl')) {
     throw new UsageError(`--output ${output} writes the records in arrival order; --sort ${sort} needs the viewer`)
   }
@@ -115,6 +155,9 @@ const readOptions = (): ApplicationOptions | 'help' | 'version' => {
     sort,
     level: levelValue(values.level),
     output: output as OutputMode,
+    format: formatValue(values.format),
+    timestampUnit: timestampUnitValue(values['timestamp-unit']),
+    isStrict: values.strict === true,
     maximumRecords: limitValue('max-records', values['max-records']),
     maximumBytes: limitValue('max-bytes', values['max-bytes']),
     save: values.save,

@@ -5,25 +5,29 @@
 //
 // Orders, each ascending or descending:
 // - arrival: the order in which the records arrived; follow and live input show it by default.
-// - time: the store's time key of each record, epoch milliseconds or NaN; finite files show it descending.
-// - field: any other field of the legacy row, compared as lodash.sortBy did.
-// Records without a value for the order (a missing or invalid time, an undefined or null field) come after all others
-// in both directions, and records with equal values keep their arrival order in both directions.
-import type { LogEntry } from '../log.js'
+// - time: the store's normalized time of each record, epoch milliseconds or NaN; finite files show it descending.
+// - level: the store's severity of each record, trace to fatal, with unknown levels last (plan section 5).
+// - field: a value of the row, such as its message, compared as lodash.sortBy did.
+// Records without a value for the order (a missing or invalid time, an unknown level, an undefined or null field) come
+// after all others in both directions, and records with equal values keep their arrival order in both directions.
+import { levelCode } from '../record.js'
 import type { RecordStore } from '../store.js'
+import type { LogRow } from './log-row.js'
 import { compareAscending } from './row-order.js'
 
 type ViewOrder =
-  | { readonly kind: 'arrival' | 'time', readonly isDescending: boolean }
-  | { readonly kind: 'field', readonly isDescending: boolean, readonly read: (entry: LogEntry) => unknown }
+  | { readonly kind: 'arrival' | 'time' | 'level', readonly isDescending: boolean }
+  | { readonly kind: 'field', readonly isDescending: boolean, readonly read: (entry: LogRow) => unknown }
 
 interface ViewQuery {
   // Changes whenever the order or the filter changes.
   readonly revision: number
   readonly order: ViewOrder
   // Keeps a record in the view; undefined keeps all records.
-  readonly isKept: ((entry: LogEntry) => boolean) | undefined
+  readonly isKept: ((entry: LogRow) => boolean) | undefined
 }
+
+const unknownLevel = levelCode('unknown')
 
 // A value that sorts after all others in both directions.
 const isMissing = (value: unknown): boolean => value === undefined || value === null || Number.isNaN(value)
@@ -39,18 +43,20 @@ const compareValues = (left: unknown, right: unknown, isDescending: boolean): nu
   return isDescending ? -ascending : ascending
 }
 
-// The same for time keys, which are numbers or NaN.
-const compareTimes = (left: number, right: number, isDescending: boolean): number => {
-  const isLeftMissing = Number.isNaN(left)
-  const isRightMissing = Number.isNaN(right)
+// The same for the store's numbers: times, which are NaN when missing, and severities, which are unknown.
+const compareNumbers = (left: number, right: number, isDescending: boolean, isMissing: (value: number) => boolean): number => {
+  const isLeftMissing = isMissing(left)
+  const isRightMissing = isMissing(right)
   if (isLeftMissing || isRightMissing) {
     return Number(isLeftMissing) - Number(isRightMissing)
   }
   return isDescending ? right - left : left - right
 }
 
+const isUnknownLevel = (code: number): boolean => code === unknownLevel
+
 class RecordView {
-  readonly #parse: (text: string) => LogEntry
+  readonly #rowAt: (sequence: number) => LogRow
   #order: readonly number[] = []
   // The field values of the records in the order, for a field order.
   #values = new Map<number, unknown>()
@@ -62,9 +68,9 @@ class RecordView {
   // How often the order was computed, once per pair of revisions.
   computations = 0
 
-  constructor (store: RecordStore, parse: (text: string) => LogEntry) {
+  constructor (store: RecordStore, rowAt: (sequence: number) => LogRow) {
     this.store = store
-    this.#parse = parse
+    this.#rowAt = rowAt
   }
 
   #compare (order: ViewOrder, left: number, right: number): number {
@@ -73,7 +79,10 @@ class RecordView {
         return order.isDescending ? right - left : left - right
       }
       case 'time': {
-        return compareTimes(this.store.timeAt(left), this.store.timeAt(right), order.isDescending) || left - right
+        return compareNumbers(this.store.timeAt(left), this.store.timeAt(right), order.isDescending, Number.isNaN) || left - right
+      }
+      case 'level': {
+        return compareNumbers(this.store.levelAt(left), this.store.levelAt(right), order.isDescending, isUnknownLevel) || left - right
       }
       case 'field': {
         return compareValues(this.#values.get(left), this.#values.get(right), order.isDescending) || left - right
@@ -111,9 +120,9 @@ class RecordView {
     return this.#dataRevision !== this.store.dataRevision || this.#queryRevision !== query.revision
   }
 
-  // The parsed row of a retained record.
-  entry (sequence: number): LogEntry {
-    return this.#parse(this.store.textAt(sequence))
+  // The row of a retained record, normalized again from its text.
+  entry (sequence: number): LogRow {
+    return this.#rowAt(sequence)
   }
 
   // The sequences of the records to show, in order.

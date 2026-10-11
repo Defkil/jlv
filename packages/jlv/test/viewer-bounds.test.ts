@@ -50,7 +50,7 @@ describe('cursor targets past the records', () => {
   it('stops G at the last record of a partial last page', async t => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, keys.down, keys.down, keys.down, keys.pageDown, 'G')
-    assert.equal(viewer.panel.row, 31)
+    assert.equal(viewer.panel.row, 30)
     assert.equal(viewer.panel.initialRow, 20)
     await press(viewer, keys.enter)
     // The last record is the second of the two without a timestamp, which come last.
@@ -60,7 +60,7 @@ describe('cursor targets past the records', () => {
   it('moves to the nearest record for line numbers past either end or without digits', async t => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, 'g', '99', keys.enter)
-    assert.equal(viewer.panel.row, 31)
+    assert.equal(viewer.panel.row, 30)
     assertCursorInView(viewer)
     await press(viewer, 'g', '0', keys.enter)
     assert.equal(viewer.panel.row, 0)
@@ -93,13 +93,13 @@ describe('long names', () => {
     copyFileSync(characterization, path.join(directory, name))
     const viewer = openFileViewer(t, path.join(directory, name))
     const rows = screenText(viewer.screen)
-    assert.equal(rows[0], `┌──[ …${name.slice(-61)} ] [ 1/32 ]─┐`)
+    assert.equal(rows[0], `┌──[ …${name.slice(-61)} ] [ 1/31 ]─┐`)
     assert.equal(rows[1], '│ 2026-10-11T10:29:00.000Z  info   *  foxtrot 29                               │')
   })
 
   it('cuts the label to the width of a narrow terminal', t => {
     const viewer = openFileViewer(t, characterization, { columns: 30, rows: 8 })
-    assert.equal(screenText(viewer.screen)[0], '┌──[ …ization.log ] [ 1/32 ]─┐')
+    assert.equal(screenText(viewer.screen)[0], '┌──[ …ization.log ] [ 1/31 ]─┐')
   })
 })
 

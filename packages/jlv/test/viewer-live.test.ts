@@ -34,33 +34,33 @@ describe('arriving records', () => {
     viewer.append(record(1, 'newest'))
     assert.equal(viewer.panel.row, 0)
     assert.equal(viewer.panel.entryAt(0)?.message, 'newest')
-    assert.match(screenText(viewer.screen)[0] ?? '', /\[ 1\/33 \]/u)
+    assert.match(screenText(viewer.screen)[0] ?? '', /\[ 1\/32 \]/u)
   })
 
   it('follows the newest record at the end of the arrival order until the cursor moves away and again from $', async t => {
     const viewer = openFileViewer(t, characterization, { sort: 'arrival' })
-    assert.equal(viewer.panel.row, 31)
+    assert.equal(viewer.panel.row, 30)
     viewer.append(record(1, 'first new'))
-    assert.deepEqual([viewer.panel.row, viewer.panel.entryAt(viewer.panel.row)?.message], [32, 'first new'])
+    assert.deepEqual([viewer.panel.row, viewer.panel.entryAt(viewer.panel.row)?.message], [31, 'first new'])
     await press(viewer, keys.up)
     const identifier = selected(viewer)
     viewer.append(record(2, 'second new'))
-    assert.equal(viewer.panel.row, 31)
+    assert.equal(viewer.panel.row, 30)
     assert.equal(selected(viewer), identifier)
     await press(viewer, '$')
     viewer.append(record(3, 'third new'))
-    assert.deepEqual([viewer.panel.row, viewer.panel.entryAt(viewer.panel.row)?.message], [34, 'third new'])
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  35/35 | 20 | sort: arrival | 3 skipped')
+    assert.deepEqual([viewer.panel.row, viewer.panel.entryAt(viewer.panel.row)?.message], [33, 'third new'])
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  34/34 | 20 | sort: arrival | 4 skipped')
   })
 
   it('reports the retained and the seen records once the store evicts and keeps the newest ones', t => {
     const viewer = openFileViewer(t, characterization, { maximumRecords: 10 })
     assert.equal(visibleEntries(viewer.panel).length, 10)
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/10 | 20 | sort: -timestamp | kept 10 of 32 | 3 skipped')
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/10 | 20 | sort: -timestamp | kept 10 of 31 | 4 skipped')
     viewer.append(record(1, 'one more'))
-    assert.deepEqual([viewer.store.retained, viewer.store.seen, viewer.store.evicted], [10, 33, 23])
+    assert.deepEqual([viewer.store.retained, viewer.store.seen, viewer.store.evicted], [10, 32, 22])
     assert.equal(viewer.panel.entryAt(0)?.message, 'one more')
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/10 | 20 | sort: -timestamp | kept 10 of 33 | 3 skipped')
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/10 | 20 | sort: -timestamp | kept 10 of 32 | 4 skipped')
   })
 
   it('moves the cursor to the nearest row when its record is evicted', async t => {
@@ -76,7 +76,7 @@ describe('arriving records', () => {
     const viewer = openFileViewer(t, characterization)
     viewer.ingestion.activity = 'live'
     viewer.panel.refresh()
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/32 | 20 | sort: -timestamp | live | 3 skipped')
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/31 | 20 | sort: -timestamp | live | 4 skipped')
     viewer.ingestion.activity = 'loading'
     viewer.panel.refresh()
     assert.match(screenText(viewer.screen)[23] ?? '', /\| loading \|/u)

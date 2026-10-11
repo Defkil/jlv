@@ -9,7 +9,7 @@ import path from 'node:path'
 import { after, describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { stripVTControlCharacters } from 'node:util'
-import { fixturePath, legacyViewerFixtures } from '../../format-fixtures/src/catalog.js'
+import { fixturePath, legacyViewerFixtures, pinoFixtures } from '../../format-fixtures/src/catalog.js'
 
 const cli = fileURLToPath(new URL('../src/cli.js', import.meta.url))
 const characterization = fixturePath(legacyViewerFixtures.characterization)
@@ -155,15 +155,22 @@ describe('output without a terminal', () => {
     const result = await run(['--output=jsonl', '-l', 'error', 'characterization.log'])
     assert.equal(result.code, 0)
     assert.equal(result.output.trimEnd().split('\n').length, 7)
-    assert.match(result.output, /^\{"timestamp":"2026-10-11T10:07:00\.000Z","level":"error","message":"bravo 07"/u)
+    assert.match(result.output, /^\{"identifier":"1:2","source":\{"identifier":"1","label":"characterization\.log","order":0\},/u)
+    assert.match(result.output, /^[^\n]*"position":\{"recordNumber":2,"firstLine":2,"lastLine":2\},"timestamp":1791713220000,"level":"error","message":"bravo 07"/u)
     assert.match(result.errors, /^jv: characterization\.log:5: skipped a line that is no JSON\n/u)
   })
 
-  it('filters numeric levels given with -l as numbers', async () => {
-    const result = await run(['-l', '30', 'numeric-levels.log'])
-    assert.equal(result.code, 0)
-    assert.equal(result.output.trimEnd().split('\n').length, 2)
-    assert.doesNotMatch(result.output, /numeric warn/u)
+  // minimist turned -l 30 into a number that matched pino's raw level 30. Levels are normalized now: -l takes a level
+  // name in any case, which matches pino's numbers through pino's profile.
+  it('filters normalized levels given in any case and refuses other levels', async () => {
+    const pino = await run(['-l', 'INFO', fixturePath(pinoFixtures.levels)])
+    assert.equal(pino.code, 0)
+    assert.match(pino.output, /^2026-10-11T10:00:02\.000Z info info message \{"pid":4242,"hostname":"example-host"\}\n$/u)
+    const unknown = await run(['--level=Unknown', 'numeric-levels.log'])
+    assert.equal(unknown.output.trimEnd().split('\n').length, 3)
+    const numeric = await run(['-l', '30', 'numeric-levels.log'])
+    assert.equal(numeric.code, 2)
+    assert.match(numeric.errors, /^jv: --level takes trace, debug, info, warn, error, fatal, unknown, not '30'\n/u)
   })
 
   // minimist turned numeric arguments into numbers: jv 5 read file descriptor 5, and jv 0 reported a missing file.
@@ -264,7 +271,10 @@ describe('saving records', () => {
     assert.equal(result.code, 0)
     const lines = readFileSync(saved, 'utf8').trimEnd().split('\n')
     assert.equal(lines.length, 7)
-    assert.equal(lines[0], '{"timestamp":"2026-10-11T10:07:00.000Z","level":"error","message":"bravo 07","requestId":"req-07","user":{"id":7,"name":"user 07"}}')
+    assert.equal(lines[0], '{"identifier":"1:2","source":{"identifier":"1","label":"characterization.log","order":0},' +
+      '"position":{"recordNumber":2,"firstLine":2,"lastLine":2},"timestamp":1791713220000,"level":"error",' +
+      '"message":"bravo 07","correlationIdentifier":"req-07","fields":{"timestamp":"2026-10-11T10:07:00.000Z",' +
+      '"level":"error","message":"bravo 07","requestId":"req-07","user":{"id":7,"name":"user 07"}}}')
     const again = await run(['-s', saved, 'characterization.log'])
     assert.equal(again.code, 2)
     assert.equal(again.errors, `jv: cannot save to '${saved}': the file exists; --overwrite replaces it\n`)

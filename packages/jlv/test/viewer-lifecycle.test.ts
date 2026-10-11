@@ -94,8 +94,8 @@ describe('main panel lifecycle', () => {
   it('shows the file name and the cursor position in the border label again', async t => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, ...Array.from({ length: 10 }, () => keys.down))
-    assert.equal(screenText(viewer.screen)[0], topBorder('characterization.log', '11/32'))
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  11/32 | 20 | sort: -timestamp | 3 skipped')
+    assert.equal(screenText(viewer.screen)[0], topBorder('characterization.log', '11/31'))
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  11/31 | 20 | sort: -timestamp | 4 skipped')
   })
 
   it('destroys a prompt and a message when they close', async t => {

@@ -4,32 +4,41 @@
 import type { BigIntStats } from 'node:fs'
 import { open, realpath, stat } from 'node:fs/promises'
 import type { Writable } from 'node:stream'
-import { toEntry } from './log.js'
+import type { LogRecord } from './api.js'
+import type { NormalizedRecord } from './ingestion.js'
+import { rowOf, type LogRow, type RowOptions } from './tui/log-row.js'
 
 type MachineFormat = 'plain' | 'jsonl'
 
-// A record as one JSON line, with the values as they were parsed and mapped.
-const jsonLine = (record: unknown): string => `${JSON.stringify(record)}\n`
+// A record as one JSON line in the record model's shape (plan section 5): its identity, its normalized parts and its
+// complete original fields, in a fixed order. Values are the parsed ones, never the raw bytes.
+const jsonLine = (record: LogRecord): string => `${JSON.stringify({
+  identifier: record.identifier,
+  source: record.source,
+  position: record.position,
+  timestamp: record.timestamp,
+  timestampText: record.timestampText,
+  level: record.level,
+  message: record.message,
+  correlationIdentifier: record.correlationIdentifier,
+  fields: record.fields
+})}\n`
 
 const escapeLineBreaks = (text: string): string => text.replaceAll('\r', String.raw`\r`).replaceAll('\n', String.raw`\n`)
 
-// Text as it is, other values as JSON, a missing value as a dash; line breaks become visible escapes, so that every
-// record stays on one line.
-const plainField = (value: unknown): string => {
-  if (value === undefined) {
-    return '-'
-  }
-  return escapeLineBreaks(typeof value === 'string' ? value : JSON.stringify(value))
+// Text as it is, a missing or empty value as a dash; line breaks become visible escapes, so that every record stays on
+// one line.
+const plainField = (value: string | undefined): string => value === undefined || value === '' ? '-' : escapeLineBreaks(value)
+
+// A record as one text line: timestamp, level and message of the viewer's row, then the fields that the viewer's
+// details show, as JSON.
+const plainLine = (row: LogRow): string => {
+  const fields = [row.timestamp, row.level, row.message].map(value => plainField(value)).join(' ')
+  return Object.keys(row.data).length > 0 ? `${fields} ${escapeLineBreaks(JSON.stringify(row.data))}\n` : `${fields}\n`
 }
 
-// A record as one text line: timestamp, level and message of the viewer's row, then its other fields as JSON.
-const plainLine = (record: unknown): string => {
-  const { timestamp, level, message, data } = toEntry(record)
-  const fields = [timestamp, level, message].map(value => plainField(value)).join(' ')
-  return Object.keys(data).length > 0 ? `${fields} ${escapeLineBreaks(JSON.stringify(data))}\n` : `${fields}\n`
-}
-
-const formatLine = (format: MachineFormat, record: unknown): string => format === 'jsonl' ? jsonLine(record) : plainLine(record)
+const formatLine = (format: MachineFormat, normalized: NormalizedRecord, options: RowOptions): string =>
+  format === 'jsonl' ? jsonLine(normalized.record) : plainLine(rowOf(normalized, options))
 
 const isBrokenPipe = (error: unknown): boolean =>
   error instanceof Error && 'code' in error && (error.code === 'EPIPE' || error.code === 'ERR_STREAM_DESTROYED')

@@ -1,34 +1,39 @@
 // Successor of upstream src/widgets/MainPanel.js: the records with the cursor, paging, search, sorting, filters and
 // the dialogs that change them. The records come from the bounded store through a record view, which orders them
-// once per revision; the panel parses only the rows it shows. It keeps upstream's behavior, including the defects
-// that the characterization records for later phases.
+// once per revision; the panel normalizes only the rows it shows. It keeps upstream's behavior, including the defects
+// that the characterization records for later phases, but filters and sorts levels by their normalized severity.
 import type { Widgets } from 'blessed'
+import type { LogLevel } from '../api.js'
 import { fieldReader, valueAtField } from '../field-path.js'
-import type { LogEntry } from '../log.js'
+import { isLogLevel, logLevels } from '../record.js'
 import { BaseWidget } from './base-widget.js'
 import {
   ask, createElement, createPrompt, createQuestion, destroyElement, readInput, setContentWrapping, toCells
 } from './blessed-boundary.js'
 import { formatRows, levelColors, markup } from './formatting.js'
 import { LogDetails } from './log-details.js'
+import type { LogRow } from './log-row.js'
 import { Picker } from './picker.js'
 import type { RecordView, ViewOrder, ViewQuery } from './record-view.js'
 
 type PanelMode = 'normal' | 'sort' | 'filter' | 'search' | 'GOTO'
 
-// The level filter compares the exact value; a filter with the contains method looks for text, ignoring case.
+// The level filter keeps records of one normalized level, whatever case or alias their raw level had (upstream issue
+// #14); a filter with the contains method looks for text, ignoring case.
 type Filter =
-  | { readonly key: string, readonly value: unknown, readonly method?: undefined }
+  | { readonly key: 'level', readonly value: LogLevel, readonly method?: undefined }
   | { readonly key: string, readonly value: string, readonly method: 'contains' }
 
 type PickerCallback = (error: unknown, value: string | undefined) => void
 
-// How far the input has come: whether records still arrive, the lines skipped so far and the inputs that could not
-// be read to their end.
+// How far the input has come: whether records still arrive, the records skipped and the warnings so far, the inputs
+// that could not be read to their end, and the formats of the inputs.
 interface InputProgress {
   readonly activity: 'loading' | 'live' | 'done'
   readonly skipped: number
+  readonly warnings: number
   readonly failed: number
+  readonly formats: ReadonlySet<string>
 }
 
 interface MainPanelOptions {
@@ -37,8 +42,10 @@ interface MainPanelOptions {
   // What the border label names: the file, or the inputs.
   readonly label: string
   readonly progress?: InputProgress
-  // The initial level filter. The command line passes text, or a number for a numeric level such as pino's 30.
-  readonly level?: unknown
+  // The configuration file that the run read, for the status line.
+  readonly configuration?: string | undefined
+  // The initial level filter.
+  readonly level?: LogLevel | undefined
   // The initial order; -timestamp without one.
   readonly sort?: string | undefined
   readonly currentPage?: number
@@ -53,6 +60,9 @@ const entryFields: ReadonlySet<string> = new Set(['timestamp', 'level', 'message
 // The orders that the sort picker offers.
 const sortFields: readonly string[] = [...entryFields, 'arrival']
 
+// The levels that the level picker offers: all, then the levels in their order of severity.
+const levelChoices: readonly string[] = ['all', ...logLevels]
+
 // Upstream called levelColors[level](level): a level without a color throws here, and formatRows then shows the raw
 // value.
 const colorLevel = (level: unknown): string => {
@@ -66,21 +76,19 @@ const colorLevel = (level: unknown): string => {
 // A record without data counts as empty, as lodash.isEmpty did for the objects that readLog creates.
 const hasData = (data: unknown): boolean => typeof data === 'object' && data !== null && Object.keys(data).length > 0
 
-const isKeptByFilter = (line: LogEntry, filter: Filter): boolean => {
+const isKeptByFilter = (line: LogRow, filter: Filter): boolean => {
+  if (filter.method === undefined) {
+    return line.record.level === filter.value
+  }
   const key = entryFields.has(filter.key) ? filter.key : `data.${filter.key}`
   const value = valueAtField(line, key)
-  if (!value) {
-    return false
-  }
-  return filter.method === undefined
-    ? value === filter.value
-    // eslint-disable-next-line @typescript-eslint/no-base-to-string -- like upstream, an object field is searched as [object Object]
-    : String(value).toLowerCase().includes(filter.value.toLowerCase())
+  // Like upstream, an object field is searched as [object Object].
+  return Boolean(value) && String(value).toLowerCase().includes(filter.value.toLowerCase())
 }
 
 // Upstream reduces over the filters but ignores the accumulator: every filter runs, and only the last one decides
 // (upstream issue #19).
-const isKeptByLastFilter = (line: LogEntry, filters: readonly Filter[]): boolean => {
+const isKeptByLastFilter = (line: LogRow, filters: readonly Filter[]): boolean => {
   let isKept = true
   for (const filter of filters) {
     isKept = isKeptByFilter(line, filter)
@@ -95,15 +103,16 @@ class MainPanel extends BaseWidget {
   // Upstream kept this flag in blessed's own Element#wrap of the panel, which has no content, so w changed nothing.
   isWrappingRows: boolean
   row: number
-  rows: LogEntry[]
+  rows: LogRow[]
   lastSearchTerm: string | undefined
-  levelFilter: unknown
+  levelFilter: LogLevel | undefined
   filters: Filter[]
   sort: string
   mode: PanelMode
   readonly view: RecordView
   readonly sourceLabel: string
   readonly progress: InputProgress | undefined
+  readonly configuration: string | undefined
   // The sort and the filters change with queryRevision, the records with the store's data revision. The view
   // computes the visible order once per pair of revisions, never on cursor moves or renders.
   queryRevision = 0
@@ -132,6 +141,7 @@ class MainPanel extends BaseWidget {
     this.view = options.view
     this.sourceLabel = options.label
     this.progress = options.progress
+    this.configuration = options.configuration
     this.append(this.rowsElement)
     // blessed places a border label one cell further left when it creates it than when it changes it later. The
     // label is created here, so that every render puts it in the same place; upstream rendered twice before the
@@ -169,14 +179,26 @@ class MainPanel extends BaseWidget {
     const isDescending = this.sort.startsWith('-')
     const key = this.sortKey
     let order: ViewOrder
-    if (key === 'arrival') {
-      order = { kind: 'arrival', isDescending }
-    } else if (key === 'timestamp') {
-      order = { kind: 'time', isDescending }
-    } else {
-      order = { kind: 'field', isDescending, read: fieldReader(key) }
+    switch (key) {
+      case 'arrival': {
+        order = { kind: 'arrival', isDescending }
+        break
+      }
+      case 'timestamp': {
+        order = { kind: 'time', isDescending }
+        break
+      }
+      case 'level': {
+        order = { kind: 'level', isDescending }
+        break
+      }
+      default: {
+        order = { kind: 'field', isDescending, read: fieldReader(key) }
+      }
     }
-    const filters = this.levelFilter ? [...this.filters, { key: 'level', value: this.levelFilter }] : this.filters
+    const filters: readonly Filter[] = this.levelFilter === undefined
+      ? this.filters
+      : [...this.filters, { key: 'level', value: this.levelFilter }]
     return {
       revision: this.queryRevision,
       order,
@@ -222,13 +244,14 @@ class MainPanel extends BaseWidget {
   }
 
   // The row of the record at a position of the visible order.
-  entryAt (position: number): LogEntry | undefined {
+  entryAt (position: number): LogRow | undefined {
     const sequence = this.order[position]
     return sequence === undefined ? undefined : this.view.entry(sequence)
   }
 
-  // What the status line reports about the input: whether records still arrive, how many the store keeps of those
-  // that arrived, how many lines were skipped and how many inputs failed.
+  // What the status line reports about the input: whether records still arrive, the formats other than generic JSON
+  // lines, the configuration file, how many records the store keeps of those that arrived, how many records were
+  // skipped, the warnings and how many inputs failed.
   get inputStatus (): string {
     const { store } = this.view
     const { progress } = this
@@ -236,11 +259,21 @@ class MainPanel extends BaseWidget {
     if (progress !== undefined && progress.activity !== 'done') {
       parts.push(progress.activity)
     }
+    const formats = [...progress?.formats ?? []].filter(format => format !== 'jsonl')
+    if (formats.length > 0) {
+      parts.push(`format: ${formats.join(', ')}`)
+    }
+    if (this.configuration !== undefined) {
+      parts.push(`config: ${this.configuration}`)
+    }
     if (store.evicted > 0) {
       parts.push(`kept ${String(store.retained)} of ${String(store.seen)}`)
     }
     if (progress !== undefined && progress.skipped > 0) {
       parts.push(`${String(progress.skipped)} skipped`)
+    }
+    if (progress !== undefined && progress.warnings > 0) {
+      parts.push(`${String(progress.warnings)} ${progress.warnings === 1 ? 'warning' : 'warnings'}`)
     }
     if (progress !== undefined && progress.failed > 0) {
       parts.push(`${String(progress.failed)} failed`)
@@ -343,7 +376,7 @@ class MainPanel extends BaseWidget {
       return
     }
     if (character === 'f') {
-      if (this.filters.length > 0 || this.levelFilter) {
+      if (this.filters.length > 0 || this.levelFilter !== undefined) {
         this.clearFilters()
         return
       }
@@ -369,8 +402,7 @@ class MainPanel extends BaseWidget {
   }
 
   openLevelFilter (): void {
-    const levels = ['all', 'debug', 'info', 'warn', 'error']
-    this.openPicker('Log Level', levels, (error, level) => {
+    this.openPicker('Log Level', levelChoices, (error, level) => {
       if (!level || error) {
         return
       }
@@ -380,7 +412,9 @@ class MainPanel extends BaseWidget {
         this.clearFilters()
         return
       }
-      this.setLevelFilter(level)
+      if (isLogLevel(level)) {
+        this.setLevelFilter(level)
+      }
     })
   }
 
@@ -482,7 +516,7 @@ class MainPanel extends BaseWidget {
     this.renderLines()
   }
 
-  setLevelFilter (level: string): void {
+  setLevelFilter (level: LogLevel): void {
     this.levelFilter = level
     this.filterChanged()
   }
@@ -567,7 +601,7 @@ class MainPanel extends BaseWidget {
     for (let index = Math.max(startRow, 0); index < order.length; index += 1) {
       const sequence = order[index] ?? 0
       const entry = this.view.entry(sequence)
-      const text = `${String(entry.timestamp)} ${String(entry.message)}`
+      const text = `${String(entry.timestamp)} ${entry.message}`
       if ((isCaseSensitive ? text : text.toLowerCase()).includes(searchTerm)) {
         return index
       }

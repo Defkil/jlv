@@ -5,13 +5,17 @@ import path from 'node:path'
 import { PassThrough, Writable } from 'node:stream'
 import type { TestContext } from 'node:test'
 import { setImmediate as nextTurn } from 'node:timers/promises'
+import { homedir } from 'node:os'
 import type { Widgets } from 'blessed'
-import { Ingestion } from '../../src/application.js'
-import type { SourceInformation } from '../../src/input/files.js'
-import { LineSplitter } from '../../src/input/lines.js'
-import { parseEntry, readMapping, type LogEntry } from '../../src/log.js'
+import type { LogLevel, ParseEvent, SourceInformation } from '../../src/api.js'
+import { readHomeMapping } from '../../src/configuration.js'
+import { jsonLineEvent } from '../../src/formats/json-lines.js'
+import { builtInFormats, jsonLinesFormat } from '../../src/formats/registry.js'
+import { Ingestion, SourceState, chooseFormat, recordAt, type IngestionSettings } from '../../src/ingestion.js'
+import { LineSplitter, defaultMaximumLineBytes, type LineEvent } from '../../src/input/lines.js'
 import { RecordStore } from '../../src/store.js'
 import { createScreen } from '../../src/tui/blessed-boundary.js'
+import { rowOf, type LogRow } from '../../src/tui/log-row.js'
 import { MainPanel } from '../../src/tui/main-panel.js'
 import { RecordView } from '../../src/tui/record-view.js'
 import { StatusLine } from '../../src/tui/status-line.js'
@@ -60,11 +64,15 @@ export interface Viewer {
 export interface ViewerOptions {
   readonly columns?: number
   readonly rows?: number
-  readonly level?: string
+  readonly level?: LogLevel
   readonly sort?: string
   readonly maximumRecords?: number
   readonly maximumBytes?: number
 }
+
+// The events of framed JSON lines, as the JSON-lines reader gives them, but at once.
+const jsonEvents = (lines: readonly LineEvent[]): ParseEvent[] =>
+  lines.flatMap(line => jsonLineEvent(line, defaultMaximumLineBytes) ?? [])
 
 // The main panel's top border with its label: the file name and the cursor position.
 export const topBorder = (file: string, position: string, columns = 80): string => {
@@ -85,7 +93,8 @@ export const keys = {
 } as const
 
 // Mirrors the command line: a screen, a MainPanel with the records of the file, the status line, focus, render.
-// The file is read through the same framing, parsing and store as the command line, but at once.
+// The file is read through the same framing, format choice, normalization and store as the command line, but at once
+// and as JSON lines.
 // blessed binds parentless elements to the newest screen once several exist, so each test owns the only
 // live screen and destroys it afterwards.
 export const openViewer = (context: TestContext, file: string, options: ViewerOptions = {}): Viewer => {
@@ -100,14 +109,27 @@ export const openViewer = (context: TestContext, file: string, options: ViewerOp
     warnings: false
   })
   context.after(() => { screen.destroy() })
-  const mapping = readMapping()
+  const legacy = readHomeMapping(homedir())
+  const settings: IngestionSettings = {
+    formats: builtInFormats(),
+    format: undefined,
+    fallback: jsonLinesFormat,
+    mapping: legacy?.mapping ?? {},
+    timestampUnit: undefined,
+    levels: {},
+    maximumRecordSize: defaultMaximumLineBytes
+  }
   const store = new RecordStore({ maximumRecords: options.maximumRecords, maximumBytes: options.maximumBytes })
-  const ingestion = new Ingestion({ store, mapping })
-  const source: SourceInformation = { identifier: '1', label: file, order: 0 }
+  const ingestion = new Ingestion({ store })
+  const information: SourceInformation = { identifier: '1', label: file, order: 0 }
+  const source = new SourceState(information, file, settings, new AbortController().signal)
+  const contents = readFileSync(file)
+  const sample = contents.toString('utf8').split('\n').slice(0, 32).join('\n')
+  source.format = chooseFormat({ text: sample }, settings, source.context).format
   const fileLines = new LineSplitter()
-  ingestion.accept(source, [...fileLines.push(readFileSync(file)), ...fileLines.end()])
+  ingestion.accept({ source, events: jsonEvents([...fileLines.push(contents), ...fileLines.end()]) })
   ingestion.activity = 'done'
-  const view = new RecordView(store, text => parseEntry(text, mapping))
+  const view = new RecordView(store, sequence => rowOf(recordAt(store, [source], sequence), { legacyExtras: legacy?.extras }))
   const panel = new MainPanel({ screen, view, label: file, progress: ingestion, level: options.level, sort: options.sort })
   const status = new StatusLine({ screen, mainPanel: panel })
   screen.append(status)
@@ -115,14 +137,15 @@ export const openViewer = (context: TestContext, file: string, options: ViewerOp
   screen.render()
   const lines = new LineSplitter()
   const append = (text: string): void => {
-    ingestion.accept(source, lines.push(Buffer.from(text, 'utf8')))
+    const events = jsonEvents(lines.push(Buffer.from(text, 'utf8')))
+    ingestion.accept({ source, events })
     panel.refresh()
   }
   return { input, output, screen, panel, status, store, ingestion, append }
 }
 
 // The rows of all visible records, in order.
-export const visibleEntries = (panel: MainPanel): LogEntry[] => panel.order.map(sequence => panel.view.entry(sequence))
+export const visibleEntries = (panel: MainPanel): LogRow[] => panel.order.map(sequence => panel.view.entry(sequence))
 
 // The panel label shows the file name as given, so the viewer opens the file from its own directory.
 export const openFileViewer = (context: TestContext, file: string, options: ViewerOptions = {}): Viewer => {

@@ -82,6 +82,9 @@ const applicationOptions = (overrides: Partial<ApplicationOptions> = {}): Applic
   sort: undefined,
   level: undefined,
   output: 'auto',
+  format: undefined,
+  timestampUnit: undefined,
+  isStrict: false,
   maximumRecords: undefined,
   maximumBytes: undefined,
   save: undefined,
@@ -247,7 +250,8 @@ describe('output without a viewer', () => {
     assert.equal(stderr.text, [
       'jv: characterization.log:5: skipped a line that is no JSON',
       'jv: characterization.log:11: skipped a line that is no JSON',
-      'jv: characterization.log:20: skipped a JSON value that is no record',
+      'jv: characterization.log:20: skipped a JSON value that is no object',
+      'jv: characterization.log:26: skipped a JSON value that is no object',
       ''
     ].join('\n'))
   })

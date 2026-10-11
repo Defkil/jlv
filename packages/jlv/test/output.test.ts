@@ -4,24 +4,57 @@ import assert from 'node:assert/strict'
 import { Writable } from 'node:stream'
 import { describe, it } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
+import type { LogRecord } from '../src/api.js'
 import { LineWriter, jsonLine, plainLine } from '../src/output.js'
+import { readRecords, rowsOf } from './support/records.js'
+
+const record: LogRecord = {
+  identifier: '1:3',
+  source: { identifier: '1', label: 'app.log', order: 0 },
+  position: { recordNumber: 3, firstLine: 7, lastLine: 7 },
+  level: 'info',
+  message: 'a\nb',
+  timestamp: 1_791_712_800_000,
+  fields: { msg: 'a\nb', level: 30, nested: { n: 0, f: false, z: null } }
+}
 
 describe('record lines', () => {
-  it('writes a record as one JSON line with its parsed values', () => {
-    assert.equal(jsonLine({ timestamp: 't', message: 'a\nb', nested: { n: 0, f: false, z: null } }),
-      '{"timestamp":"t","message":"a\\nb","nested":{"n":0,"f":false,"z":null}}\n')
-    assert.equal(jsonLine('text'), '"text"\n')
+  it('writes a record as one JSON line of the record model, its parts in a fixed order and its original fields', () => {
+    assert.equal(jsonLine(record), '{"identifier":"1:3","source":{"identifier":"1","label":"app.log","order":0},' +
+      '"position":{"recordNumber":3,"firstLine":7,"lastLine":7},"timestamp":1791712800000,"level":"info",' +
+      '"message":"a\\nb","fields":{"msg":"a\\nb","level":30,"nested":{"n":0,"f":false,"z":null}}}\n')
+    const textual: LogRecord = {
+      identifier: record.identifier,
+      source: record.source,
+      position: record.position,
+      timestampText: 'yesterday',
+      level: record.level,
+      message: record.message,
+      correlationIdentifier: '0',
+      fields: record.fields
+    }
+    assert.equal(jsonLine(textual),
+      jsonLine(record).replace('"timestamp":1791712800000', '"timestampText":"yesterday"').replace('"fields"', '"correlationIdentifier":"0","fields"'))
   })
 
-  it('writes timestamp, level and message as text and the other fields as JSON', () => {
-    assert.equal(plainLine({ timestamp: '2026-10-11T10:00:00.000Z', level: 'info', message: 'started', port: 80 }),
-      '2026-10-11T10:00:00.000Z info started {"port":80}\n')
-    assert.equal(plainLine({ message: 'no time' }), '- - no time\n')
-    assert.equal(plainLine({ timestamp: 1_700_000_000_000, level: 30, message: { text: 'object' } }), '1700000000000 30 {"text":"object"}\n')
+  it('writes timestamp, level and message of the row as text and the fields of the details as JSON', async () => {
+    const { records } = await readRecords([
+      '{"timestamp":"2026-10-11T12:00:00+02:00","level":"INFO","message":"started","port":80}',
+      '{"message":"no time"}',
+      '{"timestamp":1700000000000,"level":30,"message":{"text":"object"}}',
+      '{"level":"debug"}'
+    ].join('\n'))
+    assert.deepEqual(rowsOf(records).map(row => plainLine(row)), [
+      '2026-10-11T10:00:00.000Z info started {"port":80}\n',
+      '- - no time\n',
+      '2023-11-14T22:13:20.000Z 30 {"text":"object"}\n',
+      '- debug -\n'
+    ])
   })
 
-  it('keeps every record on one line', () => {
-    assert.equal(plainLine({ message: 'first\r\nsecond', detail: 'a\nb' }), String.raw`- - first\r\nsecond {"detail":"a\nb"}` + '\n')
+  it('keeps every record on one line', async () => {
+    const { records } = await readRecords('{"message":"first\\r\\nsecond","detail":"a\\nb"}\n')
+    assert.deepEqual(rowsOf(records).map(row => plainLine(row)), [String.raw`- - first\r\nsecond {"detail":"a\nb"}` + '\n'])
   })
 })
 

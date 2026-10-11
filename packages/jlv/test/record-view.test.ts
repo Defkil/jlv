@@ -1,31 +1,60 @@
-// The visible order of src/tui/record-view.ts: arrival, time and field orders in both directions, missing values
+// The visible order of src/tui/record-view.ts: arrival, time, level and field orders in both directions, missing values
 // last, ties in arrival order, filters, eviction, and the incremental merge that runs once per revision.
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import type { JsonObject } from '../src/api.js'
 import { fieldReader } from '../src/field-path.js'
-import { parseEntry, timeKey, type LogEntry } from '../src/log.js'
+import { builtInFormats, jsonLinesFormat } from '../src/formats/registry.js'
+import { SourceState, recordAt, type IngestionSettings } from '../src/ingestion.js'
+import { levelCode } from '../src/record.js'
 import { RecordStore } from '../src/store.js'
+import { rowOf, type LogRow } from '../src/tui/log-row.js'
 import { RecordView, type ViewOrder, type ViewQuery } from '../src/tui/record-view.js'
 
-const viewOf = (store: RecordStore): RecordView => new RecordView(store, text => parseEntry(text, undefined))
+const settings: IngestionSettings = {
+  formats: builtInFormats(),
+  format: jsonLinesFormat,
+  fallback: jsonLinesFormat,
+  mapping: {},
+  timestampUnit: undefined,
+  levels: {},
+  maximumRecordSize: 1024 * 1024
+}
 
-// Appends records as the ingestion does: the record's text, its time key, its source and record number.
-const append = (store: RecordStore, source: number, records: readonly object[]): void => {
-  for (const record of records) {
+const sourceOf = (order: number): SourceState =>
+  new SourceState({ identifier: String(order + 1), label: `source ${String(order + 1)}`, order }, undefined, settings, new AbortController().signal)
+
+const sources = [sourceOf(0), sourceOf(1)] as const
+
+const viewOf = (store: RecordStore): RecordView => new RecordView(store, sequence => rowOf(recordAt(store, sources, sequence)))
+
+// Appends records as the ingestion does: the record's JSON text, its normalized time and level, its source and
+// record number.
+const append = (store: RecordStore, source: number, records: readonly JsonObject[]): void => {
+  for (const value of records) {
     const recordNumber = store.seen + 1
-    store.append({ source, recordNumber, bytes: Buffer.from(JSON.stringify(record)), time: timeKey(record), level: 6, firstLine: 1, lastLine: 1 })
+    const { record } = jsonLinesFormat.normalize(value, sources[0].context)
+    store.append({
+      source,
+      recordNumber,
+      bytes: Buffer.from(JSON.stringify(value)),
+      time: record.timestamp ?? NaN,
+      level: levelCode(record.level),
+      firstLine: recordNumber,
+      lastLine: recordNumber
+    })
   }
 }
 
-const query = (order: ViewOrder, isKept?: (entry: LogEntry) => boolean, revision = 0): ViewQuery => ({ revision, order, isKept })
+const query = (order: ViewOrder, isKept?: (entry: LogRow) => boolean, revision = 0): ViewQuery => ({ revision, order, isKept })
 
 // The messages of the visible records in the order of the query.
 const messages = (view: RecordView, viewQuery: ViewQuery): unknown[] => view.order(viewQuery).map(sequence => view.entry(sequence).message)
 
-const timed = (minute: number, message: string, level?: string): object =>
+const timed = (minute: number, message: string, level?: string): JsonObject =>
   ({ timestamp: `2026-10-11T10:${String(minute).padStart(2, '0')}:00.000Z`, ...(level !== undefined && { level }), message })
 
-const isNoDebug = (entry: LogEntry): boolean => entry.level !== 'debug'
+const isNoDebug = (entry: LogRow): boolean => entry.level !== 'debug'
 
 describe('record view', () => {
   it('shows records in arrival order in both directions', () => {
@@ -56,6 +85,18 @@ describe('record view', () => {
     const read = fieldReader('level')
     assert.deepEqual(messages(view, query({ kind: 'field', isDescending: false, read })), ['c', 'a', 'd', 'b', 'e'])
     assert.deepEqual(messages(view, query({ kind: 'field', isDescending: true, read }, undefined, 1)), ['a', 'd', 'c', 'b', 'e'])
+  })
+
+  // Plan section 5: severity order rather than the alphabetic order of level names, with unknown levels last.
+  it('orders by the severity of the normalized level with unknown levels last in both directions', () => {
+    const store = new RecordStore()
+    append(store, 0, [
+      timed(1, 'a', 'WARN'), timed(2, 'b', 'notice'), timed(3, 'c', 'trace'), timed(4, 'd', 'Fatal'), timed(5, 'e'),
+      timed(6, 'f', 'warning'), timed(7, 'g', 'error')
+    ])
+    const view = viewOf(store)
+    assert.deepEqual(messages(view, query({ kind: 'level', isDescending: false })), ['c', 'a', 'f', 'g', 'd', 'b', 'e'])
+    assert.deepEqual(messages(view, query({ kind: 'level', isDescending: true }, undefined, 1)), ['d', 'g', 'a', 'f', 'c', 'b', 'e'])
   })
 
   it('merges two sources by time within the retained records', () => {
@@ -99,6 +140,7 @@ describe('record view', () => {
       { kind: 'time', isDescending: true },
       { kind: 'time', isDescending: false },
       { kind: 'field', isDescending: true, read: fieldReader('level') },
+      { kind: 'level', isDescending: false },
       { kind: 'arrival', isDescending: true }
     ]
     const levels = ['debug', 'info', 'warn', undefined, 'error']
@@ -111,7 +153,8 @@ describe('record view', () => {
       for (let round = 0; round < 30; round += 1) {
         const records = Array.from({ length: 1 + next(7) }, () => {
           const minute = next(5)
-          return minute === 0 ? { level: levels[next(5)], message: 'no time' } : timed(minute, `m${String(next(1000))}`, levels[next(5)])
+          const level = levels[next(5)]
+          return minute === 0 ? { ...(level !== undefined && { level }), message: 'no time' } : timed(minute, `m${String(next(1000))}`, level)
         })
         append(store, next(2), records)
         const incremental = view.order(query(order, isNoDebug, revision))

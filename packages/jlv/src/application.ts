@@ -1,21 +1,26 @@
-// Connects the sources, the store, the outputs and the viewer (plan sections 4.1 and 6.1): resolves the inputs, reads
-// their chunks, frames and parses their records, and either keeps them in the store for the terminal viewer or
-// writes them to standard output. It ends cleanly on q, Ctrl-C, a signal, the end of the input or a reader that goes
-// away, and never ends the process itself: it returns the exit code.
-import fs from 'node:fs'
+// Connects the sources, the formats, the store, the outputs and the viewer (plan sections 4.1, 5 and 6.1): resolves
+// the inputs, reads their chunks into each source's format, normalizes the records, and either keeps them in the
+// store for the terminal viewer or writes them to standard output. It ends cleanly on q, Ctrl-C, a signal, the end of
+// the input or a reader that goes away, and never ends the process itself: it returns the exit code.
 import path from 'node:path'
 import { addAbortSignal, type Readable, type Writable } from 'node:stream'
 import type { Widgets } from 'blessed'
 import type { ScreenOptions } from 'neo-blessed'
-import { InputError, readFileChunks, resolveInputs, type InputSource, type SourceInformation } from './input/files.js'
-import { followFiles } from './input/follow.js'
-import { readLines, type LineEvent } from './input/lines.js'
-import { MappingFileError, parseEntry, parseLine, readMapping, timeKey, type Mapping } from './log.js'
+import type { LogFormat, LogLevel, ParseDiagnostic, SourceInformation, TimestampUnit } from './api.js'
+import { ConfigurationError, readHomeMapping, type LegacyMapping } from './configuration.js'
+import { builtInFormats, jsonLinesFormat } from './formats/registry.js'
+import {
+  Ingestion, SourceState, StrictModeError, recordAt, sourceBatches, type IngestionSettings, type NormalizedRecord,
+  type SourceBatch
+} from './ingestion.js'
+import { InputError, readFileChunks, resolveInputs, type InputSource } from './input/files.js'
+import { followFile, generationsOf } from './input/follow.js'
+import { defaultMaximumLineBytes } from './input/lines.js'
 import { LineWriter, SaveFileError, formatLine, jsonLine, openSaveFile, type MachineFormat } from './output.js'
-import { levelCode } from './record.js'
 import { RecordStore } from './store.js'
 import type { Keyboard, KeyboardOptions } from './terminal.js'
 import { createScreen } from './tui/blessed-boundary.js'
+import { rowOf, type RowOptions } from './tui/log-row.js'
 import { MainPanel } from './tui/main-panel.js'
 import { RecordView } from './tui/record-view.js'
 import { StatusLine } from './tui/status-line.js'
@@ -28,9 +33,15 @@ interface ApplicationOptions {
   readonly isFollowing: boolean
   // The viewer's order; arrival for live input and descending time for files without one.
   readonly sort: string | undefined
-  // The level that records must have; a number for a numeric level such as pino's 30.
-  readonly level: string | number | undefined
+  // The normalized level that records must have.
+  readonly level: LogLevel | undefined
   readonly output: OutputMode
+  // The format of every input, or undefined and auto to recognize each input by itself.
+  readonly format: string | undefined
+  // The unit of numeric timestamps; undefined lets each format use its own.
+  readonly timestampUnit: TimestampUnit | undefined
+  // Ends the run with exit code 1 at the first record that cannot be read.
+  readonly isStrict: boolean
   readonly maximumRecords: number | undefined
   readonly maximumBytes: number | undefined
   // The file that receives every matching record as a JSON line, whatever the viewer keeps or shows.
@@ -60,101 +71,13 @@ interface ApplicationEnvironment {
   readonly screenOptions?: Pick<ScreenOptions, 'terminal' | 'forceUnicode' | 'warnings'>
 }
 
-// A line that was skipped, with its source and line number.
-interface Diagnostic {
-  readonly source: SourceInformation
-  readonly lineNumber: number
-  readonly message: string
-}
-
-type InputActivity = 'loading' | 'live' | 'done'
-
-interface IngestionOptions {
-  // The store of the viewer; machine output keeps no records.
-  readonly store?: RecordStore
-  readonly mapping: Mapping | undefined
-  readonly onDiagnostic?: (diagnostic: Diagnostic) => void
-}
-
-// The lines of one chunk of a source.
-interface Batch {
-  readonly source: SourceInformation
-  readonly events: readonly LineEvent[]
-}
-
-const skipMessages = {
-  'invalid-json': 'skipped a line that is no JSON',
-  'empty-value': 'skipped a JSON value that is no record'
-} as const
-
 // Exit codes (plan section 6.1); a signal ends with 128 and its number, as a shell reports it.
 const exitCodes = { success: 0, failure: 1, usage: 2 } as const
 const signalExitCodes: Readonly<Record<'SIGHUP' | 'SIGINT' | 'SIGTERM', number>> = { SIGHUP: 129, SIGINT: 130, SIGTERM: 143 }
 
-const unknownLevel = levelCode('unknown')
-
-// At most this many skipped lines are reported one by one on standard error; the rest are counted.
+// At most this many errors are reported one by one on standard error; the rest are counted. Each kind of warning is
+// reported once per source.
 const diagnosticLimit = 10
-
-// Turns framed lines into records. A record keeps its text in the store; its number counts the records of its
-// source from 1 and goes on when a followed file is replaced.
-class Ingestion {
-  readonly #recordNumbers = new Map<number, number>()
-  readonly store: RecordStore | undefined
-  readonly mapping: Mapping | undefined
-  readonly onDiagnostic: ((diagnostic: Diagnostic) => void) | undefined
-  // Records accepted, lines skipped (no JSON, a JSON value that is no record, or over the size limit), and inputs
-  // that could not be read to their end.
-  records = 0
-  skipped = 0
-  failed = 0
-  activity: InputActivity = 'loading'
-
-  constructor (options: IngestionOptions) {
-    this.store = options.store
-    this.mapping = options.mapping
-    this.onDiagnostic = options.onDiagnostic
-  }
-
-  #skip (source: SourceInformation, lineNumber: number, message: string): void {
-    this.skipped += 1
-    this.onDiagnostic?.({ source, lineNumber, message })
-  }
-
-  // Keeps the records of the lines in the store and returns their parsed values in order.
-  accept (source: SourceInformation, events: readonly LineEvent[]): unknown[] {
-    const values: unknown[] = []
-    for (const event of events) {
-      if (event.kind === 'oversized') {
-        this.#skip(source, event.lineNumber, `skipped a line of ${String(event.byteLength)} bytes, more than the limit of 1 MiB`)
-        continue
-      }
-      const parsed = parseLine(event.bytes.toString('utf8'), this.mapping)
-      if (parsed.kind === 'skipped') {
-        this.#skip(source, event.lineNumber, skipMessages[parsed.reason])
-        continue
-      }
-      if (parsed.kind === 'blank') {
-        continue
-      }
-      const recordNumber = (this.#recordNumbers.get(source.order) ?? 0) + 1
-      this.#recordNumbers.set(source.order, recordNumber)
-      this.records += 1
-      // The legacy rows have no normalized level yet: every record counts as unknown.
-      this.store?.append({
-        source: source.order,
-        recordNumber,
-        bytes: event.bytes,
-        time: timeKey(parsed.value),
-        level: unknownLevel,
-        firstLine: event.lineNumber,
-        lastLine: event.lineNumber
-      })
-      values.push(parsed.value)
-    }
-    return values
-  }
-}
 
 // The viewer redraws at most ten times per second while records arrive (plan section 6.1).
 const refreshInterval = 100
@@ -197,40 +120,6 @@ const isAbortError = (error: unknown): boolean => error instanceof Error && erro
 
 const errorMessage = (error: unknown): string => error instanceof Error ? error.message : String(error)
 
-// Finite files, one after the other in their order. A file that cannot be read to its end is reported, and the next
-// one follows.
-async function * readFiles (
-  sources: readonly InputSource[],
-  signal: AbortSignal,
-  onFailure: (source: SourceInformation, error: unknown) => void
-): AsyncGenerator<Batch> {
-  for (const source of sources) {
-    if (source.kind !== 'file') {
-      continue
-    }
-    try {
-      const lines = readLines(readFileChunks(source.path, signal))
-      for await (const events of lines) {
-        yield { source: source.information, events }
-      }
-    } catch (error) {
-      if (signal.aborted) {
-        throw error
-      }
-      onFailure(source.information, error)
-    }
-  }
-}
-
-// A live stream such as standard input or a named pipe; the signal destroys it.
-async function * readStream (source: SourceInformation, stream: Readable, signal: AbortSignal): AsyncGenerator<Batch> {
-  addAbortSignal(signal, stream)
-  const lines = readLines(stream)
-  for await (const events of lines) {
-    yield { source, events }
-  }
-}
-
 // The next batch of a source, or the error it failed with.
 type Pending<T> =
   | { readonly iterator: AsyncIterator<T>, readonly result: IteratorResult<T> }
@@ -268,39 +157,23 @@ async function * merge<T> (sources: readonly AsyncIterable<T>[]): AsyncGenerator
   }
 }
 
-// The sources' batches: finite files one after the other or, with --follow, all files at every poll, and every live
-// stream at the same time.
-const readSources = (
-  run: Run,
-  signal: AbortSignal,
-  onFailure: (source: SourceInformation, error: unknown) => void
-): AsyncIterable<Batch> => {
-  const { sources } = run
-  const lanes: AsyncIterable<Batch>[] = []
-  const files = sources.filter(source => source.kind === 'file').map(source => ({ source: source.information, path: source.path }))
-  if (files.length > 0) {
-    lanes.push(run.options.isFollowing ? followFiles(files, signal, { onFailure }) : readFiles(sources, signal, onFailure))
-  }
-  for (const source of sources) {
-    if (source.kind === 'stdin') {
-      lanes.push(readStream(source.information, run.environment.stdin, signal))
-    } else if (source.kind === 'stream') {
-      lanes.push(readStream(source.information, readFileChunks(source.path, signal), signal))
-    }
-  }
-  return merge(lanes)
-}
+type FailureListener = (source: SourceInformation, error: unknown) => void
 
-// The legacy level filter of the command line, as the viewer applies it: the record's level must be set and equal.
-const levelMatcher = (level: string | number | undefined): ((record: unknown) => boolean) => {
-  if (level === undefined) {
-    return () => true
-  }
-  return record => {
-    const value: unknown = record === undefined || record === null
-      ? undefined
-      : Object.getOwnPropertyDescriptor(new Object(record), 'level')?.value
-    return Boolean(value) && value === level
+// The batches of one source until it fails. A failure is reported, and the other sources go on; at the abort of the
+// run the error ends the reading.
+async function * reportingFailure (
+  source: SourceState,
+  batches: AsyncIterable<SourceBatch>,
+  signal: AbortSignal,
+  onFailure: FailureListener
+): AsyncGenerator<SourceBatch> {
+  try {
+    yield * batches
+  } catch (error) {
+    if (signal.aborted) {
+      throw error
+    }
+    onFailure(source.information, error)
   }
 }
 
@@ -313,22 +186,63 @@ const inputsLabel = (sources: readonly InputSource[]): string => {
   return sources.length === 1 ? first.information.label : `${first.information.label} and ${String(sources.length - 1)} more`
 }
 
-// Everything that a run needs once the inputs, the mapping and the save file are known.
+// Everything that a run needs once the inputs, the configuration and the save file are known.
 interface Run {
   readonly options: ApplicationOptions
   readonly environment: ApplicationEnvironment
   readonly sources: readonly InputSource[]
-  readonly mapping: Mapping | undefined
+  readonly settings: IngestionSettings
+  readonly rowOptions: RowOptions
   readonly isLive: boolean
   readonly saveFile: Writable | undefined
 }
 
+// The state of each source for a run, in the order of the sources.
+const sourceStates = (run: Run, signal: AbortSignal): SourceState[] => run.sources.map(source =>
+  new SourceState(source.information, source.kind === 'stdin' ? undefined : source.path, run.settings, signal))
+
+// The sources' batches: finite files one after the other or, with --follow, every file by itself, and every live
+// stream at the same time.
+const readSources = (run: Run, states: readonly SourceState[], signal: AbortSignal, onFailure: FailureListener): AsyncIterable<SourceBatch> => {
+  const { settings } = run
+  const lanes: AsyncIterable<SourceBatch>[] = []
+  const finiteFiles: { readonly state: SourceState, readonly path: string }[] = []
+  for (const [index, source] of run.sources.entries()) {
+    const state = states[index]
+    if (state === undefined) {
+      continue
+    }
+    if (source.kind === 'file' && !run.options.isFollowing) {
+      finiteFiles.push({ state, path: source.path })
+    } else if (source.kind === 'file') {
+      const generations = generationsOf(followFile(source.path, signal))
+      lanes.push(reportingFailure(state, sourceBatches(state, generations, settings, true), signal, onFailure))
+    } else {
+      const stream = source.kind === 'stdin' ? run.environment.stdin : readFileChunks(source.path, signal)
+      addAbortSignal(signal, stream)
+      lanes.push(reportingFailure(state, sourceBatches(state, [stream], settings, true), signal, onFailure))
+    }
+  }
+  if (finiteFiles.length > 0) {
+    lanes.unshift((async function * () {
+      for (const { state, path: file } of finiteFiles) {
+        const batches = sourceBatches(state, [readFileChunks(file, signal)], settings, false)
+        yield * reportingFailure(state, batches, signal, onFailure)
+      }
+    })())
+  }
+  return merge(lanes)
+}
+
+const levelMatcher = (level: LogLevel | undefined): ((record: NormalizedRecord) => boolean) =>
+  level === undefined ? () => true : normalized => normalized.record.level === level
+
 // The JSON lines of the records that match, for the save file.
-const saveText = (records: readonly unknown[], isMatch: (record: unknown) => boolean): string => {
+const saveText = (records: readonly NormalizedRecord[], isMatch: (record: NormalizedRecord) => boolean): string => {
   let text = ''
-  for (const record of records) {
-    if (isMatch(record)) {
-      text += jsonLine(record)
+  for (const normalized of records) {
+    if (isMatch(normalized)) {
+      text += jsonLine(normalized.record)
     }
   }
   return text
@@ -348,22 +262,63 @@ const onSignals = (signals: SignalSource, stop: (exitCode: number) => void): (()
   }
 }
 
+// Reports diagnostics on standard error without flooding it: the first errors one by one, and each kind of warning
+// once per source, with totals at the end.
+class DiagnosticReport {
+  readonly #write: (text: string) => void
+  readonly #warningKinds = new Set<string>()
+  #errors = 0
+  #shownErrors = 0
+  #warnings = 0
+  #shownWarnings = 0
+
+  constructor (write: (text: string) => void) {
+    this.#write = write
+  }
+
+  report (source: SourceInformation, diagnostic: ParseDiagnostic): void {
+    const position = diagnostic.position === undefined ? '' : `:${String(diagnostic.position.firstLine)}`
+    if (diagnostic.severity === 'warning') {
+      this.#warnings += 1
+      const kind = `${String(source.order)} ${diagnostic.code}`
+      if (this.#warningKinds.has(kind)) {
+        return
+      }
+      this.#warningKinds.add(kind)
+      this.#shownWarnings += 1
+      this.#write(`jv: ${source.label}${position}: warning: ${diagnostic.message}\n`)
+      return
+    }
+    this.#errors += 1
+    if (this.#shownErrors >= diagnosticLimit) {
+      return
+    }
+    this.#shownErrors += 1
+    this.#write(`jv: ${source.label}${position}: ${diagnostic.message}\n`)
+  }
+
+  end (): void {
+    if (this.#errors > this.#shownErrors) {
+      this.#write(`jv: skipped ${String(this.#errors)} lines in total, the first ${String(this.#shownErrors)} of them shown above\n`)
+    }
+    if (this.#warnings > this.#shownWarnings) {
+      this.#write(`jv: ${String(this.#warnings)} warnings in total, the first of each kind shown above\n`)
+    }
+  }
+}
+
 // Writes every record that matches the level as plain text or JSON lines, in arrival order, until the input ends,
-// a signal arrives or the reader goes away. Skipped lines are reported on standard error.
+// a signal arrives or the reader goes away. Diagnostics are reported on standard error.
 const runMachineOutput = async (run: Run, format: MachineFormat): Promise<number> => {
   const { environment, options } = run
   const { stderr } = environment
   const controller = new AbortController()
   let exitCode: number = exitCodes.success
-  let reported = 0
+  const report = new DiagnosticReport(text => { stderr.write(text) })
   const ingestion = new Ingestion({
-    mapping: run.mapping,
-    onDiagnostic: ({ source, lineNumber, message }) => {
-      reported += 1
-      if (reported <= diagnosticLimit) {
-        stderr.write(`jv: ${source.label}:${String(lineNumber)}: ${message}\n`)
-      }
-    }
+    isCollecting: true,
+    isStrict: options.isStrict,
+    onDiagnostic: (source, diagnostic) => { report.report(source, diagnostic) }
   })
   const writer = new LineWriter(environment.stdout, error => {
     if (error !== undefined) {
@@ -388,19 +343,23 @@ const runMachineOutput = async (run: Run, format: MachineFormat): Promise<number
     ingestion.failed += 1
     stderr.write(`jv: cannot read '${source.label}': ${errorMessage(error)}\n`)
   }
+  const states = sourceStates(run, controller.signal)
   try {
-    for await (const batch of readSources(run, controller.signal, onFailure)) {
-      const records = ingestion.accept(batch.source, batch.events)
+    for await (const batch of readSources(run, states, controller.signal, onFailure)) {
+      const records = ingestion.accept(batch)
       let text = ''
-      for (const record of records) {
-        if (isMatch(record)) {
-          text += formatLine(format, record)
+      for (const normalized of records) {
+        if (isMatch(normalized)) {
+          text += formatLine(format, normalized, run.rowOptions)
         }
       }
       await Promise.all([writer.write(text, controller.signal), saveWriter?.write(saveText(records, isMatch), controller.signal)])
     }
   } catch (error) {
-    if (!isAbortError(error) && !controller.signal.aborted) {
+    if (error instanceof StrictModeError) {
+      stderr.write('jv: --strict stops at the first record that cannot be read\n')
+      exitCode = exitCodes.failure
+    } else if (!isAbortError(error) && !controller.signal.aborted) {
       throw error
     }
   } finally {
@@ -408,9 +367,7 @@ const runMachineOutput = async (run: Run, format: MachineFormat): Promise<number
     controller.abort()
   }
   await Promise.all([writer.flush(), saveWriter?.end()])
-  if (reported > diagnosticLimit) {
-    stderr.write(`jv: skipped ${String(reported)} lines in total, the first ${String(diagnosticLimit)} of them shown above\n`)
-  }
+  report.end()
   if (exitCode === exitCodes.success && ingestion.records === 0 && ingestion.skipped > 0) {
     stderr.write(`jv: the input holds no records, only ${String(ingestion.skipped)} skipped lines\n`)
     exitCode = exitCodes.failure
@@ -422,10 +379,12 @@ const runMachineOutput = async (run: Run, format: MachineFormat): Promise<number
 // may end before that; the viewer then stays open with what it read.
 const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
   const { environment, options } = run
+  const controller = new AbortController()
   const store = new RecordStore({ maximumRecords: options.maximumRecords, maximumBytes: options.maximumBytes })
-  const ingestion = new Ingestion({ store, mapping: run.mapping })
+  const ingestion = new Ingestion({ store, isCollecting: run.saveFile !== undefined, isStrict: options.isStrict })
   ingestion.activity = run.isLive ? 'live' : 'loading'
-  const view = new RecordView(store, text => parseEntry(text, run.mapping))
+  const states = sourceStates(run, controller.signal)
+  const view = new RecordView(store, sequence => rowOf(recordAt(store, states, sequence), run.rowOptions))
   let screen: Widgets.Screen | undefined
   let panel: MainPanel
   try {
@@ -451,10 +410,9 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
   }
   const viewerScreen = screen
 
-  const controller = new AbortController()
   const failures: string[] = []
   // Set once the viewer has closed; reading may still deliver a last batch then.
-  const state = { isFinished: false }
+  const state: { isFinished: boolean, finish?: (code: number) => void } = { isFinished: false }
   const refresh = throttle(() => {
     if (!state.isFinished) {
       panel.refresh()
@@ -476,8 +434,8 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
   const isMatch = levelMatcher(options.level)
   const reading = (async () => {
     try {
-      for await (const batch of readSources(run, controller.signal, onFailure)) {
-        const records = ingestion.accept(batch.source, batch.events)
+      for await (const batch of readSources(run, states, controller.signal, onFailure)) {
+        const records = ingestion.accept(batch)
         refresh.schedule()
         await saveWriter?.write(saveText(records, isMatch), controller.signal)
       }
@@ -486,7 +444,10 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
         refresh.flush()
       }
     } catch (error) {
-      if (!isAbortError(error) && !controller.signal.aborted) {
+      if (error instanceof StrictModeError) {
+        failures.push(`jv: ${error.message}\njv: --strict stops at the first record that cannot be read\n`)
+        state.finish?.(exitCodes.failure)
+      } else if (!isAbortError(error) && !controller.signal.aborted) {
         failures.push(`jv: cannot read the input: ${errorMessage(error)}\n`)
         ingestion.failed += 1
       }
@@ -506,6 +467,7 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
       keyboard.close()
       resolve(code)
     }
+    state.finish = finish
     const stopListening = onSignals(environment.signals, finish)
     viewerScreen.key(['C-c'], () => { finish(signalExitCodes.SIGINT) })
     panel.on('quit', () => { finish(exitCodes.success) })
@@ -547,8 +509,28 @@ const chooseKeyboard = (
   return { failure: `the viewer needs a terminal: ${reason}` }
 }
 
-// Reads the inputs and the mapping, chooses the output, creates the save file and runs. All of these are checked
-// before a screen opens, so their errors reach a plain standard error.
+// The settings of the formats: every format for the probes, and the one that --format names.
+const ingestionSettings = (options: ApplicationOptions, legacy: LegacyMapping | undefined): IngestionSettings => {
+  const formats: readonly LogFormat[] = builtInFormats()
+  const format = options.format === undefined || options.format === 'auto'
+    ? undefined
+    : formats.find(candidate => candidate.identifier === options.format)
+  if (format === undefined && options.format !== undefined && options.format !== 'auto') {
+    throw new ConfigurationError(`--format takes auto or one of ${formats.map(candidate => candidate.identifier).join(', ')}, not '${options.format}'`)
+  }
+  return {
+    formats,
+    format,
+    fallback: jsonLinesFormat,
+    mapping: legacy?.mapping ?? {},
+    timestampUnit: options.timestampUnit,
+    levels: {},
+    maximumRecordSize: defaultMaximumLineBytes
+  }
+}
+
+// Reads the inputs and the configuration, chooses the output, creates the save file and runs. All of these are
+// checked before a screen opens, so their errors reach a plain standard error.
 const runApplication = async (options: ApplicationOptions, environment: ApplicationEnvironment): Promise<number> => {
   const { stderr, stdin } = environment
   const fail = (exitCode: number, message: string): number => {
@@ -568,11 +550,13 @@ const runApplication = async (options: ApplicationOptions, environment: Applicat
     }
     throw error
   }
-  let mapping: Mapping | undefined
+  let legacy: LegacyMapping | undefined
+  let settings: IngestionSettings
   try {
-    mapping = readMapping(fs, environment.home)
+    legacy = readHomeMapping(environment.home)
+    settings = ingestionSettings(options, legacy)
   } catch (error) {
-    if (error instanceof MappingFileError) {
+    if (error instanceof ConfigurationError) {
       return fail(exitCodes.usage, error.message)
     }
     throw error
@@ -598,7 +582,8 @@ const runApplication = async (options: ApplicationOptions, environment: Applicat
     }
   }
   const isLive = options.isFollowing || sources.some(source => source.kind !== 'file')
-  const run: Run = { options, environment, sources, mapping, isLive, saveFile }
+  const rowOptions: RowOptions = { legacyExtras: legacy?.extras }
+  const run: Run = { options, environment, sources, settings, rowOptions, isLive, saveFile }
   if (keyboard !== undefined) {
     return runViewer(run, keyboard)
   }
@@ -611,8 +596,5 @@ const runApplication = async (options: ApplicationOptions, environment: Applicat
   return runMachineOutput(run, 'plain')
 }
 
-export { Ingestion, merge, refreshInterval, runApplication, throttle }
-export type {
-  ApplicationEnvironment, ApplicationOptions, Batch, Diagnostic, InputActivity, IngestionOptions, OutputMode, SignalSource,
-  Throttle
-}
+export { merge, refreshInterval, runApplication, throttle }
+export type { ApplicationEnvironment, ApplicationOptions, OutputMode, SignalSource, Throttle }

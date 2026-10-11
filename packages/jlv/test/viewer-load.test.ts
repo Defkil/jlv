@@ -1,12 +1,13 @@
 // Characterization of the viewer: initial load, layout, colors, malformed rows, empty logs and resize.
 // Expectations record observed upstream behavior, including the defects that are still open.
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import { setImmediate as nextTurn } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { fixturePath, legacyViewerFixtures } from '../../format-fixtures/src/catalog.js'
 import { upstreamFixture } from './support/fixtures.js'
-import { readLog } from '../src/log.js'
+import { readRecords, rowsOf } from './support/records.js'
 import { cellStyle, keys, openFileViewer, press, screenText, topBorder, visibleEntries } from './support/terminal.js'
 
 const characterization = fixturePath(legacyViewerFixtures.characterization)
@@ -19,11 +20,11 @@ const levelColumn = 28
 const defaultColor = 0x1_FF
 
 describe('initial load', () => {
-  // The status line counts the three lines that were skipped: truncated JSON, plain text and null.
+  // The status line counts the four lines that were skipped: truncated JSON, plain text, null and a number.
   it('renders newest first with the file label and the status line', t => {
     const viewer = openFileViewer(t, characterization)
     assert.deepEqual(screenText(viewer.screen), [
-      topBorder('characterization.log', '1/32'),
+      topBorder('characterization.log', '1/31'),
       '│ 2026-10-11T10:29:00.000Z  info   *  foxtrot 29                               │',
       '│ 2026-10-11T10:28:00.000Z  debug  *  echo 28                                  │',
       '│ 2026-10-11T10:27:00.000Z  error     delta 27                                 │',
@@ -46,7 +47,7 @@ describe('initial load', () => {
       '│ 2026-10-11T10:10:00.000Z  warn   *  kilo 10                                  │',
       '│ 2026-10-11T10:09:00.000Z  info      delta 09                                 │',
       '└──────────────────────────────────────────────────────────────────────────────┘',
-      '  NORMAL  1/32 | 20 | sort: -timestamp | 3 skipped'
+      '  NORMAL  1/31 | 20 | sort: -timestamp | 4 skipped'
     ])
     assert.equal(viewer.panel.sort, '-timestamp')
     assert.equal(viewer.panel.pageHeight, 20)
@@ -56,15 +57,16 @@ describe('initial load', () => {
   // their missing cells as undefined after measuring them as empty, so that each of their rows wrapped onto a second
   // line. Plan section 5 orders missing times last in both directions, where wrapped rows would push the last record
   // below the viewport.
-  it('sorts records without a timestamp last in arrival order and shows their missing cells as empty', async t => {
+  it('sorts the record without a timestamp last and shows its missing cell as empty', async t => {
     const viewer = openFileViewer(t, characterization)
     const entries = visibleEntries(viewer.panel)
-    // A numeric JSON line becomes an entry without any field.
-    assert.deepEqual(entries.slice(-2), [{ data: {} }, { level: 'warn', message: 'no timestamp', data: {} }])
+    assert.deepEqual(entries.slice(-2).map(entry => [entry.timestamp, entry.level, entry.message, entry.data]), [
+      ['2026-10-11T10:00:00.000Z', 'debug', 'alpha 00', {}],
+      [undefined, 'warn', 'no timestamp', {}]
+    ])
     await press(viewer, '$')
-    assert.deepEqual(screenText(viewer.screen).slice(19, 23), [
+    assert.deepEqual(screenText(viewer.screen).slice(20, 23), [
       '│ 2026-10-11T10:00:00.000Z  debug     alpha 00                                 │',
-      `│${' '.repeat(78)}│`,
       '│                           warn      no timestamp                             │',
       '└──────────────────────────────────────────────────────────────────────────────┘'
     ])
@@ -81,27 +83,32 @@ describe('initial load', () => {
     assert.deepEqual(cellStyle(viewer.screen, levelColumn, 17), { foreground: defaultColor, background: defaultColor, isBold: false })
   })
 
-  it('shows only the first line of a multi-line message and leaves an uppercase level unpadded', async t => {
+  // Upstream showed INFO unpadded and without a color, since only lowercase levels had one; levels are normalized now
+  // (upstream issue #14).
+  it('shows only the first line of a multi-line message and an uppercase level normalized', async t => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, 'g', '19', keys.enter)
     const rows = screenText(viewer.screen)
     assert.equal(rows[2], '│ 2026-10-11T10:10:00.000Z  warn   *  kilo 10                                  │')
-    assert.equal(rows[7], '│ 2026-10-11T10:05:00.000Z  INFO  *  foxtrot 05                                │')
+    assert.equal(rows[7], '│ 2026-10-11T10:05:00.000Z  info   *  foxtrot 05                               │')
+    assert.equal(visibleEntries(viewer.panel).find(entry => entry.message === 'foxtrot 05')?.record.fields['level'], 'INFO')
   })
 })
 
 describe('malformed rows', () => {
-  it('skips invalid JSON and null lines but keeps numbers as empty entries', () => {
-    const entries = readLog(characterization)
-    assert.equal(entries.length, legacyViewerFixtures.characterization.entries)
-    assert.deepEqual(entries.filter(entry => entry.timestamp === undefined), [
-      { data: {} },
-      { level: 'warn', message: 'no timestamp', data: {} }
+  // Upstream kept the numeric line as an entry without fields; JSON values other than objects are diagnostics now.
+  it('skips invalid JSON, null and numbers and keeps the record without a timestamp', async () => {
+    const { records, diagnostics } = await readRecords(readFileSync(characterization))
+    assert.equal(records.length, legacyViewerFixtures.characterization.records)
+    assert.equal(diagnostics.length, legacyViewerFixtures.characterization.skippedRecords)
+    assert.deepEqual(rowsOf(records).filter(row => row.timestamp === undefined).map(row => [row.level, row.message, row.data]), [
+      ['warn', 'no timestamp', {}]
     ])
   })
 
-  it('reads a pretty-printed JSON document as nothing', () => {
-    assert.deepEqual(readLog(prettyMonolog), [])
+  it('reads a pretty-printed JSON document as no records', async () => {
+    const { records } = await readRecords(readFileSync(prettyMonolog))
+    assert.equal(records.length, 0)
   })
 })
 
@@ -151,8 +158,8 @@ describe('resize', () => {
     await nextTurn()
     const rows = screenText(viewer.screen)
     assert.equal(rows.length, 30)
-    assert.equal(rows[0], topBorder('characterization.log', '1/32', 100))
-    assert.equal(rows[29], '  NORMAL  1/32 | 26 | sort: -timestamp | 3 skipped')
+    assert.equal(rows[0], topBorder('characterization.log', '1/31', 100))
+    assert.equal(rows[29], '  NORMAL  1/31 | 26 | sort: -timestamp | 4 skipped')
     assert.equal(viewer.panel.pageHeight, 26)
   })
 })

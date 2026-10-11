@@ -1,21 +1,20 @@
-// Follows files by name with polling (plan section 6.1): every 500 ms each file is checked and what was appended is
+// Follows files by name with polling (plan section 6.1): every 500 ms the file is checked and what was appended is
 // read, instead of relying on fs.watch notifications, which differ between platforms. A follower keeps the open file,
-// its identity (device and file number), the byte offset read so far and the unfinished last line.
+// its identity (device and file number) and the byte offset read so far. It hands over bytes, not records: the
+// source's format frames them, so that a CSV reader keeps its header and quote state while the file grows.
 //
-// - Appended bytes are read from the offset on; an unfinished line, also one that ends inside a UTF-8 character,
-//   waits for its line feed.
-// - A file that shrinks was truncated in place: its unfinished line is ended, and reading starts again at 0.
+// - Appended bytes are read from the offset on.
+// - A file that shrinks was truncated in place: its data ends, and reading starts again at 0.
 // - A path that names another file was rotated: the rest of the old file, written before or after the rename, is read
-//   and its unfinished line ended; then the new file is read from its start.
+//   and its data ends; then the new file is read from its start.
 // - A path that names no regular file, while it is deleted, renamed away or replaced by a directory, is tried again
 //   at the next poll.
-// Record numbers go on across these changes; line numbers start at 1 in each file. Truncation that is followed by
-// more writes than the file held before the next poll cannot be seen by size; polling has that limit.
+// Where the data of a file ends, the format's reader ends too and parses the unfinished last record; the next file
+// gets a new reader. Record numbers go on across these changes; line numbers start at 1 in each file. Truncation that
+// is followed by more writes than the file held before the next poll cannot be seen by size; polling has that limit.
 import type { BigIntStats } from 'node:fs'
 import { open, stat, type FileHandle } from 'node:fs/promises'
 import { setTimeout as delay } from 'node:timers/promises'
-import type { SourceInformation } from './files.js'
-import { LineSplitter, type LineEvent } from './lines.js'
 
 // The polling interval of plan section 6.1.
 const defaultFollowInterval = 500
@@ -24,10 +23,14 @@ const chunkBytes = 256 * 1024
 
 interface FollowOptions {
   readonly interval?: number
-  readonly maximumLineBytes?: number
-  // A file that cannot be read any more is reported here and no longer followed; the others go on.
-  readonly onFailure?: (source: SourceInformation, error: unknown) => void
 }
+
+// Bytes of the followed file, or the end of a file's data at a truncation or a rotation.
+type FollowEvent =
+  | { readonly kind: 'bytes', readonly bytes: Uint8Array }
+  | { readonly kind: 'end' }
+
+const fileEnd: FollowEvent = { kind: 'end' }
 
 // Errors of a path that names no readable file right now: missing, or on Windows deleted while a handle is open.
 const absentCodes: ReadonlySet<unknown> = new Set(['ENOENT', 'ENOTDIR', 'EPERM', 'EACCES'])
@@ -42,16 +45,14 @@ class FileFollower {
   #handle: FileHandle | undefined
   #identity: string | undefined
   #offset = 0
-  readonly #splitter: LineSplitter
   readonly path: string
 
-  constructor (path: string, options: FollowOptions = {}) {
+  constructor (path: string) {
     this.path = path
-    this.#splitter = new LineSplitter(options.maximumLineBytes === undefined ? {} : { maximumLineBytes: options.maximumLineBytes })
   }
 
   // Reads the open file from the offset to its current end, chunk by chunk.
-  async * #readToEnd (): AsyncGenerator<LineEvent[]> {
+  async * #readToEnd (): AsyncGenerator<FollowEvent> {
     const handle = this.#handle
     if (handle === undefined) {
       return
@@ -63,21 +64,8 @@ class FileFollower {
         return
       }
       this.#offset += bytesRead
-      const events = this.#splitter.push(buffer.subarray(0, bytesRead))
-      if (events.length > 0) {
-        yield events
-      }
+      yield { kind: 'bytes', bytes: buffer.subarray(0, bytesRead) }
     }
-  }
-
-  // Reads the rest of the old file, ends its unfinished line and closes it.
-  async * #retire (): AsyncGenerator<LineEvent[]> {
-    yield * this.#readToEnd()
-    const events = this.#splitter.end()
-    if (events.length > 0) {
-      yield events
-    }
-    await this.close()
   }
 
   async #openCurrent (): Promise<boolean> {
@@ -93,17 +81,11 @@ class FileFollower {
     this.#handle = handle
     this.#identity = identityOf(await handle.stat({ bigint: true }))
     this.#offset = 0
-    this.#splitter.reset()
     return true
   }
 
-  // Whether an unfinished line waits for its line feed.
-  get hasPartialLine (): boolean {
-    return this.#splitter.hasPartialLine
-  }
-
-  // Reads what changed since the last poll, as lists of line events.
-  async * poll (): AsyncGenerator<LineEvent[]> {
+  // Reads what changed since the last poll.
+  async * poll (): AsyncGenerator<FollowEvent> {
     let status: BigIntStats | undefined
     try {
       status = await stat(this.path, { bigint: true })
@@ -116,7 +98,10 @@ class FileFollower {
       status = undefined
     }
     if (this.#handle !== undefined && (status === undefined || identityOf(status) !== this.#identity)) {
-      yield * this.#retire()
+      // Rotated or removed: the rest of the old file first.
+      yield * this.#readToEnd()
+      yield fileEnd
+      await this.close()
     }
     if (status === undefined) {
       return
@@ -125,12 +110,8 @@ class FileFollower {
       return
     }
     if (status.size < BigInt(this.#offset)) {
-      const events = this.#splitter.end()
-      if (events.length > 0) {
-        yield events
-      }
+      yield fileEnd
       this.#offset = 0
-      this.#splitter.reset()
     }
     yield * this.#readToEnd()
   }
@@ -143,47 +124,58 @@ class FileFollower {
   }
 }
 
-interface FollowedFile {
-  readonly source: SourceInformation
-  readonly path: string
-}
-
-// The lines of the files as they change, file by file in their order at every poll, until the signal aborts or no
-// file is left. The first poll reads what the files hold already.
-async function * followFiles (
-  files: readonly FollowedFile[],
-  signal: AbortSignal,
-  options: FollowOptions = {}
-): AsyncGenerator<{ readonly source: SourceInformation, readonly events: LineEvent[] }> {
-  let followers = files.map(file => ({ source: file.source, follower: new FileFollower(file.path, options) }))
+// The changes of a followed file, poll after poll, until the signal aborts. The first poll reads what the file holds
+// already. A file that cannot be read ends the iteration with its error.
+async function * followFile (path: string, signal: AbortSignal, options: FollowOptions = {}): AsyncGenerator<FollowEvent> {
+  const follower = new FileFollower(path)
   try {
-    while (followers.length > 0) {
-      const failed = new Set<FileFollower>()
-      for (const { source, follower } of followers) {
-        signal.throwIfAborted()
-        try {
-          const changes = follower.poll()
-          for await (const events of changes) {
-            yield { source, events }
-          }
-        } catch (error) {
-          if (signal.aborted || options.onFailure === undefined) {
-            throw error
-          }
-          options.onFailure(source, error)
-          failed.add(follower)
-          await follower.close()
-        }
-      }
-      followers = followers.filter(({ follower }) => !failed.has(follower))
-      if (followers.length > 0) {
-        await delay(options.interval ?? defaultFollowInterval, undefined, { signal })
-      }
+    for (;;) {
+      signal.throwIfAborted()
+      yield * follower.poll()
+      await delay(options.interval ?? defaultFollowInterval, undefined, { signal })
     }
   } finally {
-    await Promise.allSettled(followers.map(async ({ follower }) => { await follower.close() }))
+    await follower.close()
   }
 }
 
-export { FileFollower, defaultFollowInterval, followFiles }
-export type { FollowedFile, FollowOptions }
+// Splits the changes of a followed name into the files it holds over time: each generation gives the bytes of one file
+// until its data ends. A generation is read, or left, before the next one starts.
+async function * generationsOf (events: AsyncIterable<FollowEvent>): AsyncGenerator<AsyncIterable<Uint8Array>> {
+  const iterator = events[Symbol.asyncIterator]()
+  const state = { isDone: false, isEnded: false }
+  // Whether the current file may still give bytes.
+  const isOpen = (): boolean => !state.isEnded && !state.isDone
+  const next = async (): Promise<Uint8Array | undefined> => {
+    const result = await iterator.next()
+    if (result.done === true) {
+      state.isDone = true
+      return undefined
+    }
+    if (result.value.kind === 'end') {
+      state.isEnded = true
+      return undefined
+    }
+    return result.value.bytes
+  }
+  async function * generation (): AsyncGenerator<Uint8Array> {
+    for (let bytes = await next(); bytes !== undefined; bytes = await next()) {
+      yield bytes
+    }
+  }
+  try {
+    while (!state.isDone) {
+      state.isEnded = false
+      yield generation()
+      // A reader that stopped early leaves the rest of its file.
+      while (isOpen()) {
+        await next()
+      }
+    }
+  } finally {
+    await iterator.return?.()
+  }
+}
+
+export { FileFollower, defaultFollowInterval, followFile, generationsOf }
+export type { FollowEvent, FollowOptions }
