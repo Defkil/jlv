@@ -1,0 +1,22 @@
+name: Feature request
+description: Suggest an improvement, such as a log format, a key or an option
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do with your logs, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: sample
+    attributes:
+      label: Sample
+      description: For a new format, a few records as your logging library writes them, with real data replaced, and its name and version.
+      render: text
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Optional. How it could work, and what you considered instead.

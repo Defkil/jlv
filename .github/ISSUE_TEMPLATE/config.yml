@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/Defkil/jlv/security/advisories/new
+    about: Report vulnerabilities privately, never in a public issue.
+  - name: Documentation
+    url: https://github.com/Defkil/jlv/tree/master/packages/jlv#readme
+    about: Usage, keys, formats, configuration, plugins, limits and migration.
