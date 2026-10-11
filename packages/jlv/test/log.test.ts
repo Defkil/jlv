@@ -1,13 +1,13 @@
-// Upstream test/log.test.js, moved to node:test with unchanged assertions.
+// Upstream test/log.test.js, moved to node:test with unchanged assertions, against the TypeScript port in src/log.ts.
 import assert from 'node:assert/strict'
 import { before, describe, it } from 'node:test'
 import { readUpstreamFixture, valueAt } from './support/fixtures.js'
-import { loadLegacyLog, type LegacyEntry } from './support/legacy.js'
+import log from '../src/log.js'
 
-const { readLog, transform } = loadLegacyLog()
+const { readLog, transform } = log
 
 describe('readLog', () => {
-  let entries: LegacyEntry[] = []
+  let entries: ReturnType<typeof readLog> = []
 
   describe('normal log', () => {
     before(() => {
@@ -46,7 +46,7 @@ describe('readLog', () => {
 
 describe('transform', () => {
   let hasConfig = false
-  let contents: string | null = null
+  let contents = ''
 
   const fileSystem = {
     existsSync: () => hasConfig,

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { after, describe, it } from 'node:test'
 import { readUpstreamFixture } from './support/fixtures.js'
-import { loadLegacyLog } from './support/legacy.js'
+import log from '../src/log.js'
 import { openFileViewer, plainTopBorder, screenText } from './support/terminal.js'
 
 const home = mkdtempSync(path.join(tmpdir(), 'jlv-config-home-'))
@@ -18,15 +18,15 @@ after(() => {
 })
 
 const configFile = path.join(home, '.json-log-viewer')
-const log = path.join(home, 'monolog.log')
+const logFile = path.join(home, 'monolog.log')
 const monolog: unknown = JSON.parse(readUpstreamFixture('monolog.log.json'))
 const withoutDate = { message: 'no datetime', level_name: 'DEBUG', channel: 'app' }
 writeFileSync(configFile, readUpstreamFixture('transform1.ini'))
-writeFileSync(log, `${JSON.stringify(monolog)}\n${JSON.stringify(withoutDate)}\n`)
+writeFileSync(logFile, `${JSON.stringify(monolog)}\n${JSON.stringify(withoutDate)}\n`)
 
 describe('transform configuration', () => {
   it('maps fields through dotted paths and copies the whole record to extra with $', () => {
-    const [entry] = loadLegacyLog().readLog(log)
+    const [entry] = log.readLog(logFile)
     assert.deepEqual(entry, {
       timestamp: '2017-12-06 09:23:42.253060',
       level: 'INFO',
@@ -36,18 +36,18 @@ describe('transform configuration', () => {
   })
 
   it('leaves a missing mapped path undefined', () => {
-    const [, entry] = loadLegacyLog().readLog(log)
+    const [, entry] = log.readLog(logFile)
     assert.deepEqual(entry, { timestamp: undefined, level: 'DEBUG', message: 'no datetime', data: { extra: withoutDate } })
   })
 
   it('keeps the first configuration for the rest of the process', () => {
     writeFileSync(configFile, '[transform]\nmessage=channel\n')
-    const [, entry] = loadLegacyLog().readLog(log)
+    const [, entry] = log.readLog(logFile)
     assert.equal(entry?.message, 'no datetime')
   })
 
   it('shows mapped records and an undefined timestamp in the viewer', t => {
-    const viewer = openFileViewer(t, log)
+    const viewer = openFileViewer(t, logFile)
     const rows = screenText(viewer.screen)
     assert.equal(rows[0], plainTopBorder())
     assert.equal(rows[1], '│ undefined                            DEBUG  *  no datetime                   │')

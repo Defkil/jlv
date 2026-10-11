@@ -13,20 +13,6 @@ export interface LegacyEntry {
   readonly data: Readonly<Record<string, unknown>>
 }
 
-export interface LogReader {
-  readFileSync: (file: string) => string | Buffer
-}
-
-export interface ConfigFileSystem {
-  existsSync: (file: string) => boolean
-  readFileSync: (file: string, encoding: 'utf8') => string | null
-}
-
-export interface LegacyLog {
-  readLog: (file: string, reader?: LogReader) => LegacyEntry[]
-  transform: (entry: unknown, fileSystem?: ConfigFileSystem) => unknown
-}
-
 // @types/blessed declares the screen streams the wrong way round (plan §0.9).
 export type ScreenOptions = Omit<Widgets.IScreenOptions, 'input' | 'output'> & {
   readonly input: Readable
@@ -87,8 +73,6 @@ export interface LegacyLogDetails extends Widgets.BoxElement {
 }
 
 export type LegacyLogDetailsClass = new (options: { readonly screen: Widgets.Screen }) => LegacyLogDetails
-
-export const loadLegacyLog = (): LegacyLog => loadModule('../../src/log.js') as LegacyLog
 
 // The widgets require blessed themselves; this loads the same module instance for the screen.
 export const loadTerminalLibrary = (): TerminalLibrary => loadModule('blessed') as TerminalLibrary
