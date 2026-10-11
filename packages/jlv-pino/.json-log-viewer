@@ -1,0 +1,5 @@
+[transform]
+timestamp=time
+message=msg
+level=level
+extra=$
