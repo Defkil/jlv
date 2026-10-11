@@ -10,8 +10,8 @@ export default defineConfig([
   {
     ignores: [
       '**/node_modules/**', '**/dist/**', '.test-dist/**', '.artifacts/**',
-      // Temporary: the v1 wrapper and the jlv-pino import stay out of the lint scope until phase 4 retires them.
-      'packages/jlv-pino/**', 'src/**', 'test/**'
+      // Temporary: the jlv-pino import stays out of the lint scope until phase 4 retires it.
+      'packages/jlv-pino/**'
     ]
   },
   {
