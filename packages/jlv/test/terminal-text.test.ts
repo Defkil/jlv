@@ -42,9 +42,26 @@ describe('visible text', () => {
     assert.equal(visibleText(`${escape}]52;c;aGVsbG8=${bell}clipboard`), 'clipboard')
   })
 
+  // Node 22's util.stripVTControlCharacters left most of these as text, or dropped the text after a color.
+  it('removes every kind of ECMA-48 sequence, whatever the Node version', () => {
+    assert.equal(visibleText(`${escape}]0;title with spaces and é${bell}after`), 'after')
+    assert.equal(visibleText(`${escape}[38:5:9mcolon ${escape}[38;2;255;0;0mtrue color`), 'colon true color')
+    assert.equal(visibleText(`${escape}[31mtext${bell}`), String.raw`text\u0007`)
+    assert.equal(visibleText(`${escape}Pdevice control${stringTerminator}after`), 'after')
+    assert.equal(visibleText(`${escape}_application command${stringTerminator}after`), 'after')
+    assert.equal(visibleText(`charset${escape}(B reset${escape}c save${escape}7`), 'charset reset save')
+    assert.equal(visibleText('\u{9D}0;8-bit title\u{9C}after \u{9B}1m8-bit color'), 'after 8-bit color')
+  })
+
+  it('keeps a sequence without its end visible', () => {
+    assert.equal(visibleText(`${escape}]0;no end`), String.raw`\u001b]0;no end`)
+    assert.equal(visibleText(`end with ${escape}`), String.raw`end with \u001b`)
+    assert.equal(visibleText(`${escape}Pno end`), String.raw`\u001bPno end`)
+  })
+
   it('shows the remaining control characters as JSON escapes', () => {
     assert.equal(visibleText('tab\tline\nreturn\r'), String.raw`tab\tline\nreturn\r`)
-    assert.equal(visibleText(`lone ${escape} escape`), String.raw`lone \u001b escape`)
+    assert.equal(visibleText(`escape and line feed ${escape}\n`), String.raw`escape and line feed \u001b\n`)
     assert.equal(visibleText(`bell${bell} and backspace\b form feed\f`), String.raw`bell\u0007 and backspace\b form feed\f`)
     assert.equal(visibleText('nul\u{0} delete\u{7F} next line\u{85}'), String.raw`nul\u0000 delete\u007f next line\u0085`)
     assert.equal(visibleText('a\u{2028}b\u{2029}c'), String.raw`a\u2028b\u2029c`)
