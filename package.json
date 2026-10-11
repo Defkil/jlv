@@ -11,7 +11,8 @@
     "build": "node -e \"fs.rmSync('packages/jlv/dist', { recursive: true, force: true })\" && tsc -p packages/jlv/tsconfig.build.json",
     "test:build": "node -e \"fs.rmSync('.test-dist', { recursive: true, force: true })\" && tsc -p tsconfig.test.json && node .test-dist/scripts/prepare-test-tree.js",
     "test:run": "node .test-dist/scripts/run-tests.js",
-    "test": "pnpm run test:build && pnpm run test:run"
+    "test": "pnpm run test:build && pnpm run test:run",
+    "check:package": "pnpm run build && pnpm run test:build && node .test-dist/scripts/check-package.js"
   },
   "devDependencies": {
     "@types/node": "22.20.5",
