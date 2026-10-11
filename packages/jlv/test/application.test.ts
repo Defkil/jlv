@@ -221,6 +221,20 @@ describe('output without a viewer', () => {
     assert.equal(withoutTerminal.stderr.text, 'jv: the viewer needs a terminal: standard output is no terminal\n')
   })
 
+  it('writes plain text when the records come from the terminal itself through -', async () => {
+    const stdout = new TextOutput()
+    const subject = harness({ stdout: Object.assign(stdout, { isTTY: true }) })
+    subject.stdin.isTTY = true
+    const running = runApplication(applicationOptions({ inputs: ['-'] }), subject.environment)
+    subject.stdin.end(record(1, 'typed'))
+    assert.equal(await running, 0)
+    assert.equal(stdout.text, '2026-10-11T10:01:00.000Z info typed\n')
+    const viewer = harness()
+    viewer.stdin.isTTY = true
+    assert.equal(await runApplication(applicationOptions({ inputs: ['-'], output: 'tui' }), viewer.environment), 1)
+    assert.equal(viewer.stderr.text, 'jv: the viewer needs a terminal: standard input is the terminal and carries the records\n')
+  })
+
   it('writes the records that match the level as JSON lines in arrival order and reports skipped lines', async () => {
     const stdout = new TextOutput()
     const { stderr, environment } = harness({ stdout })

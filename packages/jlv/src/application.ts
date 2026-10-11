@@ -558,12 +558,19 @@ const runApplication = async (options: ApplicationOptions, environment: Applicat
   if (options.output === 'plain' || options.output === 'jsonl') {
     return runMachineOutput(run, options.output)
   }
-  const keyboard = stdout.isTTY === true ? environment.openKeyboard({ stdin, isStdinSource, platform: environment.platform }) : undefined
+  // Records typed into the terminal and keys for the viewer would come from the same device.
+  const isStdinTerminalSource = isStdinSource && stdin.isTTY === true
+  const keyboard = !isStdinTerminalSource && stdout.isTTY === true
+    ? environment.openKeyboard({ stdin, isStdinSource, platform: environment.platform })
+    : undefined
   if (keyboard === undefined) {
     if (options.output === 'tui') {
-      const reason = stdout.isTTY === true
-        ? 'no terminal to read keys from: standard input carries the records, and no console or /dev/tty could be opened'
-        : 'standard output is no terminal'
+      let reason = 'standard output is no terminal'
+      if (stdout.isTTY === true) {
+        reason = isStdinTerminalSource
+          ? 'standard input is the terminal and carries the records'
+          : 'no terminal to read keys from: standard input carries the records, and no console or /dev/tty could be opened'
+      }
       return fail(exitCodes.failure, `the viewer needs a terminal: ${reason}`)
     }
     if (options.sort !== undefined && options.sort !== 'arrival') {
