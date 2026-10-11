@@ -6,8 +6,9 @@
 import { readFileSync } from 'node:fs'
 import os from 'node:os'
 import { parseArgs } from 'node:util'
-import type { LogLevel, TimestampUnit } from './api.js'
+import type { FilterClause, LogLevel, TimestampUnit } from './api.js'
 import { runApplication, type ApplicationOptions, type OutputMode } from './application.js'
+import { ConfigurationError, readFilterClause } from './configuration.js'
 import { commonLevel, logLevels, timestampUnits } from './record.js'
 import { openKeyboard } from './terminal.js'
 import { visibleText } from './terminal-text.js'
@@ -26,16 +27,21 @@ options:
   --sort <order>         timestamp, level, message or arrival; a leading - sorts descending, as in
                          --sort=-level (default: -timestamp for files, arrival for pipes and --follow)
   -l, --level <level>    show only records of this level: trace, debug, info, warn, error, fatal or unknown
+  --where <clause>       show only records that match a clause in JSON, such as
+                         '{"field":["message"],"operator":"contains","value":"slow"}'; repeatable
+  --profile <name>       show only records that match a profile of the configuration file
+  --predicate <name>     show only records that a predicate of a plugin keeps; repeatable
   --timestamp-unit <u>   seconds, milliseconds, microseconds or nanoseconds for numeric timestamps
   --strict               stop with exit code 1 at the first record that cannot be read
   -c, --config <file>    read this configuration file, JSON or legacy INI, instead of discovering one
   --no-config            read no configuration file
-  --plugin <module>      load the formats of a plugin, a file or an installed package; repeatable. A plugin is
-                         trusted code that runs inside jlv
+  --plugin <module>      load the formats and predicates of a plugin, a file or an installed package; repeatable.
+                         A plugin is trusted code that runs inside jlv
   --output <mode>        auto, tui, plain or jsonl (default: auto, the viewer when the terminal allows it)
   --max-records <n>      records the viewer keeps (default: 50000)
   --max-bytes <n>        bytes of records the viewer keeps (default: 67108864)
-  -s, --save <file>      also write every record that matches -l as a JSON line to a new file
+  -s, --save <file>      also write every record that -l, --where, --profile and --predicate keep to a new file,
+                         as JSON lines
   --overwrite            let --save replace an existing file
   --log <file>           write the terminal library's debug log
   -h, --help             show this help
@@ -55,6 +61,9 @@ const optionDefinitions = {
   format: { type: 'string' },
   sort: { type: 'string' },
   level: { type: 'string', short: 'l' },
+  where: { type: 'string', multiple: true },
+  profile: { type: 'string' },
+  predicate: { type: 'string', multiple: true },
   'timestamp-unit': { type: 'string' },
   strict: { type: 'boolean' },
   config: { type: 'string', short: 'c' },
@@ -92,6 +101,15 @@ const levelValue = (text: string | undefined): LogLevel | undefined => {
   }
   return level
 }
+
+// The clauses of --where, each JSON text in the form of a profile's clauses.
+const whereClauses = (texts: readonly string[]): FilterClause[] => texts.map(text => {
+  try {
+    return readFilterClause(text, '--where')
+  } catch (error) {
+    throw error instanceof ConfigurationError ? new UsageError(error.message) : error
+  }
+})
 
 const timestampUnitNames: ReadonlySet<string> = new Set(timestampUnits)
 
@@ -194,6 +212,9 @@ const readOptions = (): ApplicationOptions | 'help' | 'version' => {
     isFollowing: values.follow === true,
     sort,
     level: levelValue(values.level),
+    where: whereClauses(values.where ?? []),
+    profile: values.profile,
+    predicates: values.predicate ?? [],
     output: output as OutputMode,
     format: values.format,
     timestampUnit: timestampUnitValue(values['timestamp-unit']),

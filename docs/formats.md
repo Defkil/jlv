@@ -292,5 +292,17 @@ $ jv --output plain --plugin ./text-plugin.mjs notes.txt
 - - backup finished in 42 s
 ```
 
+A plugin may also export `predicates`: functions that take a record, of any format, and say whether to keep it.
+`--predicate <name>` applies one, and the viewer's filter manager offers them all; see
+[Filters](configuration.md#filters). The predicate `finished` of the same plugin keeps the records that say so:
+
+```console
+$ jv --output plain --plugin ./text-plugin.mjs --predicate finished notes.txt
+- - backup finished in 42 s
+$ jv --output plain --predicate finished notes.txt; echo $?
+jv: --predicate finished names no predicate; the predicates of the plugins of --plugin are none
+2
+```
+
 In TypeScript, the types come from `jlv` and the built-in formats and readers from `jlv/formats`, such as
 `readJsonLines` for a format of JSON lines with its own fields. The exports are ECMAScript modules.

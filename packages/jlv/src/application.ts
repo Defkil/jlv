@@ -6,9 +6,9 @@ import path from 'node:path'
 import { addAbortSignal, type Readable, type Writable } from 'node:stream'
 import type { Widgets } from 'blessed'
 import type { ScreenOptions } from 'neo-blessed'
-import type { LogFormat, LogLevel, ParseDiagnostic, SourceInformation, TimestampUnit } from './api.js'
+import type { FilterClause, LogFormat, LogLevel, ParseDiagnostic, SourceInformation, TimestampUnit } from './api.js'
 import { ConfigurationError, loadConfiguration, type Configuration } from './configuration.js'
-import { emptyFilter, type NamedPredicate, type PredicateFailure } from './filters.js'
+import { filterTest, type NamedPredicate, type PredicateFailure, type ProfileSelection, type RecordFilter } from './filters.js'
 import { builtInFormatIdentifiers, builtInFormats, jsonLinesFormat } from './formats/registry.js'
 import {
   Ingestion, SourceState, StrictModeError, recordAt, sourceBatches, type IngestionSettings, type NormalizedRecord,
@@ -38,6 +38,10 @@ interface ApplicationOptions {
   readonly sort: string | undefined
   // The normalized level that records must have.
   readonly level: LogLevel | undefined
+  // The clauses of --where, the profile of --profile and the predicates of --predicate, which records must match too.
+  readonly where: readonly FilterClause[]
+  readonly profile: string | undefined
+  readonly predicates: readonly string[]
   readonly output: OutputMode
   // The format of every input, or undefined and auto to recognize each input by itself.
   readonly format: string | undefined
@@ -207,6 +211,8 @@ interface Run {
   readonly rowOptions: RowOptions
   // The predicates of the loaded plugins.
   readonly predicates: readonly NamedPredicate[]
+  // The filter of the command line: the level, --where, --profile and --predicate.
+  readonly filter: RecordFilter
   readonly isLive: boolean
   readonly saveFile: Writable | undefined
 }
@@ -248,18 +254,42 @@ const readSources = (run: Run, states: readonly SourceState[], signal: AbortSign
   return merge(lanes)
 }
 
-const levelMatcher = (level: LogLevel | undefined): ((record: NormalizedRecord) => boolean) =>
-  level === undefined ? () => true : normalized => normalized.record.level === level
+// Whether a record matches the filter of the command line.
+const recordMatcher = (filter: RecordFilter, onFailure: PredicateFailure): ((record: NormalizedRecord) => boolean) => {
+  const test = filterTest(filter, onFailure)
+  return test === undefined ? () => true : normalized => test(normalized.record)
+}
 
-// The JSON lines of the records that match, for the save file.
-const saveText = (records: readonly NormalizedRecord[], isMatch: (record: NormalizedRecord) => boolean): string => {
+// The JSON lines of the records, for the save file.
+const saveText = (records: readonly NormalizedRecord[]): string => {
   let text = ''
   for (const normalized of records) {
-    if (isMatch(normalized)) {
-      text += jsonLine(normalized.record)
-    }
+    text += jsonLine(normalized.record)
   }
   return text
+}
+
+// Reports the first failure of each predicate of a plugin; the record that it failed on is left out, and the run ends
+// with 1.
+class PredicateFailures {
+  readonly #report: (line: string) => void
+  readonly #names = new Set<string>()
+
+  readonly onFailure: PredicateFailure = (predicate, error) => {
+    if (this.#names.has(predicate.name)) {
+      return
+    }
+    this.#names.add(predicate.name)
+    this.#report(errorLine(`the predicate ${predicate.name} of the plugin ${predicate.owner} failed: ${errorMessage(error)}; it left out the records it failed on`))
+  }
+
+  constructor (report: (line: string) => void) {
+    this.#report = report
+  }
+
+  get isFailed (): boolean {
+    return this.#names.size > 0
+  }
 }
 
 // Listens for the signals that end a run, until the returned function stops listening.
@@ -321,8 +351,8 @@ class DiagnosticReport {
   }
 }
 
-// Writes every record that matches the level as plain text or JSON lines, in arrival order, until the input ends,
-// a signal arrives or the reader goes away. Diagnostics are reported on standard error.
+// Writes every record that matches the filter of the command line as plain text or JSON lines, in arrival order,
+// until the input ends, a signal arrives or the reader goes away. Diagnostics are reported on standard error.
 const runMachineOutput = async (run: Run, format: MachineFormat): Promise<number> => {
   const { environment, options } = run
   const { stderr } = environment
@@ -352,7 +382,8 @@ const runMachineOutput = async (run: Run, format: MachineFormat): Promise<number
       exitCode = exitCodes.failure
       controller.abort()
     })
-  const isMatch = levelMatcher(options.level)
+  const predicateFailures = new PredicateFailures(line => { stderr.write(line) })
+  const isMatch = recordMatcher(run.filter, predicateFailures.onFailure)
   const onFailure = (source: SourceInformation, error: unknown): void => {
     ingestion.failed += 1
     stderr.write(errorLine(`cannot read '${source.label}': ${errorMessage(error)}`))
@@ -360,14 +391,12 @@ const runMachineOutput = async (run: Run, format: MachineFormat): Promise<number
   const states = sourceStates(run, controller.signal)
   try {
     for await (const batch of readSources(run, states, controller.signal, onFailure)) {
-      const records = ingestion.accept(batch)
+      const records = ingestion.accept(batch).filter(normalized => isMatch(normalized))
       let text = ''
       for (const normalized of records) {
-        if (isMatch(normalized)) {
-          text += formatLine(format, normalized, run.rowOptions)
-        }
+        text += formatLine(format, normalized, run.rowOptions)
       }
-      await Promise.all([writer.write(text, controller.signal), saveWriter?.write(saveText(records, isMatch), controller.signal)])
+      await Promise.all([writer.write(text, controller.signal), saveWriter?.write(saveText(records), controller.signal)])
       if (ingestion.strictFailure !== undefined) {
         throw ingestion.strictFailure
       }
@@ -389,7 +418,8 @@ const runMachineOutput = async (run: Run, format: MachineFormat): Promise<number
     stderr.write(errorLine(`the input holds no records, only ${String(ingestion.skipped)} skipped lines`))
     exitCode = exitCodes.failure
   }
-  return exitCode === exitCodes.success && ingestion.failed > 0 ? exitCodes.failure : exitCode
+  const isFailed = ingestion.failed > 0 || predicateFailures.isFailed
+  return isFailed && exitCode === exitCodes.success ? exitCodes.failure : exitCode
 }
 
 // Shows the records in the terminal viewer, reading keys from the keyboard, until q, Ctrl-C or a signal. The input
@@ -405,17 +435,9 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
   ingestion.activity = run.isLive ? 'live' : 'loading'
   const states = sourceStates(run, controller.signal)
   const view = new RecordView(store, sequence => recordAt(store, states, sequence), run.rowOptions)
+  // Failures are reported after the viewer closed.
   const failures: string[] = []
-  // A predicate that throws leaves its record out; the first failure of each predicate is reported after the viewer
-  // closed, and the run ends with 1.
-  const failedPredicates = new Set<string>()
-  const onPredicateFailure: PredicateFailure = (predicate, error) => {
-    if (failedPredicates.has(predicate.name)) {
-      return
-    }
-    failedPredicates.add(predicate.name)
-    failures.push(errorLine(`the predicate ${predicate.name} of the plugin ${predicate.owner} failed: ${errorMessage(error)}; it left out the records it failed on`))
-  }
+  const predicateFailures = new PredicateFailures(line => { failures.push(line) })
   let screen: Widgets.Screen | undefined
   let panel: MainPanel
   try {
@@ -434,10 +456,10 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
       label: inputsLabel(run.sources),
       progress: ingestion,
       configuration: run.configuration.file,
-      filter: { ...emptyFilter, level: options.level },
+      filter: run.filter,
       profiles: run.configuration.profiles,
       predicates: run.predicates,
-      onPredicateFailure,
+      onPredicateFailure: predicateFailures.onFailure,
       sort
     })
     const statusLine = new StatusLine({ screen, mainPanel: panel })
@@ -472,13 +494,14 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
       failures.push(errorLine(`cannot save the records: ${error?.message ?? 'the file was closed'}`))
       refresh.schedule()
     })
-  const isMatch = levelMatcher(options.level)
+  // The save file gets the records that the filter of the command line keeps, whatever the viewer shows.
+  const isMatch = recordMatcher(run.filter, predicateFailures.onFailure)
   const reading = (async () => {
     try {
       for await (const batch of readSources(run, states, controller.signal, onFailure)) {
         const records = ingestion.accept(batch)
         refresh.schedule()
-        await saveWriter?.write(saveText(records, isMatch), controller.signal)
+        await saveWriter?.write(saveText(records.filter(normalized => isMatch(normalized))), controller.signal)
         if (ingestion.strictFailure !== undefined) {
           throw ingestion.strictFailure
         }
@@ -522,7 +545,7 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
   for (const failure of failures) {
     environment.stderr.write(failure)
   }
-  const isFailed = ingestion.failed > 0 || failedPredicates.size > 0
+  const isFailed = ingestion.failed > 0 || predicateFailures.isFailed
   return isFailed && exitCode === exitCodes.success ? exitCodes.failure : exitCode
 }
 
@@ -578,6 +601,39 @@ const ingestionSettings = (options: ApplicationOptions, configuration: Configura
   }
 }
 
+// The predicates of the plugins under their names.
+const predicatesOf = (plugins: readonly LoadedPlugin[]): NamedPredicate[] => plugins.flatMap(plugin =>
+  Object.entries(plugin.predicates).map(([name, test]): NamedPredicate => ({ name, owner: plugin.specifier, test })))
+
+// Names for a message, or none.
+const listOf = (names: readonly string[]): string => names.length === 0 ? 'none' : names.join(', ')
+
+// The filter of the command line: -l, --where, the profile of --profile and the predicates of --predicate, which must
+// exist.
+const commandLineFilter = (options: ApplicationOptions, configuration: Configuration, predicates: readonly NamedPredicate[]): RecordFilter => {
+  let profile: ProfileSelection | undefined
+  const { profiles } = configuration
+  if (options.profile !== undefined) {
+    const group = Object.hasOwn(profiles, options.profile) ? profiles[options.profile] : undefined
+    if (group === undefined) {
+      const known = configuration.file === undefined
+        ? 'no configuration file was read'
+        : `the profiles of ${configuration.file} are ${listOf(Object.keys(profiles))}`
+      throw new ConfigurationError(`--profile ${options.profile} names no profile; ${known}`)
+    }
+    profile = { name: options.profile, group }
+  }
+  const chosen = options.predicates.map(name => {
+    const predicate = predicates.find(candidate => candidate.name === name)
+    if (predicate === undefined) {
+      const names = listOf(predicates.map(candidate => candidate.name))
+      throw new ConfigurationError(`--predicate ${name} names no predicate; the predicates of the plugins of --plugin are ${names}`)
+    }
+    return predicate
+  })
+  return { level: options.level, clauses: options.where, profile, predicates: chosen }
+}
+
 // Reads the inputs and the configuration, chooses the output, creates the save file and runs. All of these are
 // checked before a screen opens, so their errors reach a plain standard error.
 const runApplication = async (options: ApplicationOptions, environment: ApplicationEnvironment): Promise<number> => {
@@ -613,6 +669,7 @@ const runApplication = async (options: ApplicationOptions, environment: Applicat
   }
   let configuration: Configuration
   let settings: IngestionSettings
+  let filter: RecordFilter
   try {
     configuration = loadConfiguration({
       workingDirectory: environment.workingDirectory,
@@ -621,6 +678,7 @@ const runApplication = async (options: ApplicationOptions, environment: Applicat
       isDiscoveryDisabled: options.isConfigurationDisabled
     })
     settings = ingestionSettings(options, configuration, plugins)
+    filter = commandLineFilter(options, configuration, predicatesOf(plugins))
   } catch (error) {
     if (error instanceof ConfigurationError) {
       return fail(exitCodes.usage, error.message)
@@ -649,9 +707,7 @@ const runApplication = async (options: ApplicationOptions, environment: Applicat
   }
   const isLive = options.isFollowing || sources.some(source => source.kind !== 'file')
   const rowOptions: RowOptions = { legacyExtras: configuration.legacyExtras }
-  const predicates = plugins.flatMap(plugin =>
-    Object.entries(plugin.predicates).map(([name, test]): NamedPredicate => ({ name, owner: plugin.specifier, test })))
-  const run: Run = { options, environment, sources, configuration, settings, rowOptions, predicates, isLive, saveFile }
+  const run: Run = { options, environment, sources, configuration, settings, rowOptions, predicates: predicatesOf(plugins), filter, isLive, saveFile }
   if (keyboard !== undefined) {
     return runViewer(run, keyboard)
   }

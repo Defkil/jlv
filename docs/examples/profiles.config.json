@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "profiles": {
+    "problems": {
+      "mode": "any",
+      "clauses": [
+        { "field": ["level"], "operator": "equals", "value": "error" },
+        { "field": ["level"], "operator": "equals", "value": "fatal" }
+      ]
+    },
+    "api-1 errors": {
+      "mode": "all",
+      "clauses": [
+        { "field": ["fields", "hostname"], "operator": "equals", "value": "api-1" },
+        { "field": ["level"], "operator": "equals", "value": "error" }
+      ]
+    }
+  }
+}

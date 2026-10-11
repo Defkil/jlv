@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict'
 import { EventEmitter, once } from 'node:events'
 import {
-  appendFileSync, chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync,
+  appendFileSync, chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync,
   writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -15,6 +15,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { stripVTControlCharacters } from 'node:util'
 import { fixturePath, legacyViewerFixtures } from '../../format-fixtures/src/catalog.js'
 import { runApplication, type ApplicationEnvironment, type ApplicationOptions } from '../src/application.js'
+import { loadConfiguration } from '../src/configuration.js'
 import { hasControls } from '../src/terminal-text.js'
 import { TerminalOutput } from './support/terminal.js'
 
@@ -83,6 +84,9 @@ const applicationOptions = (overrides: Partial<ApplicationOptions> = {}): Applic
   isFollowing: false,
   sort: undefined,
   level: undefined,
+  where: [],
+  profile: undefined,
+  predicates: [],
   output: 'auto',
   format: undefined,
   timestampUnit: undefined,
@@ -581,5 +585,120 @@ describe('errors before a screen opens', () => {
     assert.equal(await running, 1)
     assert.match(stderr.text, /jv: cannot read '.*locked\.log': .*EACCES/u)
     assert.match(stdout.text, /foxtrot 29/u)
+  })
+})
+
+// The plain output of a harness, and the messages of its lines, which are two words in these tests.
+const output = (subject: Harness): string => subject.stdout instanceof TextOutput ? subject.stdout.text : ''
+const messagesOf = (text: string): string[] => text.trimEnd().split('\n').map(line => line.split(' ').slice(2, 4).join(' '))
+
+describe('filters of the command line', () => {
+  const project = path.join(directory, 'filtered')
+  mkdirSync(project)
+  const log = path.join(project, 'app.log')
+  copyFileSync(characterization, log)
+  const profiles = {
+    requests: { mode: 'any', clauses: [{ field: ['message'], operator: 'contains', value: 'bravo' }, { field: ['message'], operator: 'contains', value: 'charlie' }] },
+    roundTrip: { mode: 'all', clauses: [{ field: ['level'], operator: 'equals', value: 'error' }, { field: ['message'], operator: 'contains', value: 'DELTA' }] }
+  } as const
+  writeFileSync(path.join(project, 'jlv.config.json'), JSON.stringify({ version: 1, profiles }))
+  writeFileSync(path.join(project, 'predicates.mjs'), [
+    'export default {',
+    '  apiVersion: 1,',
+    '  formats: [],',
+    '  predicates: {',
+    '    hasUser: record => typeof record.fields.user === "object",',
+    '    noA: record => { if (record.message.startsWith("a")) { throw new Error("cannot judge " + record.message) } return true }',
+    '  }',
+    '}',
+    ''
+  ].join('\n'))
+  const inProject = (subject: Harness): ApplicationEnvironment => ({ ...subject.environment, workingDirectory: project })
+
+  // Upstream issue #19: every part applies; the level, the clause, the profile and the predicate each leave out some
+  // of the records.
+  it('write and save only the records that the level, every clause, the profile and every predicate keep', async () => {
+    const saved = path.join(project, 'filtered.jsonl')
+    const subject = harness({ stdout: new TextOutput() })
+    const options = applicationOptions({
+      inputs: ['app.log'],
+      output: 'plain',
+      level: 'warn',
+      where: [{ field: ['fields', 'requestId'], operator: 'contains', value: 'REQ' }],
+      profile: 'requests',
+      plugins: ['./predicates.mjs'],
+      predicates: ['hasUser'],
+      save: saved
+    })
+    assert.equal(await runApplication(options, inProject(subject)), 0)
+    assert.deepEqual(messagesOf(output(subject)), ['charlie 14', 'charlie 26', 'charlie 02'])
+    assert.deepEqual(savedMessages(saved), ['charlie 14', 'charlie 26', 'charlie 02'])
+  })
+
+  // The profile round trip: a filter written as a profile reads back and keeps what the same clauses of --where keep.
+  it('keep with a profile what the same clauses of --where keep', async () => {
+    assert.deepEqual(loadConfiguration({ workingDirectory: project, home }).profiles['roundTrip'], profiles.roundTrip)
+    const fromProfile = harness({ stdout: new TextOutput() })
+    assert.equal(await runApplication(applicationOptions({ inputs: ['app.log'], output: 'plain', profile: 'roundTrip' }), inProject(fromProfile)), 0)
+    const fromClauses = harness({ stdout: new TextOutput() })
+    const where = applicationOptions({ inputs: ['app.log'], output: 'plain', where: profiles.roundTrip.clauses })
+    assert.equal(await runApplication(where, inProject(fromClauses)), 0)
+    assert.deepEqual(messagesOf(output(fromProfile)), ['delta 03', 'delta 15', 'delta 27'])
+    assert.equal(output(fromClauses), output(fromProfile))
+  })
+
+  it('refuse a profile or a predicate that does not exist with 2 before a screen opens', async () => {
+    const profile = harness()
+    assert.equal(await runApplication(applicationOptions({ inputs: ['app.log'], profile: 'missing' }), inProject(profile)), 2)
+    assert.equal(profile.stderr.text, 'jv: --profile missing names no profile; the profiles of jlv.config.json are requests, roundTrip\n')
+    assert.equal(shown(profile.stdout), '')
+    const withoutFile = harness()
+    assert.equal(await runApplication(applicationOptions({ inputs: [log], profile: 'requests', isConfigurationDisabled: true }), withoutFile.environment), 2)
+    assert.equal(withoutFile.stderr.text, 'jv: --profile requests names no profile; no configuration file was read\n')
+    const predicate = harness()
+    const options = applicationOptions({ inputs: ['app.log'], plugins: ['./predicates.mjs'], predicates: ['isLoud'] })
+    assert.equal(await runApplication(options, inProject(predicate)), 2)
+    assert.equal(predicate.stderr.text, 'jv: --predicate isLoud names no predicate; the predicates of the plugins of --plugin are hasUser, noA\n')
+  })
+
+  it('report the first failure of a predicate, leave out the records that it failed on and end with 1', async () => {
+    const subject = harness({ stdout: new TextOutput() })
+    const options = applicationOptions({ inputs: ['app.log'], output: 'plain', plugins: ['./predicates.mjs'], predicates: ['noA'] })
+    assert.equal(await runApplication(options, inProject(subject)), 1)
+    const messages = messagesOf(output(subject))
+    assert.equal(messages.length, 26)
+    assert.ok(messages.every(message => !message.startsWith('a')))
+    assert.equal(subject.stderr.text.split('\n').filter(line => line.includes('predicate')).join('\n'),
+      'jv: the predicate noA of the plugin ./predicates.mjs failed: cannot judge alpha 00; it left out the records it failed on')
+  })
+
+  it('start the viewer with the filter of the command line and save what it keeps, whatever the viewer changes', async () => {
+    const saved = path.join(project, 'viewer.jsonl')
+    const subject = harness()
+    const options = applicationOptions({ inputs: ['app.log'], where: [{ field: ['message'], operator: 'contains', value: 'alpha' }], save: saved })
+    const running = runApplication(options, inProject(subject))
+    await waitFor(() => hasShown(subject.stdout, 'filters: message~alpha'), 'the filter in the status line')
+    await waitFor(() => hasShown(subject.stdout, 'alpha 24'), 'the records')
+    subject.keyboard.write('f')
+    await delay(50)
+    subject.keyboard.write('c')
+    await waitFor(() => hasShown(subject.stdout, 'foxtrot 29'), 'all records')
+    subject.keyboard.write('q')
+    assert.equal(await running, 0)
+    assert.deepEqual(savedMessages(saved), ['alpha 00', 'alpha 12', 'alpha 24', 'alpha 06', 'alpha 18'])
+  })
+
+  // A configuration is data: it cannot name a plugin, so no code runs because of it.
+  it('run no code that a configuration file names', async () => {
+    const elsewhere = path.join(directory, 'no-code')
+    mkdirSync(elsewhere)
+    const marker = path.join(elsewhere, 'imported.txt')
+    writeFileSync(path.join(elsewhere, 'code.mjs'), `import { writeFileSync } from 'node:fs'\nwriteFileSync(${JSON.stringify(marker)}, 'imported')\nexport default { apiVersion: 1, formats: [] }\n`)
+    writeFileSync(path.join(elsewhere, 'jlv.config.json'), JSON.stringify({ version: 1, plugin: './code.mjs', predicates: { code: './code.mjs' } }))
+    copyFileSync(characterization, path.join(elsewhere, 'app.log'))
+    const subject = harness({ stdout: new TextOutput() })
+    assert.equal(await runApplication(applicationOptions({ inputs: ['app.log'], output: 'plain' }), { ...subject.environment, workingDirectory: elsewhere }), 2)
+    assert.match(subject.stderr.text, /^jv: jlv\.config\.json: the configuration has the unknown key "plugin"/u)
+    assert.equal(existsSync(marker), false)
   })
 })

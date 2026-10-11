@@ -1,6 +1,8 @@
-// A jlv plugin with one format, text: every line of the input is a record, and the line is its message.
+// A jlv plugin with one format, text: every line of the input is a record, and the line is its message. Its predicate
+// finished keeps the records whose message says so.
 //
 //   jv --plugin ./text-plugin.mjs --format text notes.txt
+//   jv --plugin ./text-plugin.mjs --predicate finished notes.txt
 //
 // A plugin is trusted code that runs inside jlv; load only plugins that you would also run yourself.
 
@@ -46,6 +48,12 @@ const text = {
 /**
 @type {import('jlv').FormatPlugin}
 */
-const plugin = { apiVersion: 1, formats: [text] }
+const plugin = {
+  apiVersion: 1,
+  formats: [text],
+  predicates: {
+    finished: record => record.message.includes('finished')
+  }
+}
 
 export default plugin

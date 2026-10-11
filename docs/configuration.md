@@ -86,26 +86,73 @@ the names of the format and the [usual names](formats.md#levels).
 
 ### Profiles
 
-A profile is a named filter: `mode` is `all` or `any`, and each of its `clauses` has a `field`, an `operator`,
-`equals` or `contains`, and a `value`. The field is a path into the record, such as `["message"]` for a normalized
-part or `["fields", "route"]` for an original field. `equals` compares JSON values, and `contains` looks for text:
+A profile is a named filter: `mode` is `all` or `any`, and each of its `clauses`, at least one, is a
+[clause](#filters) with a `field`, an `operator` and a `value`. `all` keeps the records that match every clause, `any`
+those that match at least one. [profiles.config.json](examples/profiles.config.json):
 
 ```json
 {
   "version": 1,
   "profiles": {
-    "slow checkout": {
+    "problems": {
+      "mode": "any",
+      "clauses": [
+        { "field": ["level"], "operator": "equals", "value": "error" },
+        { "field": ["level"], "operator": "equals", "value": "fatal" }
+      ]
+    },
+    "api-1 errors": {
       "mode": "all",
       "clauses": [
-        { "field": ["fields", "route"], "operator": "equals", "value": "/checkout" },
-        { "field": ["message"], "operator": "contains", "value": "slow" }
+        { "field": ["fields", "hostname"], "operator": "equals", "value": "api-1" },
+        { "field": ["level"], "operator": "equals", "value": "error" }
       ]
     }
   }
 }
 ```
 
-jlv checks profiles already, but does not apply them yet.
+`--profile <name>` applies a profile from the start; the viewer's filter manager, `f`, chooses or removes one while
+it runs. jlv reads profiles and never writes them: a filter that you want to keep goes into the file by hand.
+
+```console
+$ jv --output plain -c profiles.config.json --profile problems pino.log
+2026-10-11T10:00:02.500Z error upstream failed {"pid":4120,"hostname":"api-1","reqId":"req-8","err":{"type":"Error","message":"connection refused"}}
+2026-10-11T10:00:03.000Z fatal shutting down {"pid":4120,"hostname":"api-1"}
+$ jv --output plain -c profiles.config.json --profile 'api-1 errors' pino.log
+2026-10-11T10:00:02.500Z error upstream failed {"pid":4120,"hostname":"api-1","reqId":"req-8","err":{"type":"Error","message":"connection refused"}}
+$ jv --output plain -c profiles.config.json --profile slow pino.log; echo $?
+jv: --profile slow names no profile; the profiles of profiles.config.json are problems, api-1 errors
+2
+```
+
+## Filters
+
+`-l`, `--where`, `--profile` and `--predicate` choose the records that the viewer shows first, that `--output plain`
+and `--output jsonl` write, and that `--save` keeps. Everything given applies together: a record must have the level,
+match every clause of `--where`, match the profile and pass every predicate. In the viewer, `l` chooses the level and
+`f` adds and removes filters, chooses profiles and predicates, or clears them all; `--save` keeps what the command line
+chose.
+
+A clause of `--where` is JSON with a `field`, an `operator` and a `value`, like the clauses of a profile. The field is
+a path into the [record](formats.md#the-record) as `--output jsonl` writes it: `["message"]`, `["level"]`,
+`["timestamp"]` or `["correlationIdentifier"]` for a normalized part, and `["fields", "route"]` for an original field.
+`equals` compares JSON values by type and value, so `0`, `false`, `null` and `"0"` are four different values.
+`contains` looks for text without regard to case: in text as it is, in the normalized timestamp as the UTC time that
+the viewer shows, and in any other value as its JSON text. A record that lacks the field matches neither:
+
+```console
+$ jv --output plain --where '{"field":["fields","reqId"],"operator":"equals","value":"req-7"}' pino.log
+2026-10-11T10:00:01.250Z warn slow request {"pid":4120,"hostname":"api-1","reqId":"req-7","responseTime":1840}
+$ jv --output plain --where '{"field":["fields","pid"],"operator":"equals","value":4120}' --where '{"field":["message"],"operator":"contains","value":"SHUT"}' pino.log
+2026-10-11T10:00:03.000Z fatal shutting down {"pid":4120,"hostname":"api-1"}
+$ jv --output plain --where '{"field":["fields","pid"],"operator":"equals","value":"4120"}' pino.log; echo $?
+0
+```
+
+`--predicate <name>` applies a predicate of a plugin that `--plugin` loaded; a predicate is code, so
+[plugins](formats.md#formats-from-plugins) are the only place for one. A predicate that fails leaves the record out,
+and jlv reports its first failure and ends with exit code 1.
 
 ## The legacy .json-log-viewer
 
@@ -157,16 +204,21 @@ options:
   --sort <order>         timestamp, level, message or arrival; a leading - sorts descending, as in
                          --sort=-level (default: -timestamp for files, arrival for pipes and --follow)
   -l, --level <level>    show only records of this level: trace, debug, info, warn, error, fatal or unknown
+  --where <clause>       show only records that match a clause in JSON, such as
+                         '{"field":["message"],"operator":"contains","value":"slow"}'; repeatable
+  --profile <name>       show only records that match a profile of the configuration file
+  --predicate <name>     show only records that a predicate of a plugin keeps; repeatable
   --timestamp-unit <u>   seconds, milliseconds, microseconds or nanoseconds for numeric timestamps
   --strict               stop with exit code 1 at the first record that cannot be read
   -c, --config <file>    read this configuration file, JSON or legacy INI, instead of discovering one
   --no-config            read no configuration file
-  --plugin <module>      load the formats of a plugin, a file or an installed package; repeatable. A plugin is
-                         trusted code that runs inside jlv
+  --plugin <module>      load the formats and predicates of a plugin, a file or an installed package; repeatable.
+                         A plugin is trusted code that runs inside jlv
   --output <mode>        auto, tui, plain or jsonl (default: auto, the viewer when the terminal allows it)
   --max-records <n>      records the viewer keeps (default: 50000)
   --max-bytes <n>        bytes of records the viewer keeps (default: 67108864)
-  -s, --save <file>      also write every record that matches -l as a JSON line to a new file
+  -s, --save <file>      also write every record that -l, --where, --profile and --predicate keep to a new file,
+                         as JSON lines
   --overwrite            let --save replace an existing file
   --log <file>           write the terminal library's debug log
   -h, --help             show this help

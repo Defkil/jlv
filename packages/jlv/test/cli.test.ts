@@ -134,7 +134,10 @@ describe('help, version and usage errors', () => {
       [['--output=plain', '--sort=level'], /^jv: --output plain writes the records in arrival order; --sort level needs the viewer\n/u],
       [['--max-records', '0'], /^jv: --max-records needs a whole number from 1 to 4294967295, not '0'\n/u],
       [['--max-bytes=1e3'], /^jv: --max-bytes needs a whole number from 1 to 4294967295, not '1e3'\n/u],
-      [['--overwrite', 'a.log'], /^jv: --overwrite needs --save\n/u]
+      [['--overwrite', 'a.log'], /^jv: --overwrite needs --save\n/u],
+      [['--where', 'message~slow'], /^jv: --where takes a clause in JSON, such as \{"field":\["message"\],"operator":"contains","value":"timeout"\}: /u],
+      [['--where={"field":["msg"],"operator":"contains","value":"x"}'], /^jv: --where: the clause\.field must start with a part of the record, /u],
+      [['--where', '{"field":["message"],"operator":"equals"}'], /^jv: --where: the clause\.value must be a JSON value\n/u]
     ]
     for (const [parameters, message] of cases) {
       const result = await run(parameters, { preload: pretendedTerminal })

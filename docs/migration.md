@@ -74,6 +74,15 @@ $ jv --output plain -l INFO pino.log
   [Diagnostics](formats.md#diagnostics).
 - Pretty-printed JSON and files that hold one JSON array are still no input; convert them into JSON lines.
 
+## The viewer
+
+- Filters add up. json-log-viewer's `f` replaced the filter, or cleared all filters when one was active, and only its
+  last filter decided. `f` opens a filter manager now: it adds a filter, removes any one of them, chooses
+  [profiles and predicates](configuration.md#filters) and clears all. `l` chooses the level, and its `all` clears only
+  the level. `--where`, `--profile` and `--predicate` start the viewer with filters.
+- `other` in the filter manager reads a field of the original record by the same paths as before, such as
+  `user.name:ann`; text filters ignore case and look into the JSON text of numbers and objects.
+
 ## Programs
 
 jlv 1's CommonJS functions are gone. jlv 2's package exports ECMAScript modules: the types of records and formats
