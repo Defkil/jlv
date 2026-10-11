@@ -18,6 +18,17 @@ declare module 'neo-blessed' {
     // Creates a plain element; @types/blessed omits this factory.
     element (options?: blessed.Widgets.BoxOptions): blessed.Widgets.BoxElement
     screen (options: ScreenOptions): blessed.Widgets.Screen
+    // The patterns of lib/unicode.js with which blessed lays out text, all global; @types/blessed omits the module.
+    readonly unicode: {
+      readonly chars: {
+        // Characters that take two cells.
+        readonly all: RegExp
+        // Combining and other zero-width characters.
+        readonly combining: RegExp
+        // Surrogate pairs.
+        readonly surrogate: RegExp
+      }
+    }
   }
 
   const terminalLibrary: TerminalLibrary

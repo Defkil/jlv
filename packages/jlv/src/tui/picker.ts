@@ -2,8 +2,8 @@
 // undefined when it is closed with Escape.
 import type { Widgets } from 'blessed'
 import { BaseWidget } from './base-widget.js'
-import { createList, destroyElement } from './blessed-boundary.js'
-import { markup } from './formatting.js'
+import { createList, destroyElement, toCells } from './blessed-boundary.js'
+import { cutToWidth, displayText, markup } from './formatting.js'
 
 interface PickerOptions {
   readonly items: readonly string[]
@@ -69,7 +69,10 @@ class Picker extends BaseWidget {
     this.list.on('blur', () => { this.log('blur') })
     this.list.on('keypress', this.handleKeyPressed.bind(this))
     this.list.on('select', this.handleSelected.bind(this))
-    this.list.setItems([...this.items])
+    // Items may name profiles, fields and values: they show as visible text, which the list does not read as tags, and
+    // no wider than the screen allows.
+    const width = Math.max(toCells(this.screen.width) - 12, 8)
+    this.list.setItems(this.items.map(item => cutToWidth(displayText(item), width)))
     this.append(this.list)
   }
 

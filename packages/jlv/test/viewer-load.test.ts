@@ -37,14 +37,14 @@ describe('initial load', () => {
       '│ 2026-10-11T10:20:00.000Z  debug  *  charlie 20                               │',
       '│ 2026-10-11T10:19:00.000Z  error  *  bravo 19                                 │',
       '│ 2026-10-11T10:18:00.000Z  warn      alpha 18                                 │',
-      '│ 2026-10-11T10:17:00.000Z  info   *  lima 17 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  │',
+      '│ 2026-10-11T10:17:00.000Z  info   *  lima 17 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…  │',
       '│ 2026-10-11T10:16:00.000Z  debug  *  echo 16                                  │',
       '│ 2026-10-11T10:15:00.000Z  error     delta 15                                 │',
       '│ 2026-10-11T10:14:00.000Z  warn   *  charlie 14                               │',
       '│ 2026-10-11T10:13:00.000Z  fatal  *  bravo 13                                 │',
       '│ 2026-10-11T10:12:00.000Z  debug     alpha 12                                 │',
       '│ 2026-10-11T10:11:00.000Z  error  *  foxtrot 11                               │',
-      '│ 2026-10-11T10:10:00.000Z  warn   *  kilo 10                                  │',
+      String.raw`│ 2026-10-11T10:10:00.000Z  warn   *  kilo 10\nsecond line                     │`,
       '│ 2026-10-11T10:09:00.000Z  info      delta 09                                 │',
       '└──────────────────────────────────────────────────────────────────────────────┘',
       '  NORMAL  1/31 | 20 | sort: -timestamp | 4 skipped'
@@ -85,11 +85,12 @@ describe('initial load', () => {
 
   // Upstream showed INFO unpadded and without a color, since only lowercase levels had one; levels are normalized now
   // (upstream issue #14).
-  it('shows only the first line of a multi-line message and an uppercase level normalized', async t => {
+  // Upstream showed the first line of a multi-line message only; the line break shows as \n now, as in plain output.
+  it('shows the line break of a multi-line message as an escape and an uppercase level normalized', async t => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, 'g', '19', keys.enter)
     const rows = screenText(viewer.screen)
-    assert.equal(rows[2], '│ 2026-10-11T10:10:00.000Z  warn   *  kilo 10                                  │')
+    assert.equal(rows[2], String.raw`│ 2026-10-11T10:10:00.000Z  warn   *  kilo 10\nsecond line                     │`)
     assert.equal(rows[7], '│ 2026-10-11T10:05:00.000Z  info   *  foxtrot 05                               │')
     assert.equal(visibleEntries(viewer.panel).find(entry => entry.message === 'foxtrot 05')?.record.fields['level'], 'INFO')
   })
@@ -141,13 +142,14 @@ describe('upstream workflow-engine fixture', () => {
     assert.deepEqual(cellStyle(viewer.screen, levelColumn, 21), { foreground: 6, background: defaultColor, isBold: false })
   })
 
-  it('interprets ANSI color sequences in messages and cuts them while truncating', async t => {
+  // Upstream issue #18: blessed acted on the escape sequences of a message, and the cut counted their bytes, so that the
+  // row ended with the remains of a cut sequence.
+  it('shows a message without its ANSI color sequences and cuts it by its visible text', async t => {
     const viewer = openFileViewer(t, workflowEngine)
     await press(viewer, keys.down)
-    // The raw message starts with ESC[90m and continues with ESC[39m. Truncation counts escape bytes,
-    // so the visible text ends with the remains of a cut sequence.
-    assert.equal(screenText(viewer.screen)[1], '│ 2017-09-25T22:48:46.651Z  info   *  POST /workflows/hemo/instances[39        │')
-    assert.equal(cellStyle(viewer.screen, 38, 1).foreground, 8)
+    // The raw message is ESC[90mPOST /workflows/hemo/instancesESC[39m ESC[32m200ESC[39m ESC[90m442msESC[39m.
+    assert.equal(screenText(viewer.screen)[1], '│ 2017-09-25T22:48:46.651Z  info   *  POST /workflows/hemo/instances 200 442…  │')
+    assert.deepEqual([38, 69, 73].map(column => cellStyle(viewer.screen, column, 1).foreground), [defaultColor, defaultColor, defaultColor])
   })
 })
 

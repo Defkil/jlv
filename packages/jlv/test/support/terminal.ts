@@ -70,6 +70,8 @@ export interface ViewerOptions {
   readonly maximumBytes?: number
   // The configuration file that the status line names.
   readonly configuration?: string
+  // Whether the terminal keeps everything that the screen writes, in output.written.
+  readonly isRecording?: boolean
 }
 
 // The events of framed JSON lines, as the JSON-lines reader gives them, but at once.
@@ -101,7 +103,7 @@ export const keys = {
 // live screen and destroys it afterwards.
 export const openViewer = (context: TestContext, file: string, options: ViewerOptions = {}): Viewer => {
   const input = new PassThrough()
-  const output = new TerminalOutput(options.columns ?? 80, options.rows ?? 24)
+  const output = new TerminalOutput(options.columns ?? 80, options.rows ?? 24, options.isRecording)
   const screen = createScreen({
     input,
     output,

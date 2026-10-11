@@ -74,8 +74,9 @@ class StatusLine extends Box {
     const sort = this.sort ? markup`| sort: {bold}${this.sort}{/}` : ''
     const filterExpression = this.filters.map(filter => `${filter.key}:${String(filter.value)}`).join(' ')
     const filters = filterExpression ? markup`| filters: {bold}${filterExpression}{/}` : ''
+    // The input status names formats and the configuration file, which are text of the user and of plugins.
     const { inputStatus } = this.mainPanel
-    const input = inputStatus ? `| ${inputStatus}` : ''
+    const input = inputStatus ? markup`| ${inputStatus}` : ''
     this.setContent(` ${[mode, line, pageSize, sort, filters, input].filter(Boolean).join(' ')}`)
     this.screen.render()
   }

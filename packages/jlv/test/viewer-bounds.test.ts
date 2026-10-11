@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, it } from 'node:test'
 import { fixturePath, legacyViewerFixtures } from '../../format-fixtures/src/catalog.js'
-import { maxLengths } from '../src/tui/formatting.js'
+import { layoutRows } from '../src/tui/formatting.js'
 import { keys, openFileViewer, press, screenText, topBorder, type Viewer } from './support/terminal.js'
 
 const characterization = fixturePath(legacyViewerFixtures.characterization)
@@ -54,7 +54,7 @@ describe('cursor targets past the records', () => {
     assert.equal(viewer.panel.initialRow, 20)
     await press(viewer, keys.enter)
     // The last record is the second of the two without a timestamp, which come last.
-    assert.equal(screenText(viewer.screen)[3]?.slice(4, 76), '┌─ undefined - warn - no timestamp ────────────────────────────────────┐')
+    assert.equal(screenText(viewer.screen)[3]?.slice(4, 76), '┌─ - - warn - no timestamp ────────────────────────────────────────────┐')
   })
 
   it('moves to the nearest record for line numbers past either end or without digits', async t => {
@@ -124,9 +124,21 @@ describe('tiny terminals', () => {
     assert.equal(viewer.panel.row, 1)
   })
 
-  it('gives the last column no negative width', () => {
-    const columns = [{ key: 'a' }, { key: 'b' }]
-    assert.deepEqual(maxLengths(columns, [{ a: 'abcdef' }], 1, 4), { a: 6, b: 0 })
-    assert.deepEqual(maxLengths(columns, [{ a: 'abcdef' }], 1, -5), { a: 6, b: 0 })
+  it('gives the last column no negative width and no row more than the width', () => {
+    const columns = [{ maximumWidth: 10 }, { maximumWidth: 0 }]
+    assert.deepEqual(layoutRows([[{ text: 'abcdef' }, { text: 'message' }]], columns, 1, 4), ['a… …'])
+    assert.deepEqual(layoutRows([[{ text: 'abcdef' }, { text: 'message' }]], columns, 1, -5), [''])
   })
+
+  const narrowSizes = [[12, 4], [20, 6], [30, 8]] as const
+  for (const [columns, rows] of narrowSizes) {
+    it(`fits every row into the panel on ${String(columns)}x${String(rows)} cells`, t => {
+      const viewer = openFileViewer(t, characterization, { columns, rows })
+      const panelRows = screenText(viewer.screen).slice(1, rows - 2)
+      for (const row of panelRows) {
+        assert.ok(row.length <= columns, row)
+        assert.ok(row === '' || row.endsWith('│'), row)
+      }
+    })
+  }
 })

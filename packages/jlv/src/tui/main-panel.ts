@@ -10,7 +10,9 @@ import { BaseWidget } from './base-widget.js'
 import {
   ask, createElement, createPrompt, createQuestion, destroyElement, readInput, setContentWrapping, toCells
 } from './blessed-boundary.js'
-import { formatRows, levelColors, markup } from './formatting.js'
+import {
+  composeMarkup, cutStartToWidth, displayText, displayWidth, layoutRows, markup, type Cell, type Column
+} from './formatting.js'
 import { LogDetails } from './log-details.js'
 import type { LogRow } from './log-row.js'
 import { Picker } from './picker.js'
@@ -51,8 +53,6 @@ interface MainPanelOptions {
   readonly currentPage?: number
   readonly initialRow?: number
   readonly colSpacing?: number
-  // Whether rows longer than the panel continue on the next line; w toggles it. Rows wrap unless this is false.
-  readonly wrap?: boolean
 }
 
 const entryFields: ReadonlySet<string> = new Set(['timestamp', 'level', 'message'])
@@ -63,18 +63,28 @@ const sortFields: readonly string[] = [...entryFields, 'arrival']
 // The levels that the level picker offers: all, then the levels in their order of severity.
 const levelChoices: readonly string[] = ['all', ...logLevels]
 
-// Upstream called levelColors[level](level): a level without a color throws here, and formatRows then shows the raw
-// value.
-const colorLevel = (level: unknown): string => {
-  const colored = levelColors[String(level)]?.(String(level))
-  if (colored === undefined) {
-    throw new TypeError(`The level ${String(level)} has no color.`)
-  }
-  return colored
-}
+// The colors and weights of the normalized levels; trace, fatal and unknown keep the default color.
+const levelStyles: ReadonlyMap<LogLevel, Omit<Cell, 'text'>> = new Map([
+  ['debug', { color: 'cyan' }],
+  ['info', { color: '#ffff94', isBold: true }],
+  ['warn', { color: '#ffa500' }],
+  ['error', { color: 'red' }]
+])
+
+// The columns of a row: the timestamp, the level, a mark for a record with details, and the message, which takes the
+// rest of the width.
+const rowColumns: readonly Column[] = [{ maximumWidth: 32 }, { maximumWidth: 12 }, { maximumWidth: 1 }, { maximumWidth: 0 }]
 
 // A record without data counts as empty, as lodash.isEmpty did for the objects that readLog creates.
 const hasData = (data: unknown): boolean => typeof data === 'object' && data !== null && Object.keys(data).length > 0
+
+// The cells of a row in the order of the columns.
+const rowCells = (row: LogRow): Cell[] => [
+  { text: row.timestamp ?? '' },
+  { text: row.level ?? '', ...levelStyles.get(row.record.level) },
+  { text: hasData(row.data) ? '*' : ' ' },
+  { text: row.message }
+]
 
 const isKeptByFilter = (line: LogRow, filter: Filter): boolean => {
   if (filter.method === undefined) {
@@ -100,8 +110,6 @@ class MainPanel extends BaseWidget {
   currentPage: number
   initialRow: number
   colSpacing: number
-  // Upstream kept this flag in blessed's own Element#wrap of the panel, which has no content, so w changed nothing.
-  isWrappingRows: boolean
   row: number
   rows: LogRow[]
   lastSearchTerm: string | undefined
@@ -130,7 +138,6 @@ class MainPanel extends BaseWidget {
     this.currentPage = options.currentPage || 1
     this.initialRow = options.initialRow || 0
     this.colSpacing = options.colSpacing || 2
-    this.isWrappingRows = options.wrap !== false
     this.row = 0
     this.rows = []
     this.lastSearchTerm = undefined
@@ -147,7 +154,8 @@ class MainPanel extends BaseWidget {
     // label is created here, so that every render puts it in the same place; upstream rendered twice before the
     // first screen, once empty and once after reading the file.
     this.setLabel(' ')
-    setContentWrapping(this.rowsElement, this.isWrappingRows)
+    // Every row fits the panel, so blessed never needs to wrap one; a row that it wrapped would push the others down.
+    setContentWrapping(this.rowsElement, false)
 
     this.log('pageWidth', this.pageWidth)
     this.on('resize', () => {
@@ -322,12 +330,6 @@ class MainPanel extends BaseWidget {
     }
     if (key.name === 'up') {
       this.moveUp()
-      return
-    }
-    if (key.name === 'w') {
-      this.isWrappingRows = !this.isWrappingRows
-      setContentWrapping(this.rowsElement, this.isWrappingRows)
-      this.update()
       return
     }
     if (key.name === 'pagedown') {
@@ -547,7 +549,8 @@ class MainPanel extends BaseWidget {
     picker.setCurrent()
   }
 
-  // Asks for text and calls back only with a non-empty answer; an empty answer renders the panel again.
+  // Asks for text and calls back only with a non-empty answer; an empty answer renders the panel again. The question
+  // is text, which may quote the user's input.
   prompt (text: string, value: string | undefined, callback: (input: string) => void): void {
     const inputDialog = createPrompt({
       parent: this,
@@ -563,7 +566,7 @@ class MainPanel extends BaseWidget {
       padding: 1
     })
 
-    readInput(inputDialog, text, value || '', (error, input) => {
+    readInput(inputDialog, markup`${text}`, value || '', (error, input) => {
       destroyElement(inputDialog)
       if (error) {
         return
@@ -609,6 +612,7 @@ class MainPanel extends BaseWidget {
     return -1
   }
 
+  // Shows text, which may quote the user's input, until it is confirmed.
   message (text: string): void {
     const question = createQuestion({
       parent: this,
@@ -625,7 +629,7 @@ class MainPanel extends BaseWidget {
       padding: 1
     })
 
-    ask(question, text, (_error, isAccepted) => {
+    ask(question, markup`${text}`, (_error, isAccepted) => {
       destroyElement(question)
       this.log('value', isAccepted)
       this.renderLines()
@@ -746,10 +750,10 @@ class MainPanel extends BaseWidget {
     const position = `${String(this.row + 1)}/${String(this.lastRow + 1)}`
     // The label starts three cells in and ends at the padding before the right border; brackets and spaces take nine.
     const room = toCells(this.width) - 5 - 9 - position.length
-    const { sourceLabel } = this
-    let label = sourceLabel
-    if (sourceLabel.length > room) {
-      label = room > 1 ? `…${sourceLabel.slice(sourceLabel.length - room + 1)}` : ''
+    const name = displayText(this.sourceLabel)
+    let label = name
+    if (displayWidth(name) > room) {
+      label = room > 1 ? cutStartToWidth(name, room) : ''
     }
     return markup`[{bold} ${label} {/}] [{bold} ${position} {/}]`
   }
@@ -757,20 +761,9 @@ class MainPanel extends BaseWidget {
   update (shouldNotify = true): void {
     this.setLabel(this.borderLabel)
 
-    const columns = [
-      { title: 'Timestamp', key: 'timestamp' },
-      { title: 'Level', key: 'level', format: (level: unknown) => colorLevel(level) },
-      { title: 'D', key: 'data', length: 1, format: (data: unknown) => hasData(data) ? '*' : ' ' },
-      { title: 'Message', key: 'message' }
-    ]
-
-    const highlight = (row: string, index: number): string => {
-      const [firstLine = ''] = row.split('\n', 1)
-      return index === this.relativeRow ? markup`{white-bg}{black-fg}${firstLine}{/}` : firstLine
-    }
-
-    const content = formatRows(this.rows, columns, this.colSpacing, this.pageWidth - 1)
-      .map((row, index) => highlight(row, index))
+    // The cursor row is black on white; the level keeps its color there.
+    const content = layoutRows(this.rows.map(row => rowCells(row)), rowColumns, this.colSpacing, this.pageWidth - 1)
+      .map((row, index) => index === this.relativeRow ? composeMarkup`{white-bg}{black-fg}${row}{/}` : row)
       .join('\n')
     this.rowsElement.setContent(content)
     this.screen.render()

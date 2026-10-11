@@ -1,163 +1,164 @@
-// Successor of upstream src/utils.js: the column layout of the main panel and its blessed markup. Cells whose value
-// is not text keep upstream's behavior: they fail inside padEnd, and formatRows then shows the raw value.
+// The text of the viewer (plan section 6.3, upstream issue #18): trusted blessed markup around text from records,
+// files, the configuration and the user. Such text can never act as markup or reach the terminal as an escape
+// sequence: it is bounded, passes through visibleText (terminal-text.ts) and escapeMarkup, and is measured and cut by
+// the cells that blessed gives it, without splitting a character.
+//
+// Successor of upstream src/utils.js, whose column layout measured text by its length, read tags inside values as
+// markup and let blessed act on their escape sequences.
+import { visibleText } from '../terminal-text.js'
+import { cellCount } from './blessed-boundary.js'
 
-// A blessed tag such as {bold} or {/red-fg}, for replaceAll().
-const colorTagPattern = /{\/?[\w\-,;!#]+}/g
-// The same tag for test(). Without the global flag the pattern keeps no position between calls; upstream tested with
-// the global one, so its hasColors depended on the calls made before it.
-const colorTagTest = /{\/?[\w\-,;!#]+}/
+// The longest text that the viewer prepares for one cell, label or value; longer text is cut before it is sanitized
+// and measured, so that showing a record of a megabyte costs no more than showing a short one.
+const maximumDisplayText = 4096
 
-type Row = Readonly<Record<string, unknown>>
+const ellipsis = '…'
 
-interface Column {
-  readonly key: string
-  // A fixed width; otherwise the widest value of the column decides.
-  readonly length?: number
-  // Turns the raw value into display text, whose width then counts without blessed tags.
-  readonly format?: (value: unknown) => string
-}
+// { and } show as themselves in an element that reads blessed tags.
+const escapeMarkup = (text: string): string => text.replaceAll(/[{}]/gu, brace => brace === '{' ? '{open}' : '{close}')
 
-// Trusted blessed markup: the literal parts may contain tags such as {bold}. Interpolated values are inserted as
-// they are, exactly as in an untagged template literal.
-const markup = (literals: TemplateStringsArray, ...values: readonly string[]): string =>
-  String.raw({ raw: literals }, ...values)
-
-const hasColors = (text: unknown): boolean => colorTagTest.test(String(text))
-
-// Upstream evaluated (text || '').replace(...): empty values give '', and values other than text have no replace.
-const stripColors = (text: unknown): string => {
-  if (!text) {
-    return ''
-  }
-  if (typeof text !== 'string') {
-    throw new TypeError('Only text can contain blessed tags.')
-  }
-  return text.replaceAll(colorTagPattern, '').replaceAll('{/}', '')
-}
-
-// Reads value.length the way upstream's property access did: text and arrays have a length, an object may carry
-// one as a field, and numbers or booleans have none.
-const lengthProperty = (value: unknown): unknown => {
-  if (typeof value === 'string') {
-    return value.length
-  }
-  return typeof value === 'function' || (typeof value === 'object' && value !== null)
-    ? Reflect.get(value, 'length')
-    : undefined
-}
-
-// The display length of text without its blessed tags, or with them when they are to be ignored. A value without a
-// numeric length gives NaN, which makes padEnd fail as upstream did.
-const textLength = (text: unknown, shouldIgnoreColors = false): number => {
-  if (!text) {
-    return 0
-  }
-  return shouldIgnoreColors ? Number(lengthProperty(text)) : stripColors(text).length
-}
-
-// Upstream joined an array of count + 1 empty slots, so a fractional count, NaN or a count below -1 throws.
-const spaces = (count: number): string => {
-  if (!Number.isSafeInteger(count) || count < -1) {
-    throw new RangeError('Invalid array length')
-  }
-  return ' '.repeat(Math.max(count, 0))
-}
-
-const trunc = (text: unknown, length: number, shouldIgnoreColors = false): string => {
-  if (!text) {
-    return ''
-  }
-  if (shouldIgnoreColors || !hasColors(text)) {
-    if (typeof text !== 'string') {
-      throw new TypeError('Only text can be truncated.')
-    }
-    // A negative width gives an empty cell, as upstream's substring did.
-    return text.slice(0, Math.max(length, 0))
-  }
-  if (typeof text !== 'string') {
-    throw new TypeError('Only text can contain blessed tags.')
-  }
-  if (textLength(text, shouldIgnoreColors) <= length) {
+// The text cut to a number of UTF-16 code units without splitting a surrogate pair, with an ellipsis when it was
+// longer.
+const boundText = (text: string, limit = maximumDisplayText): string => {
+  if (text.length <= limit) {
     return text
   }
-
-  let visibleLength = 0
-  let isTag = false
-  let output = ''
-  let index = 0
-  while (visibleLength < length) {
-    const character = text.charAt(index)
-    output += character
-    if (character === '{') {
-      isTag = true
-    }
-    if (!isTag) {
-      visibleLength += 1
-    }
-    if (character === '}') {
-      isTag = false
-    }
-    index += 1
-  }
-
-  return `${output}{/}`
+  // A code point beyond 0xFFFF at the last kept position is a surrogate pair that the limit would split.
+  const end = (text.codePointAt(limit - 1) ?? 0) > 0xFF_FF ? limit - 1 : limit
+  return `${text.slice(0, end)}${ellipsis}`
 }
 
-// A missing value, undefined or null, measures as empty and is shown as empty. Upstream printed its text form, so a
-// row with a missing timestamp or message was wider than the panel and wrapped onto a second line.
-const padEnd = (text: unknown, length: number, shouldIgnoreColors = false): string => {
-  const spaceCount = length - textLength(text, shouldIgnoreColors)
-  if (spaceCount < 0) {
-    return trunc(text, length, shouldIgnoreColors)
-  }
-  // eslint-disable-next-line @typescript-eslint/no-base-to-string -- like upstream, an object cell shows [object Object]
-  return `${text === undefined || text === null ? '' : String(text)}${spaces(spaceCount)}`
-}
+// Text from a record, a file, the configuration or the user as the viewer shows it: bounded, without escape sequences,
+// and with control characters as JSON escapes.
+const displayText = (text: string): string => visibleText(boundText(text))
 
-// The width of every column but the last from its widest value; the last column gets the rest of maxWidth.
-const maxLengths = (columns: readonly Column[], rows: readonly Row[], spacing: number, maxWidth: number): Record<string, number> => {
-  const lengths: Record<string, number> = {}
-  const measuredColumns = columns.slice(0, -1)
-  for (const row of rows) {
-    for (const column of measuredColumns) {
-      const value: unknown = row[column.key] || ''
-      lengths[column.key] = column.length || Math.max(lengths[column.key] || 0, textLength(String(value)))
+// Trusted blessed markup: the literal parts may hold tags such as {bold}, and every interpolated value is text, which
+// shows as it is. Markup is combined with composeMarkup or by concatenation, never by interpolating it here, where its
+// tags would show as text.
+const markup = (literals: TemplateStringsArray, ...values: readonly string[]): string =>
+  String.raw({ raw: literals }, ...values.map(value => escapeMarkup(displayText(value))))
+
+// Combines markup that is trusted already, such as the result of markup or an escaped row, with trusted tags.
+const composeMarkup = (literals: TemplateStringsArray, ...values: readonly string[]): string =>
+  String.raw({ raw: literals }, ...values)
+
+// Characters that take one cell each: printable ASCII and the Latin letters and signs before the combining marks.
+const singleCellText = /^[\u{20}-\u{7E}\u{A0}-\u{2FF}]*$/u
+
+// The cells that visible text takes on the screen.
+const displayWidth = (text: string): number => singleCellText.test(text) ? text.length : cellCount(text)
+
+// Visible text cut to a number of cells, ending with an ellipsis when it was wider.
+const cutToWidth = (text: string, width: number): string => {
+  if (width <= 0) {
+    return ''
+  }
+  if (displayWidth(text) <= width) {
+    return text
+  }
+  if (singleCellText.test(text)) {
+    return `${text.slice(0, width - 1)}${ellipsis}`
+  }
+  let cut = ''
+  let used = 0
+  for (const character of text) {
+    const cells = displayWidth(character)
+    if (used + cells > width - 1) {
+      break
     }
+    cut += character
+    used += cells
   }
-  const lastColumn = columns.at(-1)
-  if (lastColumn === undefined) {
-    // Upstream read the key of the missing last column.
-    throw new TypeError('The rows need at least one column.')
-  }
-  let width = spacing * Object.keys(lengths).length
-  for (const length of Object.values(lengths)) {
-    width += length
-  }
-  // The last column is empty, not negative, when the other columns use up the width; NaN stays NaN.
-  lengths[lastColumn.key] = Math.max(maxWidth - width, 0)
-  return lengths
+  return `${cut}${ellipsis}`
 }
 
-const formatRows = (rows: readonly Row[], columns: readonly Column[], spacing: number, maxWidth: number): string[] => {
-  const lengths = maxLengths(columns, rows, spacing, maxWidth)
-  return rows.map(row => columns.map(column => {
-    const { format, key } = column
-    const rawValue = row[key]
-    try {
-      const value = format === undefined ? rawValue : format(rawValue)
-      // A column without a width behaves like upstream's undefined one: the arithmetic gives NaN.
-      return padEnd(value, lengths[key] ?? NaN, !format)
-    } catch {
-      return rawValue
+// Visible text cut to a number of cells from its start, so that it keeps its end, such as the name of a file.
+const cutStartToWidth = (text: string, width: number): string => {
+  if (width <= 0) {
+    return ''
+  }
+  if (displayWidth(text) <= width) {
+    return text
+  }
+  // The characters by code point, as for...of gives them; a combining mark takes no cell of its own.
+  const characters = text.match(/./gsu) ?? []
+  let kept = ''
+  let used = 0
+  for (let index = characters.length - 1; index >= 0; index -= 1) {
+    const character = characters[index] ?? ''
+    const cells = displayWidth(character)
+    if (used + cells > width - 1) {
+      break
     }
-  }).join(spaces(spacing)))
+    kept = `${character}${kept}`
+    used += cells
+  }
+  return `${ellipsis}${kept}`
 }
 
-const levelColors: Readonly<Record<string, (text: string) => string>> = {
-  debug: text => markup`{cyan-fg}${text}{/cyan-fg}`,
-  info: text => markup`{#ffff94-fg}{bold}${text}{/bold}{/#ffff94-fg}`,
-  warn: text => markup`{#ffa500-fg}${text}{/#ffa500-fg}`,
-  error: text => markup`{red-fg}${text}{/red-fg}`
+// Visible text followed by spaces up to a number of cells.
+const padToWidth = (text: string, width: number): string => `${text}${' '.repeat(Math.max(width - displayWidth(text), 0))}`
+
+// A cell of a row: text, and the color and the weight that trusted tags give it. A color is a blessed color such as
+// cyan, #ffa500 or the 256-color number 167.
+interface Cell {
+  readonly text: string
+  readonly color?: string | undefined
+  readonly isBold?: boolean | undefined
 }
 
-export { formatRows, maxLengths, hasColors, stripColors, spaces, padEnd, textLength, trunc, levelColors, markup }
+// The widest that a column grows; the last column takes the width that the others leave.
+interface Column {
+  readonly maximumWidth: number
+}
+
+// Escaped text in the cell's color and weight.
+const styledText = (text: string, cell: Cell): string => {
+  const escaped = escapeMarkup(text)
+  const weighted = cell.isBold === true ? composeMarkup`{bold}${escaped}{/bold}` : escaped
+  return cell.color === undefined ? weighted : composeMarkup`{${cell.color}-fg}${weighted}{/${cell.color}-fg}`
+}
+
+// The widest text of a column.
+const naturalWidth = (texts: readonly (readonly string[])[], index: number): number => {
+  let natural = 0
+  for (const row of texts) {
+    natural = Math.max(natural, displayWidth(row[index] ?? ''))
+  }
+  return natural
+}
+
+// Lays rows out in columns of markup: each column but the last as wide as its widest text up to its maximum, the last
+// one as wide as the rest, and spacing after each column but the last. The last column keeps up to a third of the
+// width; the others take what is left from the left, each with its spacing, so no row is wider than the width. Text
+// that does not fit its column ends with an ellipsis.
+const layoutRows = (rows: readonly (readonly Cell[])[], columns: readonly Column[], spacing: number, width: number): string[] => {
+  const texts = rows.map(row => row.map(cell => displayText(cell.text)))
+  const widths: number[] = []
+  const gaps: number[] = []
+  const total = Math.max(width, 0)
+  const reserved = Math.min(naturalWidth(texts, columns.length - 1), Math.floor(total / 3))
+  let remaining = total - reserved
+  for (const [index, column] of columns.entries()) {
+    if (index === columns.length - 1) {
+      widths.push(remaining + reserved)
+      break
+    }
+    const columnWidth = Math.min(naturalWidth(texts, index), column.maximumWidth, Math.max(remaining - spacing, 0))
+    remaining -= columnWidth
+    const gap = Math.min(spacing, remaining)
+    remaining -= gap
+    widths.push(columnWidth)
+    gaps.push(gap)
+  }
+  return rows.map((row, rowIndex) => widths.map((columnWidth, index) => {
+    const text = cutToWidth(texts[rowIndex]?.[index] ?? '', columnWidth)
+    return `${styledText(text, row[index] ?? { text: '' })}${' '.repeat(columnWidth - displayWidth(text) + (gaps[index] ?? 0))}`
+  }).join(''))
+}
+
+export {
+  boundText, composeMarkup, cutStartToWidth, cutToWidth, displayText, displayWidth, escapeMarkup, layoutRows, markup,
+  maximumDisplayText, padToWidth
+}
+export type { Cell, Column }

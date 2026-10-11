@@ -9,9 +9,9 @@ import { cellStyle, keys, openFileViewer, press, screenText, topBorder } from '.
 
 const characterization = fixturePath(legacyViewerFixtures.characterization)
 
-// A log whose newest record has a message with tabs. The panel cuts the message by its number of characters, but
-// blessed shows each tab as four spaces, so that row is longer than the panel. Upstream got the same from a message
-// array, which it padded by its number of elements. The directory is removed after the test.
+// A log whose newest record has a message with tabs, which blessed would show as four spaces each: upstream cut the
+// message by its number of characters, so that its row was longer than the panel. The directory is removed after the
+// test.
 const overlongLog = (context: TestContext): string => {
   const directory = mkdtempSync(path.join(tmpdir(), 'jlv-wrap-'))
   context.after(() => {
@@ -156,26 +156,21 @@ describe('viewport keys', () => {
   })
 })
 
-describe('wrap toggle', () => {
-  // Upstream flipped blessed's wrap flag of the panel itself, which has no content, so w changed nothing on screen.
-  it('cuts overlong rows at the panel edge with w and wraps them again with a second w', async t => {
+describe('overlong rows', () => {
+  // Phase 4 made w wrap rows that were wider than the panel, which tabs and cut escape sequences caused. Rows are
+  // measured by the cells that blessed draws now and always fit, so w is gone.
+  it(String.raw`shows tabs as \t and ends a message that is wider than its column with an ellipsis`, async t => {
     const viewer = openFileViewer(t, overlongLog(t))
-    const wrapped = screenText(viewer.screen)
-    // The first record is longer than the panel and continues on row 2.
-    assert.deepEqual(wrapped.slice(1, 5).map(row => row.slice(0, 50)), [
-      '│ 2026-10-11T10:02:00.000Z  info      tabs    are ',
-      '│ count    so    this                             ',
-      '│ 2026-10-11T10:01:00.000Z  warn      short       ',
-      '│ 2026-10-11T10:00:00.000Z  error     last        '
+    const rows = screenText(viewer.screen)
+    const message = String.raw`tabs\tare\twider\tthan\tthey\tcount\tso\tthis\trow\twraps`
+    assert.deepEqual(rows.slice(1, 5), [
+      `│ 2026-10-11T10:02:00.000Z  info      ${message.slice(0, 38)}…  │`,
+      '│ 2026-10-11T10:01:00.000Z  warn      short                                    │',
+      '│ 2026-10-11T10:00:00.000Z  error     last                                     │',
+      `│${' '.repeat(78)}│`
     ])
-    await press(viewer, 'w')
-    assert.equal(viewer.panel.isWrappingRows, false)
-    const cut = screenText(viewer.screen)
-    assert.deepEqual([cut[1]?.slice(0, 50), cut[2], cut[3]], [wrapped[1]?.slice(0, 50), wrapped[3], wrapped[4]])
-    assert.equal(cut[4], `│${' '.repeat(78)}│`)
     assert.equal(cellStyle(viewer.screen, 2, 1).background, 7)
     await press(viewer, 'w')
-    assert.equal(viewer.panel.isWrappingRows, true)
-    assert.deepEqual(screenText(viewer.screen), wrapped)
+    assert.deepEqual(screenText(viewer.screen), rows)
   })
 })

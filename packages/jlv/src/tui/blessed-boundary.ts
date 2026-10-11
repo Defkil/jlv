@@ -6,9 +6,19 @@ import terminalLibrary from 'neo-blessed'
 import type { ScreenOptions } from 'neo-blessed'
 import type { Widgets } from 'blessed'
 
-const { Box } = terminalLibrary
+const { Box, unicode } = terminalLibrary
 
 const createScreen = (options: ScreenOptions): Widgets.Screen => terminalLibrary.screen(options)
+
+// The cells that blessed gives text on a screen without fullUnicode, as the viewer's screen is: it replaces a wide
+// character with two question marks, drops combining and other zero-width characters, and replaces any other
+// character outside the Basic Multilingual Plane with one question mark. Measured with blessed's own patterns, the
+// viewer's columns line up with what blessed draws.
+const cellCount = (text: string): number => text
+  .replaceAll(unicode.chars.all, '??')
+  .replaceAll(unicode.chars.combining, '')
+  .replaceAll(unicode.chars.surrogate, '?')
+  .length
 
 const createElement = (options: Widgets.BoxOptions): Widgets.BoxElement => terminalLibrary.element(options)
 
@@ -68,6 +78,6 @@ const destroyElement = (element: Widgets.Node): void => {
 }
 
 export {
-  Box, ask, createElement, createList, createPrompt, createQuestion, createScreen, destroyElement, readInput,
+  Box, ask, cellCount, createElement, createList, createPrompt, createQuestion, createScreen, destroyElement, readInput,
   setContentWrapping, toCells
 }
