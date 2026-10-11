@@ -507,10 +507,38 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
   return exitCode === exitCodes.success && ingestion.failed > 0 ? exitCodes.failure : exitCode
 }
 
-// Reads the inputs and the mapping, chooses the output and runs it. Inputs, mapping and terminal are checked before
-// a screen opens, so their errors reach a plain standard error.
+// The keyboard for the viewer, undefined for plain output, or the reason why --output tui cannot have a viewer.
+const chooseKeyboard = (
+  options: ApplicationOptions,
+  environment: ApplicationEnvironment,
+  sources: readonly InputSource[]
+): Keyboard | undefined | { readonly failure: string } => {
+  const { stdin, stdout } = environment
+  if (options.output === 'plain' || options.output === 'jsonl') {
+    return undefined
+  }
+  const isStdinSource = sources.some(source => source.kind === 'stdin')
+  // Records typed into the terminal and keys for the viewer would come from the same device.
+  const isStdinTerminalSource = isStdinSource && stdin.isTTY === true
+  const keyboard = !isStdinTerminalSource && stdout.isTTY === true
+    ? environment.openKeyboard({ stdin, isStdinSource, platform: environment.platform })
+    : undefined
+  if (keyboard !== undefined || options.output !== 'tui') {
+    return keyboard
+  }
+  let reason = 'standard output is no terminal'
+  if (stdout.isTTY === true) {
+    reason = isStdinTerminalSource
+      ? 'standard input is the terminal and carries the records'
+      : 'no terminal to read keys from: standard input carries the records, and no console or /dev/tty could be opened'
+  }
+  return { failure: `the viewer needs a terminal: ${reason}` }
+}
+
+// Reads the inputs and the mapping, chooses the output, creates the save file and runs. All of these are checked
+// before a screen opens, so their errors reach a plain standard error.
 const runApplication = async (options: ApplicationOptions, environment: ApplicationEnvironment): Promise<number> => {
-  const { stderr, stdin, stdout } = environment
+  const { stderr, stdin } = environment
   const fail = (exitCode: number, message: string): number => {
     stderr.write(`jv: ${message}\n`)
     return exitCode
@@ -537,6 +565,10 @@ const runApplication = async (options: ApplicationOptions, environment: Applicat
     }
     throw error
   }
+  const keyboard = chooseKeyboard(options, environment, sources)
+  if (keyboard !== undefined && 'failure' in keyboard) {
+    return fail(exitCodes.failure, keyboard.failure)
+  }
   let saveFile: Writable | undefined
   if (options.save !== undefined) {
     try {
@@ -546,39 +578,25 @@ const runApplication = async (options: ApplicationOptions, environment: Applicat
         inputs: sources.flatMap(source => source.kind === 'stdin' ? [] : source.path)
       })
     } catch (error) {
+      keyboard?.close()
       if (error instanceof SaveFileError) {
         return fail(error.exitCode, error.message)
       }
       throw error
     }
   }
-  const isStdinSource = sources.some(source => source.kind === 'stdin')
   const isLive = options.isFollowing || sources.some(source => source.kind !== 'file')
   const run: Run = { options, environment, sources, mapping, isLive, saveFile }
-  if (options.output === 'plain' || options.output === 'jsonl') {
-    return runMachineOutput(run, options.output)
+  if (keyboard !== undefined) {
+    return runViewer(run, keyboard)
   }
-  // Records typed into the terminal and keys for the viewer would come from the same device.
-  const isStdinTerminalSource = isStdinSource && stdin.isTTY === true
-  const keyboard = !isStdinTerminalSource && stdout.isTTY === true
-    ? environment.openKeyboard({ stdin, isStdinSource, platform: environment.platform })
-    : undefined
-  if (keyboard === undefined) {
-    if (options.output === 'tui') {
-      let reason = 'standard output is no terminal'
-      if (stdout.isTTY === true) {
-        reason = isStdinTerminalSource
-          ? 'standard input is the terminal and carries the records'
-          : 'no terminal to read keys from: standard input carries the records, and no console or /dev/tty could be opened'
-      }
-      return fail(exitCodes.failure, `the viewer needs a terminal: ${reason}`)
-    }
-    if (options.sort !== undefined && options.sort !== 'arrival') {
-      stderr.write(`jv: plain output keeps the arrival order; --sort ${options.sort} applies to the viewer only\n`)
-    }
-    return runMachineOutput(run, 'plain')
+  if (options.output === 'jsonl') {
+    return runMachineOutput(run, 'jsonl')
   }
-  return runViewer(run, keyboard)
+  if (options.output === 'auto' && options.sort !== undefined && options.sort !== 'arrival') {
+    stderr.write(`jv: plain output keeps the arrival order; --sort ${options.sort} applies to the viewer only\n`)
+  }
+  return runMachineOutput(run, 'plain')
 }
 
 export { Ingestion, merge, refreshInterval, runApplication, throttle }

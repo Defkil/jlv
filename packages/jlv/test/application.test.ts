@@ -3,7 +3,9 @@
 // and errors that are reported before a screen opens (plan sections 6.1 and 8, phase 5).
 import assert from 'node:assert/strict'
 import { EventEmitter, once } from 'node:events'
-import { appendFileSync, chmodSync, linkSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  appendFileSync, chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { PassThrough, Writable } from 'node:stream'
@@ -386,6 +388,20 @@ describe('saving records', () => {
     replaced.stdin.end(record(2, 'second run'))
     assert.equal(await replacing, 0)
     assert.deepEqual(savedMessages(saved), ['second run'])
+  })
+
+  it('creates no save file when the viewer cannot start and gives the keyboard back when the save file fails', async () => {
+    const saved = path.join(directory, 'never-created.jsonl')
+    const withoutKeyboard = harness({ hasKeyboard: false })
+    const options = applicationOptions({ inputs: ['characterization.log'], output: 'tui', save: saved })
+    assert.equal(await runApplication(options, withoutKeyboard.environment), 1)
+    assert.equal(existsSync(saved), false)
+    const existing = path.join(directory, 'existing.jsonl')
+    writeFileSync(existing, '')
+    const subject = harness()
+    assert.equal(await runApplication(applicationOptions({ inputs: ['characterization.log'], save: existing }), subject.environment), 2)
+    assert.equal(subject.state.isKeyboardClosed, true)
+    assert.equal(shown(subject.stdout), '')
   })
 
   it('never saves into an input, also with --overwrite, another spelling of its name or a hard link', async () => {
