@@ -20,8 +20,8 @@ A configuration that jlv cannot use ends the run with exit code 2 before jlv rea
 the message names the file and the place of the problem:
 
 ```console
-$ jv --output plain -c misspelled.config.json backup.log; echo $?
-jv: misspelled.config.json: the configuration has the unknown key "timestampUnits" (did you mean timestampUnit?). Known keys: $schema, version, format, mapping, timestampUnit, levels, csv, maxRecords, maxBytes, profiles
+$ jlv --output plain -c misspelled.config.json backup.log; echo $?
+jlv: misspelled.config.json: the configuration has the unknown key "timestampUnits" (did you mean timestampUnit?). Known keys: $schema, version, format, mapping, timestampUnit, levels, csv, maxRecords, maxBytes, profiles
 2
 ```
 
@@ -46,11 +46,11 @@ Monolog writes the time in `datetime`, the level name in `level_name` and levels
 ```
 
 ```console
-$ jv --output plain monolog.log
+$ jlv --output plain monolog.log
 - 200 Matched route "heartbeat" {"context":{},"level_name":"INFO","channel":"request","datetime":"2026-10-11T12:00:00.253060+02:00","extra":{}}
 - 250 Disk usage at 91% {"context":{"disk":"/var"},"level_name":"NOTICE","channel":"monitor","datetime":"2026-10-11T12:00:05.000000+02:00","extra":{}}
 - 550 Database unreachable {"context":{},"level_name":"ALERT","channel":"db","datetime":"2026-10-11T12:00:09.500000+02:00","extra":{}}
-$ jv --output plain -c monolog.config.json monolog.log
+$ jlv --output plain -c monolog.config.json monolog.log
 2026-10-11T10:00:00.253Z info Matched route "heartbeat" {"context":{},"level":200,"channel":"request","extra":{}}
 2026-10-11T10:00:05.000Z info Disk usage at 91% {"context":{"disk":"/var"},"level":250,"channel":"monitor","extra":{}}
 2026-10-11T10:00:09.500Z fatal Database unreachable {"context":{},"level":550,"channel":"db","extra":{}}
@@ -116,13 +116,13 @@ those that match at least one. [profiles.config.json](examples/profiles.config.j
 it runs. jlv reads profiles and never writes them: a filter that you want to keep goes into the file by hand.
 
 ```console
-$ jv --output plain -c profiles.config.json --profile problems pino.log
+$ jlv --output plain -c profiles.config.json --profile problems pino.log
 2026-10-11T10:00:02.500Z error upstream failed {"pid":4120,"hostname":"api-1","reqId":"req-8","err":{"type":"Error","message":"connection refused"}}
 2026-10-11T10:00:03.000Z fatal shutting down {"pid":4120,"hostname":"api-1"}
-$ jv --output plain -c profiles.config.json --profile 'api-1 errors' pino.log
+$ jlv --output plain -c profiles.config.json --profile 'api-1 errors' pino.log
 2026-10-11T10:00:02.500Z error upstream failed {"pid":4120,"hostname":"api-1","reqId":"req-8","err":{"type":"Error","message":"connection refused"}}
-$ jv --output plain -c profiles.config.json --profile slow pino.log; echo $?
-jv: --profile slow names no profile; the profiles of profiles.config.json are problems, api-1 errors
+$ jlv --output plain -c profiles.config.json --profile slow pino.log; echo $?
+jlv: --profile slow names no profile; the profiles of profiles.config.json are problems, api-1 errors
 2
 ```
 
@@ -142,11 +142,11 @@ a path into the [record](formats.md#the-record) as `--output jsonl` writes it: `
 the viewer shows, and in any other value as its JSON text. A record that lacks the field matches neither:
 
 ```console
-$ jv --output plain --where '{"field":["fields","reqId"],"operator":"equals","value":"req-7"}' pino.log
+$ jlv --output plain --where '{"field":["fields","reqId"],"operator":"equals","value":"req-7"}' pino.log
 2026-10-11T10:00:01.250Z warn slow request {"pid":4120,"hostname":"api-1","reqId":"req-7","responseTime":1840}
-$ jv --output plain --where '{"field":["fields","pid"],"operator":"equals","value":4120}' --where '{"field":["message"],"operator":"contains","value":"SHUT"}' pino.log
+$ jlv --output plain --where '{"field":["fields","pid"],"operator":"equals","value":4120}' --where '{"field":["message"],"operator":"contains","value":"SHUT"}' pino.log
 2026-10-11T10:00:03.000Z fatal shutting down {"pid":4120,"hostname":"api-1"}
-$ jv --output plain --where '{"field":["fields","pid"],"operator":"equals","value":"4120"}' pino.log; echo $?
+$ jlv --output plain --where '{"field":["fields","pid"],"operator":"equals","value":"4120"}' pino.log; echo $?
 0
 ```
 
@@ -171,7 +171,7 @@ context=context
 ```
 
 ```console
-$ jv --output plain -c monolog.ini monolog.log
+$ jlv --output plain -c monolog.ini monolog.log
 2026-10-11T10:00:00.253Z info Matched route "heartbeat" {"channel":"request","context":{}}
 2026-10-11T10:00:05.000Z NOTICE Disk usage at 91% {"channel":"monitor","context":{"disk":"/var"}}
 2026-10-11T10:00:09.500Z ALERT Database unreachable {"channel":"db","context":{}}
@@ -188,11 +188,11 @@ Configuration files are data; they cannot load code. Plugins load only from the 
 
 ## Command line
 
-`jv --help` lists every option:
+`jlv --help` lists every option:
 
 ```console
-$ jv --help
-usage: jv [options] [file | 'glob' | -]...
+$ jlv --help
+usage: jlv [options] [file | 'glob' | -]...
 
 Shows log records from files, quoted glob patterns or standard input (-) in a terminal viewer, or writes them as
 text or JSON lines when there is no terminal.

@@ -1,6 +1,6 @@
 // The examples of the documentation (plan section 8, phase 6, upstream issue #7): every console block in docs/*.md
-// runs its jv commands in docs/examples with an empty home directory and must print what the block shows. A command
-// line starts with "$ jv"; the lines after it, up to the next command, are its output. A terminal shows standard
+// runs its jlv commands in docs/examples with an empty home directory and must print what the block shows. A command
+// line starts with "$ jlv"; the lines after it, up to the next command, are its output. A terminal shows standard
 // output and standard error together, so the output may interleave them in any order that keeps the order of each.
 // "; echo $?" after a command adds its exit code as the last line.
 import assert from 'node:assert/strict'
@@ -52,7 +52,7 @@ const run = async (command: string): Promise<{ readonly output: readonly string[
   const isExitCodeShown = command.endsWith(exitCodeSuffix)
   const line = isExitCodeShown ? command.slice(0, -exitCodeSuffix.length) : command
   const [program, ...parameters] = Array.from(line.matchAll(/'([^']*)'|(\S+)/gu), ([, quoted, plain]) => quoted ?? plain ?? '')
-  assert.equal(program, 'jv', `the documentation runs only jv: ${command}`)
+  assert.equal(program, 'jlv', `the documentation runs only jlv: ${command}`)
   const child = spawn(process.execPath, [cli, ...parameters], { cwd: examples, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
   let output = ''
   let errors = ''
@@ -65,7 +65,7 @@ const run = async (command: string): Promise<{ readonly output: readonly string[
 }
 
 // Whether the shown lines are the output and the errors, interleaved in an order that keeps the order of each. Error
-// lines start with "jv:", and records never do in the examples, so taking the next line greedily is enough.
+// lines start with "jlv:", and records never do in the examples, so taking the next line greedily is enough.
 const isInterleaving = (shown: readonly string[], output: readonly string[], errors: readonly string[]): boolean => {
   let outputIndex = 0
   let errorIndex = 0

@@ -13,6 +13,13 @@ import { fixturePath, legacyViewerFixtures, pinoFixtures } from '../../format-fi
 import { hasControls } from '../src/terminal-text.js'
 
 const cli = fileURLToPath(new URL('../src/cli.js', import.meta.url))
+// The version of the package manifest, which the test build mirrors next to the emitted code as the package has it
+// next to dist.
+const manifestVersion = (): string => {
+  const manifest: unknown = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  const version: unknown = typeof manifest === 'object' && manifest !== null ? Reflect.get(manifest, 'version') : undefined
+  return typeof version === 'string' ? version : assert.fail('the manifest has no version')
+}
 const characterization = fixturePath(legacyViewerFixtures.characterization)
 const fixtures = path.dirname(characterization)
 const directory = mkdtempSync(path.join(tmpdir(), 'jlv-cli-'))
@@ -103,48 +110,49 @@ describe('help, version and usage errors', () => {
   it('prints the help and the version without a screen', async () => {
     const help = await run(['--help', 'characterization.log'], { preload: pretendedTerminal })
     assert.equal(help.code, 0)
-    assert.match(help.output, /^usage: jv \[options\] \[file \| 'glob' \| -\]\.\.\.\n/u)
+    assert.match(help.output, /^usage: jlv \[options\] \[file \| 'glob' \| -\]\.\.\.\n/u)
     assert.match(help.output, /--output <mode> {8}auto, tui, plain or jsonl/u)
     assert.equal(help.output, stripVTControlCharacters(help.output))
     const version = await run(['--version'], { preload: pretendedTerminal })
     assert.equal(version.code, 0)
-    assert.equal(version.output, '0.1.2\n')
+    assert.match(version.output, /^\d+\.\d+\.\d+\n$/u)
+    assert.equal(version.output, `${manifestVersion()}\n`)
   })
 
   it('reports usage errors with 2 on standard error and opens no screen', async () => {
     const cases: readonly [readonly string[], RegExp][] = [
-      [['--transformer', 'jlv-pino'], /^jv: --transformer is gone in jlv 2: pino is built in \(--format pino\), and other formats come from plugins \(--plugin <file>\)\n/u],
-      [['-tjs', 'transform.js'], /^jv: -tjs is gone in jlv 2: pino is built in /u],
-      [['--transformer-js=transform.js'], /^jv: --transformer-js is gone in jlv 2: /u],
-      [['--param', '--sort=level'], /^jv: --param is gone in jlv 2: jlv 2 is the viewer itself and takes its options directly; see --help\n/u],
-      [['-o'], /^jv: -o is gone in jlv 2: jlv 2 runs in the current terminal and opens no other shell\n/u],
-      [['--reset'], /^jv: --reset is gone in jlv 2: jlv 2 never writes configuration into the home directory, so there is nothing to reset\n/u],
-      [['-b', 'backup.ini'], /^jv: -b is gone in jlv 2: jlv 2 never writes configuration into the home directory, so there is nothing to back up\n/u],
-      [['--unknown'], /^jv: Unknown option '--unknown'\./u],
-      [['--timestamp-unit', 'hours'], /^jv: --timestamp-unit takes seconds, milliseconds, microseconds, nanoseconds, not 'hours'\n/u],
-      [['--sort=user.name'], /^jv: --sort takes timestamp, level, message or arrival, with a leading - to sort descending, not 'user\.name'\n/u],
-      [['-l', 'notice'], /^jv: --level takes trace, debug, info, warn, error, fatal, unknown, not 'notice'\n/u],
-      [['-l', 'constructor'], /^jv: --level takes trace, debug, info, warn, error, fatal, unknown, not 'constructor'\n/u],
-      [['--level=__proto__'], /^jv: --level takes trace, debug, info, warn, error, fatal, unknown, not '__proto__'\n/u],
-      [['--__proto__.polluted=yes'], /^jv: Unknown option '--__proto__\.polluted'\./u],
+      [['--transformer', 'jlv-pino'], /^jlv: --transformer is gone in jlv 2: pino is built in \(--format pino\), and other formats come from plugins \(--plugin <file>\)\n/u],
+      [['-tjs', 'transform.js'], /^jlv: -tjs is gone in jlv 2: pino is built in /u],
+      [['--transformer-js=transform.js'], /^jlv: --transformer-js is gone in jlv 2: /u],
+      [['--param', '--sort=level'], /^jlv: --param is gone in jlv 2: jlv 2 is the viewer itself and takes its options directly; see --help\n/u],
+      [['-o'], /^jlv: -o is gone in jlv 2: jlv 2 runs in the current terminal and opens no other shell\n/u],
+      [['--reset'], /^jlv: --reset is gone in jlv 2: jlv 2 never writes configuration into the home directory, so there is nothing to reset\n/u],
+      [['-b', 'backup.ini'], /^jlv: -b is gone in jlv 2: jlv 2 never writes configuration into the home directory, so there is nothing to back up\n/u],
+      [['--unknown'], /^jlv: Unknown option '--unknown'\./u],
+      [['--timestamp-unit', 'hours'], /^jlv: --timestamp-unit takes seconds, milliseconds, microseconds, nanoseconds, not 'hours'\n/u],
+      [['--sort=user.name'], /^jlv: --sort takes timestamp, level, message or arrival, with a leading - to sort descending, not 'user\.name'\n/u],
+      [['-l', 'notice'], /^jlv: --level takes trace, debug, info, warn, error, fatal, unknown, not 'notice'\n/u],
+      [['-l', 'constructor'], /^jlv: --level takes trace, debug, info, warn, error, fatal, unknown, not 'constructor'\n/u],
+      [['--level=__proto__'], /^jlv: --level takes trace, debug, info, warn, error, fatal, unknown, not '__proto__'\n/u],
+      [['--__proto__.polluted=yes'], /^jlv: Unknown option '--__proto__\.polluted'\./u],
       // The message quotes the argument as visible text: no window title, no bell.
-      [['--\u{1B}]0;title\u{7}bad\u{7}'], /^jv: Unknown option '--bad\\u0007'\./u],
-      [['--sort'], /^jv: Option '--sort <value>' argument missing/u],
-      [['--sort', '-timestamp', 'a.log'], /^jv: Option '--sort' argument is ambiguous\./u],
-      [['--output', 'html'], /^jv: --output takes auto, tui, plain or jsonl, not 'html'\n/u],
-      [['--output=plain', '--sort=level'], /^jv: --output plain writes the records in arrival order; --sort level needs the viewer\n/u],
-      [['--max-records', '0'], /^jv: --max-records needs a whole number from 1 to 4294967295, not '0'\n/u],
-      [['--max-bytes=1e3'], /^jv: --max-bytes needs a whole number from 1 to 4294967295, not '1e3'\n/u],
-      [['--overwrite', 'a.log'], /^jv: --overwrite needs --save\n/u],
-      [['--where', 'message~slow'], /^jv: --where takes a clause in JSON, such as \{"field":\["message"\],"operator":"contains","value":"timeout"\}: /u],
-      [['--where={"field":["msg"],"operator":"contains","value":"x"}'], /^jv: --where: the clause\.field must start with a part of the record, /u],
-      [['--where', '{"field":["message"],"operator":"equals"}'], /^jv: --where: the clause\.value must be a JSON value\n/u]
+      [['--\u{1B}]0;title\u{7}bad\u{7}'], /^jlv: Unknown option '--bad\\u0007'\./u],
+      [['--sort'], /^jlv: Option '--sort <value>' argument missing/u],
+      [['--sort', '-timestamp', 'a.log'], /^jlv: Option '--sort' argument is ambiguous\./u],
+      [['--output', 'html'], /^jlv: --output takes auto, tui, plain or jsonl, not 'html'\n/u],
+      [['--output=plain', '--sort=level'], /^jlv: --output plain writes the records in arrival order; --sort level needs the viewer\n/u],
+      [['--max-records', '0'], /^jlv: --max-records needs a whole number from 1 to 4294967295, not '0'\n/u],
+      [['--max-bytes=1e3'], /^jlv: --max-bytes needs a whole number from 1 to 4294967295, not '1e3'\n/u],
+      [['--overwrite', 'a.log'], /^jlv: --overwrite needs --save\n/u],
+      [['--where', 'message~slow'], /^jlv: --where takes a clause in JSON, such as \{"field":\["message"\],"operator":"contains","value":"timeout"\}: /u],
+      [['--where={"field":["msg"],"operator":"contains","value":"x"}'], /^jlv: --where: the clause\.field must start with a part of the record, /u],
+      [['--where', '{"field":["message"],"operator":"equals"}'], /^jlv: --where: the clause\.value must be a JSON value\n/u]
     ]
     for (const [parameters, message] of cases) {
       const result = await run(parameters, { preload: pretendedTerminal })
       assert.equal(result.code, 2, parameters.join(' '))
       assert.match(result.errors, message)
-      assert.match(result.errors, /\nusage: jv \[options\] \[file \| 'glob' \| -\]\.\.\.\nRun jv --help for the options\.\n$/u)
+      assert.match(result.errors, /\nusage: jlv \[options\] \[file \| 'glob' \| -\]\.\.\.\nRun jlv --help for the options\.\n$/u)
       assert.equal(result.output, '')
     }
   })
@@ -152,22 +160,22 @@ describe('help, version and usage errors', () => {
   it('reports a configuration file that is missing or excluded with 2', async () => {
     const missing = await run(['--config', 'missing.json', 'characterization.log'], { preload: pretendedTerminal })
     assert.equal(missing.code, 2)
-    assert.equal(missing.errors, 'jv: the configuration file missing.json does not exist\n')
+    assert.equal(missing.errors, 'jlv: the configuration file missing.json does not exist\n')
     assert.equal(missing.output, '')
     const both = await run(['-c', 'characterization.log', '--no-config', 'characterization.log'])
     assert.equal(both.code, 2)
-    assert.equal(both.errors, 'jv: --config and --no-config exclude each other\n')
+    assert.equal(both.errors, 'jlv: --config and --no-config exclude each other\n')
   })
 
   // Upstream printed "error: missing log file" to standard output and ended with 1.
   it('reports a missing input on a terminal with 2 and a missing file with 1', async () => {
     const none = await run([], { preload: pretendedTerminal })
     assert.equal(none.code, 2)
-    assert.equal(none.errors, 'jv: no input: name a log file or pipe records into jv\n')
+    assert.equal(none.errors, 'jlv: no input: name a log file or pipe records into jlv\n')
     assert.equal(none.output, '')
     const missing = await run(['missing.log'])
     assert.equal(missing.code, 1)
-    assert.equal(missing.errors, 'jv: cannot read \'missing.log\': no such file\n')
+    assert.equal(missing.errors, 'jlv: cannot read \'missing.log\': no such file\n')
   })
 })
 
@@ -185,7 +193,7 @@ describe('output without a terminal', () => {
     assert.equal(result.output.trimEnd().split('\n').length, 7)
     assert.match(result.output, /^\{"identifier":"1:2","source":\{"identifier":"1","label":"characterization\.log","order":0\},/u)
     assert.match(result.output, /^[^\n]*"position":\{"recordNumber":2,"firstLine":2,"lastLine":2\},"timestamp":1791713220000,"level":"error","message":"bravo 07"/u)
-    assert.match(result.errors, /^jv: characterization\.log:5: skipped a line that is no JSON\n/u)
+    assert.match(result.errors, /^jlv: characterization\.log:5: skipped a line that is no JSON\n/u)
   })
 
   // minimist turned -l 30 into a number that matched pino's raw level 30. Levels are normalized now: -l takes a level
@@ -198,7 +206,7 @@ describe('output without a terminal', () => {
     assert.equal(unknown.output.trimEnd().split('\n').length, 3)
     const numeric = await run(['-l', '30', 'numeric-levels.log'])
     assert.equal(numeric.code, 2)
-    assert.match(numeric.errors, /^jv: --level takes trace, debug, info, warn, error, fatal, unknown, not '30'\n/u)
+    assert.match(numeric.errors, /^jlv: --level takes trace, debug, info, warn, error, fatal, unknown, not '30'\n/u)
   })
 
   // minimist turned numeric arguments into numbers: jv 5 read file descriptor 5, and jv 0 reported a missing file.
@@ -337,7 +345,7 @@ describe('saving records', () => {
       '"level":"error","message":"bravo 07","requestId":"req-07","user":{"id":7,"name":"user 07"}}}')
     const again = await run(['-s', saved, 'characterization.log'])
     assert.equal(again.code, 2)
-    assert.equal(again.errors, `jv: cannot save to '${saved}': the file exists; --overwrite replaces it\n`)
+    assert.equal(again.errors, `jlv: cannot save to '${saved}': the file exists; --overwrite replaces it\n`)
     assert.equal(again.output, '')
     const replaced = await run(['--save', saved, '--overwrite', 'numeric-levels.log'])
     assert.equal(replaced.code, 0)
@@ -347,7 +355,7 @@ describe('saving records', () => {
   it('refuses to save into an input', async () => {
     const result = await run(['--save=characterization.log', '--overwrite', 'characterization.log'])
     assert.equal(result.code, 2)
-    assert.equal(result.errors, 'jv: cannot save to \'characterization.log\': it is one of the inputs\n')
+    assert.equal(result.errors, 'jlv: cannot save to \'characterization.log\': it is one of the inputs\n')
   })
 })
 
@@ -392,7 +400,7 @@ describe('a process without a terminal', () => {
   it('fails at once with 1 for --output tui', async () => {
     const result = await run(['--output', 'tui'], { input: record(1, 'piped'), preload: pretendedOutput, isDetached: true })
     assert.equal(result.code, 1)
-    assert.match(result.errors, /^jv: the viewer needs a terminal: no terminal to read keys from: /u)
+    assert.match(result.errors, /^jlv: the viewer needs a terminal: no terminal to read keys from: /u)
     assert.equal(result.output, '')
   })
 })

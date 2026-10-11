@@ -2,9 +2,9 @@
 
 jlv 1 was a wrapper: it merged log files, copied a `.json-log-viewer` file into the home directory and started
 json-log-viewer, whose command is `jv`, for the merged file. jlv 2 is the viewer itself; it continues
-json-log-viewer and replaces both. These notes list what changes for users of either. Until the 2.0 release, the
-command is still called `jv`. The examples on this page run in [examples](examples), and the tests run every one of
-them.
+json-log-viewer and replaces both. Its command is `jlv`; `jv` stays json-log-viewer's, so both can be installed side
+by side. These notes list what changes for users of either. The examples on this page run in [examples](examples), and
+the tests run every one of them.
 
 jlv 2 needs Node 22.9 or later.
 
@@ -12,7 +12,7 @@ jlv 2 needs Node 22.9 or later.
 
 | jlv 1 | jlv 2 |
 | --- | --- |
-| `-f, --files <glob>` | the same; files and quoted patterns also work without it, as in `jv app.log 'logs/*.log'` |
+| `-f, --files <glob>` | the same; files and quoted patterns also work without it, as in `jlv app.log 'logs/*.log'` |
 | `-c, --config <path>` | reads that file directly, JSON or the legacy INI form, and copies nothing |
 | `-s, --save <path>` | writes the records as JSON lines of the [record](formats.md#the-record), not the merged lines, and only into a new file unless `--overwrite` is given |
 | `-p, --param <param>` | gone: jlv 2 takes the viewer's options directly |
@@ -25,10 +25,10 @@ jlv 2 needs Node 22.9 or later.
 A removed option ends the run with exit code 2 and names what replaces it:
 
 ```console
-$ jv --transformer jlv-pino pino.log; echo $?
-jv: --transformer is gone in jlv 2: pino is built in (--format pino), and other formats come from plugins (--plugin <file>)
-usage: jv [options] [file | 'glob' | -]...
-Run jv --help for the options.
+$ jlv --transformer jlv-pino pino.log; echo $?
+jlv: --transformer is gone in jlv 2: pino is built in (--format pino), and other formats come from plugins (--plugin <file>)
+usage: jlv [options] [file | 'glob' | -]...
+Run jlv --help for the options.
 2
 ```
 
@@ -44,12 +44,12 @@ jlv recognizes pino's records by itself, so jlv-pino is no longer needed.
   and the aliases of [Levels](formats.md#levels). Since jlv reads pino's numbers as names, `-l 30` is `-l info`:
 
 ```console
-$ jv --output plain -l 30 pino.log; echo $?
-jv: --level takes trace, debug, info, warn, error, fatal, unknown, not '30'
-usage: jv [options] [file | 'glob' | -]...
-Run jv --help for the options.
+$ jlv --output plain -l 30 pino.log; echo $?
+jlv: --level takes trace, debug, info, warn, error, fatal, unknown, not '30'
+usage: jlv [options] [file | 'glob' | -]...
+Run jlv --help for the options.
 2
-$ jv --output plain -l INFO pino.log
+$ jlv --output plain -l INFO pino.log
 2026-10-11T10:00:00.000Z info server listening {"pid":4120,"hostname":"api-1","port":8080}
 ```
 

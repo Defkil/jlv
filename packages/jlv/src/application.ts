@@ -133,7 +133,7 @@ const isAbortError = (error: unknown): boolean => error instanceof Error && erro
 const errorMessage = (error: unknown): string => error instanceof Error ? error.message : String(error)
 
 // A line for standard error. Its text may name inputs, fields and values of records, so it shows only visible text.
-const errorLine = (message: string): string => `jv: ${visibleText(message)}\n`
+const errorLine = (message: string): string => `jlv: ${visibleText(message)}\n`
 
 // The next batch of a source, or the error it failed with.
 type Pending<T> =

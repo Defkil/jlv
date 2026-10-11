@@ -300,7 +300,7 @@ describe('ending the viewer with a dialog open', () => {
     subject.stdin.write('not json\n')
     assert.equal(await ended(running, subject), 1)
     assert.equal(subject.state.isKeyboardClosed, true)
-    assert.equal(subject.stderr.text, 'jv: stdin:2: skipped a line that is no JSON\njv: --strict stops at the first record that cannot be read\n')
+    assert.equal(subject.stderr.text, 'jlv: stdin:2: skipped a line that is no JSON\njlv: --strict stops at the first record that cannot be read\n')
   })
 })
 
@@ -312,17 +312,17 @@ describe('output without a viewer', () => {
     stdin.end(record(2, 'second', 'warn') + record(1, 'first'))
     assert.equal(await running, 0)
     assert.equal(stdout.text, '2026-10-11T10:02:00.000Z warn second\n2026-10-11T10:01:00.000Z info first\n')
-    assert.equal(stderr.text, 'jv: plain output keeps the arrival order; --sort level applies to the viewer only\n')
+    assert.equal(stderr.text, 'jlv: plain output keeps the arrival order; --sort level applies to the viewer only\n')
   })
 
   it('fails with 1 for --output tui without a keyboard or without a terminal and opens no screen', async () => {
     const withoutKeyboard = harness({ hasKeyboard: false })
     assert.equal(await runApplication(applicationOptions({ output: 'tui' }), withoutKeyboard.environment), 1)
-    assert.match(withoutKeyboard.stderr.text, /^jv: the viewer needs a terminal: no terminal to read keys from: /u)
+    assert.match(withoutKeyboard.stderr.text, /^jlv: the viewer needs a terminal: no terminal to read keys from: /u)
     assert.equal(shown(withoutKeyboard.stdout), '')
     const withoutTerminal = harness({ stdout: new TextOutput() })
     assert.equal(await runApplication(applicationOptions({ output: 'tui', inputs: ['characterization.log'] }), withoutTerminal.environment), 1)
-    assert.equal(withoutTerminal.stderr.text, 'jv: the viewer needs a terminal: standard output is no terminal\n')
+    assert.equal(withoutTerminal.stderr.text, 'jlv: the viewer needs a terminal: standard output is no terminal\n')
   })
 
   it('writes plain text when the records come from the terminal itself through -', async () => {
@@ -336,7 +336,7 @@ describe('output without a viewer', () => {
     const viewer = harness()
     viewer.stdin.isTTY = true
     assert.equal(await runApplication(applicationOptions({ inputs: ['-'], output: 'tui' }), viewer.environment), 1)
-    assert.equal(viewer.stderr.text, 'jv: the viewer needs a terminal: standard input is the terminal and carries the records\n')
+    assert.equal(viewer.stderr.text, 'jlv: the viewer needs a terminal: standard input is the terminal and carries the records\n')
   })
 
   it('writes the records that match the level as JSON lines in arrival order and reports skipped lines', async () => {
@@ -347,10 +347,10 @@ describe('output without a viewer', () => {
     const messages = stdout.text.trimEnd().split('\n').map(line => Reflect.get(JSON.parse(line) as object, 'message') as unknown)
     assert.deepEqual(messages, ['bravo 07', 'bravo 19', 'delta 03', 'delta 15', 'delta 27', 'foxtrot 11', 'foxtrot 23'])
     assert.equal(stderr.text, [
-      'jv: characterization.log:5: skipped a line that is no JSON',
-      'jv: characterization.log:11: skipped a line that is no JSON',
-      'jv: characterization.log:20: skipped a JSON value that is no object',
-      'jv: characterization.log:26: skipped a JSON value that is no object',
+      'jlv: characterization.log:5: skipped a line that is no JSON',
+      'jlv: characterization.log:11: skipped a line that is no JSON',
+      'jlv: characterization.log:20: skipped a JSON value that is no object',
+      'jlv: characterization.log:26: skipped a JSON value that is no object',
       ''
     ].join('\n'))
   })
@@ -363,8 +363,8 @@ describe('output without a viewer', () => {
     assert.equal(await running, 0)
     const lines = stderr.text.trimEnd().split('\n')
     assert.equal(lines.length, 11)
-    assert.equal(lines[9], 'jv: stdin:10: skipped a line that is no JSON')
-    assert.equal(lines[10], 'jv: skipped 12 lines in total, the first 10 of them shown above')
+    assert.equal(lines[9], 'jlv: stdin:10: skipped a line that is no JSON')
+    assert.equal(lines[10], 'jlv: skipped 12 lines in total, the first 10 of them shown above')
   })
 
   it('fails with 1 when nonempty input holds no records', async () => {
@@ -372,7 +372,7 @@ describe('output without a viewer', () => {
     const running = runApplication(applicationOptions({ output: 'plain' }), environment)
     stdin.end('garbage\n{"truncated":\n')
     assert.equal(await running, 1)
-    assert.match(stderr.text, /jv: the input holds no records, only 2 skipped lines\n$/u)
+    assert.match(stderr.text, /jlv: the input holds no records, only 2 skipped lines\n$/u)
   })
 
   it('reads from a live input only as fast as a slow output takes the records, and stops on SIGINT', async () => {
@@ -485,7 +485,7 @@ describe('saving records', () => {
     assert.deepEqual(savedMessages(saved), ['first run'])
     const refused = harness({ stdout: new TextOutput() })
     assert.equal(await runApplication(applicationOptions({ output: 'plain', save: saved }), refused.environment), 2)
-    assert.equal(refused.stderr.text, `jv: cannot save to '${saved}': the file exists; --overwrite replaces it\n`)
+    assert.equal(refused.stderr.text, `jlv: cannot save to '${saved}': the file exists; --overwrite replaces it\n`)
     const replaced = harness({ stdout: new TextOutput() })
     const replacing = runApplication(applicationOptions({ output: 'plain', save: saved, isOverwriting: true }), replaced.environment)
     replaced.stdin.end(record(2, 'second run'))
@@ -518,7 +518,7 @@ describe('saving records', () => {
       }
       const { stdout, stderr, environment } = harness({ stdout: new TextOutput() })
       assert.equal(await runApplication(applicationOptions({ inputs: [input], save, isOverwriting: true }), environment), 2)
-      assert.equal(stderr.text, `jv: cannot save to '${save}': it is one of the inputs\n`)
+      assert.equal(stderr.text, `jlv: cannot save to '${save}': it is one of the inputs\n`)
       assert.equal(shown(stdout), '')
     }
     assert.equal(readFileSync(input, 'utf8'), record(1, 'kept'))
@@ -537,9 +537,9 @@ describe('diagnostics', () => {
     assert.equal(await running, 0)
     assert.equal(stdout.text, '2026-10-11 10:01:00 - naive 1\n2026-10-11 10:02:00 - naive 2\n2026-10-11 10:03:00 - naive 3\n')
     assert.equal(stderr.text, [
-      'jv: stdin:1: warning: the timestamp "2026-10-11 10:01:00" has no zone; it is shown as text and sorts last',
-      'jv: stdin:3: skipped a line that is no JSON',
-      'jv: 3 warnings in total, the first of each kind shown above',
+      'jlv: stdin:1: warning: the timestamp "2026-10-11 10:01:00" has no zone; it is shown as text and sorts last',
+      'jlv: stdin:3: skipped a line that is no JSON',
+      'jlv: 3 warnings in total, the first of each kind shown above',
       ''
     ].join('\n'))
   })
@@ -552,7 +552,7 @@ describe('diagnostics', () => {
     const key = 'key\u{1B}]0;title\u{7}\u{7}'
     stdin.end(`msg=one ${key}=1 ${key}=2\n`)
     assert.equal(await running, 0)
-    assert.equal(stderr.text, String.raw`jv: stdin:1: warning: the key key\u0007 appears more than once; its last value counts` + '\n')
+    assert.equal(stderr.text, String.raw`jlv: stdin:1: warning: the key key\u0007 appears more than once; its last value counts` + '\n')
     assert.equal(hasControls(stdout.text.trimEnd()), false)
   })
 
@@ -563,7 +563,7 @@ describe('diagnostics', () => {
     stdin.end(`${record(1, 'kept')}{"truncated":\n${record(2, 'never read')}`)
     assert.equal(await running, 1)
     assert.equal(stdout.text, '2026-10-11T10:01:00.000Z info kept\n')
-    assert.equal(stderr.text, 'jv: stdin:2: skipped a line that is no JSON\njv: --strict stops at the first record that cannot be read\n')
+    assert.equal(stderr.text, 'jlv: stdin:2: skipped a line that is no JSON\njlv: --strict stops at the first record that cannot be read\n')
   })
 
   it('close the viewer at the first error with --strict and report it afterwards', async () => {
@@ -572,7 +572,7 @@ describe('diagnostics', () => {
     stdin.write(`${record(1, 'kept')}not json\n`)
     assert.equal(await running, 1)
     assert.equal(state.isKeyboardClosed, true)
-    assert.equal(stderr.text, 'jv: stdin:2: skipped a line that is no JSON\njv: --strict stops at the first record that cannot be read\n')
+    assert.equal(stderr.text, 'jlv: stdin:2: skipped a line that is no JSON\njlv: --strict stops at the first record that cannot be read\n')
   })
 
   it('read numeric timestamps in the unit of --timestamp-unit', async () => {
@@ -609,7 +609,7 @@ describe('configuration', () => {
     const overridden = harness({ stdout: new TextOutput() })
     const options = applicationOptions({ inputs: ['app.log'], output: 'plain', format: 'jsonl' })
     assert.equal(await runApplication(options, { ...overridden.environment, workingDirectory: project }), 1)
-    assert.match(overridden.stderr.text, /^jv: app\.log:1: skipped a line that is no JSON\n/u)
+    assert.match(overridden.stderr.text, /^jlv: app\.log:1: skipped a line that is no JSON\n/u)
     const ignored = harness({ stdout: new TextOutput() })
     const withoutFile = applicationOptions({ inputs: ['app.log'], output: 'plain', format: 'logfmt', isConfigurationDisabled: true })
     assert.equal(await runApplication(withoutFile, { ...ignored.environment, workingDirectory: project }), 0)
@@ -633,13 +633,13 @@ describe('configuration', () => {
     assert.equal(await runApplication(applicationOptions({ inputs: ['app.log'], configuration: 'missing.json' }), {
       ...missing.environment, workingDirectory: project
     }), 2)
-    assert.equal(missing.stderr.text, 'jv: the configuration file missing.json does not exist\n')
+    assert.equal(missing.stderr.text, 'jlv: the configuration file missing.json does not exist\n')
     assert.equal(shown(missing.stdout), '')
     const unknownFormat = harness()
     assert.equal(await runApplication(applicationOptions({ inputs: ['app.log'], format: 'xml' }), {
       ...unknownFormat.environment, workingDirectory: project
     }), 2)
-    assert.equal(unknownFormat.stderr.text, 'jv: --format takes auto or one of docker, bunyan, pino, logfmt, csv, winston, jsonl, not \'xml\'\n')
+    assert.equal(unknownFormat.stderr.text, 'jlv: --format takes auto or one of docker, bunyan, pino, logfmt, csv, winston, jsonl, not \'xml\'\n')
   })
 })
 
@@ -649,18 +649,18 @@ describe('errors before a screen opens', () => {
     mkdirSync(path.join(unreadable, '.json-log-viewer'), { recursive: true })
     const { stdout, stderr, environment } = harness({ home: unreadable })
     assert.equal(await runApplication(applicationOptions({ inputs: ['characterization.log'] }), environment), 2)
-    assert.match(stderr.text, /^jv: cannot read the configuration file .*\.json-log-viewer: /u)
+    assert.match(stderr.text, /^jlv: cannot read the configuration file .*\.json-log-viewer: /u)
     assert.equal(shown(stdout), '')
   })
 
   it('reports a missing file with 1 and no input on a terminal with 2', async () => {
     const missing = harness()
     assert.equal(await runApplication(applicationOptions({ inputs: ['missing.log'] }), missing.environment), 1)
-    assert.equal(missing.stderr.text, 'jv: cannot read \'missing.log\': no such file\n')
+    assert.equal(missing.stderr.text, 'jlv: cannot read \'missing.log\': no such file\n')
     const terminal = harness()
     terminal.stdin.isTTY = true
     assert.equal(await runApplication(applicationOptions(), terminal.environment), 2)
-    assert.equal(terminal.stderr.text, 'jv: no input: name a log file or pipe records into jv\n')
+    assert.equal(terminal.stderr.text, 'jlv: no input: name a log file or pipe records into jlv\n')
     assert.equal(shown(terminal.stdout), '')
   })
 
@@ -673,7 +673,7 @@ describe('errors before a screen opens', () => {
     const { stderr, environment } = harness({ stdout })
     const running = runApplication(applicationOptions({ inputs: [locked, characterization], output: 'plain' }), environment)
     assert.equal(await running, 1)
-    assert.match(stderr.text, /jv: cannot read '.*locked\.log': .*EACCES/u)
+    assert.match(stderr.text, /jlv: cannot read '.*locked\.log': .*EACCES/u)
     assert.match(stdout.text, /foxtrot 29/u)
   })
 })
@@ -740,15 +740,15 @@ describe('filters of the command line', () => {
   it('refuse a profile or a predicate that does not exist with 2 before a screen opens', async () => {
     const profile = harness()
     assert.equal(await runApplication(applicationOptions({ inputs: ['app.log'], profile: 'missing' }), inProject(profile)), 2)
-    assert.equal(profile.stderr.text, 'jv: --profile missing names no profile; the profiles of jlv.config.json are requests, roundTrip\n')
+    assert.equal(profile.stderr.text, 'jlv: --profile missing names no profile; the profiles of jlv.config.json are requests, roundTrip\n')
     assert.equal(shown(profile.stdout), '')
     const withoutFile = harness()
     assert.equal(await runApplication(applicationOptions({ inputs: [log], profile: 'requests', isConfigurationDisabled: true }), withoutFile.environment), 2)
-    assert.equal(withoutFile.stderr.text, 'jv: --profile requests names no profile; no configuration file was read\n')
+    assert.equal(withoutFile.stderr.text, 'jlv: --profile requests names no profile; no configuration file was read\n')
     const predicate = harness()
     const options = applicationOptions({ inputs: ['app.log'], plugins: ['./predicates.mjs'], predicates: ['isLoud'] })
     assert.equal(await runApplication(options, inProject(predicate)), 2)
-    assert.equal(predicate.stderr.text, 'jv: --predicate isLoud names no predicate; the predicates of the plugins of --plugin are hasUser, noA\n')
+    assert.equal(predicate.stderr.text, 'jlv: --predicate isLoud names no predicate; the predicates of the plugins of --plugin are hasUser, noA\n')
   })
 
   it('report the first failure of a predicate, leave out the records that it failed on and end with 1', async () => {
@@ -759,7 +759,7 @@ describe('filters of the command line', () => {
     assert.equal(messages.length, 26)
     assert.ok(messages.every(message => !message.startsWith('a')))
     assert.equal(subject.stderr.text.split('\n').filter(line => line.includes('predicate')).join('\n'),
-      'jv: the predicate noA of the plugin ./predicates.mjs failed: cannot judge alpha 00; it left out the records it failed on')
+      'jlv: the predicate noA of the plugin ./predicates.mjs failed: cannot judge alpha 00; it left out the records it failed on')
   })
 
   it('start the viewer with the filter of the command line and save what it keeps, whatever the viewer changes', async () => {
@@ -790,7 +790,7 @@ describe('filters of the command line', () => {
     copyFileSync(characterization, path.join(elsewhere, 'app.log'))
     const subject = harness({ stdout: new TextOutput() })
     assert.equal(await runApplication(applicationOptions({ inputs: ['app.log'], output: 'plain' }), { ...subject.environment, workingDirectory: elsewhere }), 2)
-    assert.match(subject.stderr.text, /^jv: jlv\.config\.json: the configuration has the unknown key "plugin"/u)
+    assert.match(subject.stderr.text, /^jlv: jlv\.config\.json: the configuration has the unknown key "plugin"/u)
     assert.equal(existsSync(marker), false)
   })
 })

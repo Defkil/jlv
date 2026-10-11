@@ -118,7 +118,7 @@ const information = (label: string, order: number): SourceInformation => ({ iden
 const resolveInputs = async (inputArguments: readonly string[], options: ResolveOptions): Promise<InputSource[]> => {
   if (inputArguments.length === 0) {
     if (options.isStdinTerminal) {
-      throw new InputError('no input: name a log file or pipe records into jv', 2)
+      throw new InputError('no input: name a log file or pipe records into jlv', 2)
     }
     return [{ kind: 'stdin', information: information(stdinLabel, 0) }]
   }

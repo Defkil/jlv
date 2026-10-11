@@ -1,5 +1,5 @@
 {
-  "name": "json-log-viewer",
+  "name": "jlv",
   "version": "0.1.2",
   "description": "JSON Log Viewer",
   "type": "module",
@@ -10,7 +10,7 @@
     "node": ">=22.9.0"
   },
   "bin": {
-    "jv": "./dist/cli.js"
+    "jlv": "./dist/cli.js"
   },
   "types": "./dist/api.d.ts",
   "exports": {

@@ -120,7 +120,7 @@ describe('standard input', () => {
   })
 
   it('reports a usage error with exit code 2 without arguments when standard input is a terminal', async () => {
-    await assert.rejects(resolveInputs([], options), rejection(2, /^no input: name a log file or pipe records into jv$/u))
+    await assert.rejects(resolveInputs([], options), rejection(2, /^no input: name a log file or pipe records into jlv$/u))
   })
 
   it('reads standard input only where - names it, once', async () => {

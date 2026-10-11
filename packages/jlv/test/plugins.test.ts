@@ -221,6 +221,6 @@ describe('plugins in a run', () => {
 
   it('end with 1 when a plugin cannot be loaded', async () => {
     const failed = await run({ plugins: ['./version-2.mjs'] })
-    assert.deepEqual([failed.code, failed.errors], [1, 'jv: cannot load the plugin ./version-2.mjs: it has the apiVersion 2, and this jlv takes plugins of apiVersion 1\n'])
+    assert.deepEqual([failed.code, failed.errors], [1, 'jlv: cannot load the plugin ./version-2.mjs: it has the apiVersion 2, and this jlv takes plugins of apiVersion 1\n'])
   })
 })

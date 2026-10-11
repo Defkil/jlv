@@ -110,9 +110,10 @@ into plan §0 and the release notes.
 
 ## Part B: release gate
 
-Run once per runtime. Before phase 8 the command is still `jv`: build the repository with
-`pnpm run build` and start `packages\jlv\dist\cli.js` with the runtime under test.
-After phase 8, use the packed `jlv` tarball installed in a scratch project instead.
+Run once per runtime. Build the repository with `pnpm run build` and start
+`packages\jlv\dist\cli.js`, the `jlv` command, with the runtime under test. Once the
+package can be packed, use the packed `jlv` tarball installed in a scratch project
+instead.
 
 ```powershell
 $jlv = "C:\path\to\jlv\packages\jlv\dist\cli.js"

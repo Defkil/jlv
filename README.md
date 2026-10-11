@@ -4,8 +4,7 @@
 
 jlv 2 continues [json-log-viewer](https://github.com/gistia/json-log-viewer) in this repository. It replaces the
 jlv 1 wrapper, which merged log files and started json-log-viewer for them. The work is in progress: the viewer
-lives in `packages/jlv`, its command stays `jv` until the 2.0 release, and [docs/v2-plan.md](docs/v2-plan.md)
-describes the remaining steps.
+lives in `packages/jlv`, its command is `jlv`, and [docs/v2-plan.md](docs/v2-plan.md) describes the remaining steps.
 
 ## Documentation
 

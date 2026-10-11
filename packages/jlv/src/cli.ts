@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Successor of upstream src/index.js, the jv command: reads the arguments, prints the help, the version and usage
-// errors, and runs the application with the process's streams. It sets the exit code and lets the process end by
-// itself once the application has closed its streams and the terminal. The modules it imports have no effects on
+// The jlv command, successor of upstream src/index.js (upstream's jv): reads the arguments, prints the help, the version
+// and usage errors, and runs the application with the process's streams. It sets the exit code and lets the process end
+// by itself once the application has closed its streams and the terminal. The modules it imports have no effects on
 // import.
 import { readFileSync } from 'node:fs'
 import os from 'node:os'
@@ -13,7 +13,7 @@ import { commonLevel, logLevels, timestampUnits } from './record.js'
 import { openKeyboard } from './terminal.js'
 import { visibleText } from './terminal-text.js'
 
-const usage = 'usage: jv [options] [file | \'glob\' | -]...'
+const usage = 'usage: jlv [options] [file | \'glob\' | -]...'
 
 const help = `${usage}
 
@@ -244,7 +244,7 @@ const main = async (): Promise<number> => {
   } catch (error) {
     if (isParseError(error) || error instanceof UsageError) {
       // The message may quote an argument, which shows as visible text only.
-      process.stderr.write(`jv: ${visibleText(error.message)}\n${usage}\nRun jv --help for the options.\n`)
+      process.stderr.write(`jlv: ${visibleText(error.message)}\n${usage}\nRun jlv --help for the options.\n`)
       return 2
     }
     throw error

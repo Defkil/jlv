@@ -48,7 +48,7 @@ followed file, jlv waits at most 200 ms after the first complete line for the re
 Each input keeps its own format, so files of different formats can be read together:
 
 ```console
-$ jv --output plain worker.log orders.csv
+$ jlv --output plain worker.log orders.csv
 2026-10-11T10:00:00.000Z info worker started {"queue":"mail"}
 2026-10-11T10:00:02.000Z warn retrying job {"job":"17","attempt":"2"}
 2026-10-11T10:00:00.000Z info order placed {"order":"A-17"}
@@ -76,7 +76,7 @@ Every record has these parts, whatever its format:
 `--output jsonl` and `--save` write records in this form, one JSON object per line:
 
 ```console
-$ jv --output jsonl --level fatal pino.log
+$ jlv --output jsonl --level fatal pino.log
 {"identifier":"1:4","source":{"identifier":"1","label":"pino.log","order":0},"position":{"recordNumber":4,"firstLine":4,"lastLine":4},"timestamp":1791712803000,"level":"fatal","message":"shutting down","fields":{"level":60,"time":1791712803000,"pid":4120,"hostname":"api-1","msg":"shutting down"}}
 ```
 
@@ -111,10 +111,10 @@ The viewer and `--output plain` show times in UTC, with milliseconds.
 `backup.log` holds seconds, which jlv reads as milliseconds until it is told otherwise:
 
 ```console
-$ jv --output plain backup.log
+$ jlv --output plain backup.log
 1970-01-21T17:41:52.800Z info backup started
 1970-01-21T17:41:52.861Z warn backup slow
-$ jv --output plain --timestamp-unit seconds backup.log
+$ jlv --output plain --timestamp-unit seconds backup.log
 2026-10-11T10:00:00.000Z info backup started
 2026-10-11T10:01:01.500Z warn backup slow
 ```
@@ -154,10 +154,10 @@ jlv skips what it cannot read and says where: the input, the line and the reason
 status line. A warning, such as one for a timestamp without a zone, shows once per input and kind:
 
 ```console
-$ jv --output plain broken.log
-jv: broken.log:2: skipped a line that is no JSON
-jv: broken.log:3: skipped a JSON value that is no object
-jv: broken.log:4: warning: the timestamp "2026-10-11 10:00:01" has no zone; it is shown as text and sorts last
+$ jlv --output plain broken.log
+jlv: broken.log:2: skipped a line that is no JSON
+jlv: broken.log:3: skipped a JSON value that is no object
+jlv: broken.log:4: warning: the timestamp "2026-10-11 10:00:01" has no zone; it is shown as text and sorts last
 2026-10-11T10:00:00.000Z info first
 2026-10-11 10:00:01 info no zone
 2026-10-11T10:00:02.000Z loud unknown level
@@ -168,10 +168,10 @@ all ends with exit code 1. `--strict` stops at the first record that cannot be r
 it, and ends with exit code 1; warnings do not stop it:
 
 ```console
-$ jv --output plain --strict broken.log; echo $?
-jv: broken.log:2: skipped a line that is no JSON
+$ jlv --output plain --strict broken.log; echo $?
+jlv: broken.log:2: skipped a line that is no JSON
 2026-10-11T10:00:00.000Z info first
-jv: --strict stops at the first record that cannot be read
+jlv: --strict stops at the first record that cannot be read
 1
 ```
 
@@ -215,7 +215,7 @@ Convert them first, for example with `jq -c '.[]' records.json > records.jsonl`.
 pino writes JSON lines with a numeric `level`, the time in epoch milliseconds in `time` and the message in `msg`:
 
 ```console
-$ jv --output plain pino.log
+$ jlv --output plain pino.log
 2026-10-11T10:00:00.000Z info server listening {"pid":4120,"hostname":"api-1","port":8080}
 2026-10-11T10:00:01.250Z warn slow request {"pid":4120,"hostname":"api-1","reqId":"req-7","responseTime":1840}
 2026-10-11T10:00:02.500Z error upstream failed {"pid":4120,"hostname":"api-1","reqId":"req-8","err":{"type":"Error","message":"connection refused"}}
@@ -248,7 +248,7 @@ Each line holds `key=value` pairs, separated by spaces or tabs:
   key make the line a diagnostic.
 
 ```console
-$ jv --output plain worker.log
+$ jlv --output plain worker.log
 2026-10-11T10:00:00.000Z info worker started {"queue":"mail"}
 2026-10-11T10:00:02.000Z warn retrying job {"job":"17","attempt":"2"}
 ```
@@ -261,7 +261,7 @@ the fields unless `csv.delimiter` in the [configuration](configuration.md) choos
 stay text. A row with another number of fields than the header is skipped, and a record holds at most 1 MiB.
 
 ```console
-$ jv --output plain orders.csv
+$ jlv --output plain orders.csv
 2026-10-11T10:00:00.000Z info order placed {"order":"A-17"}
 2026-10-11T10:00:05.000Z error payment declined\ncard expired {"order":"A-17"}
 ```
@@ -276,7 +276,7 @@ Any other text is the message, and Docker's time is the timestamp. The record's 
 leave out the fields that the timestamp, level and message columns show, so the text appears once:
 
 ```console
-$ jv --output plain container.log
+$ jlv --output plain container.log
 2026-10-11T10:00:00.000Z info server listening {"docker":{"stream":"stdout","time":"2026-10-11T10:00:00.000000001Z"}}
 2026-10-11T10:00:00.500Z - npm warn config production Use --omit=dev instead. {"docker":{"stream":"stderr"}}
 ```
@@ -301,7 +301,7 @@ becomes a choice of `--format` and takes part in the automatic choice.
 [text-plugin.mjs](examples/text-plugin.mjs) reads every line of text as a message:
 
 ```console
-$ jv --output plain --plugin ./text-plugin.mjs notes.txt
+$ jlv --output plain --plugin ./text-plugin.mjs notes.txt
 - - backup started
 - - backup finished in 42 s
 ```
@@ -311,10 +311,10 @@ A plugin may also export `predicates`: functions that take a record, of any form
 [Filters](configuration.md#filters). The predicate `finished` of the same plugin keeps the records that say so:
 
 ```console
-$ jv --output plain --plugin ./text-plugin.mjs --predicate finished notes.txt
+$ jlv --output plain --plugin ./text-plugin.mjs --predicate finished notes.txt
 - - backup finished in 42 s
-$ jv --output plain --predicate finished notes.txt; echo $?
-jv: --predicate finished names no predicate; the predicates of the plugins of --plugin are none
+$ jlv --output plain --predicate finished notes.txt; echo $?
+jlv: --predicate finished names no predicate; the predicates of the plugins of --plugin are none
 2
 ```
 
