@@ -42,6 +42,14 @@ const ask = (question: Widgets.QuestionElement, text: string, callback: (error: 
 // percentages of the options. Number() keeps upstream's implicit conversion.
 const toCells: (size: number | string) => number = Number
 
+// Turns blessed's wrapping of an element's content on or off; without it, lines longer than the element are cut at
+// its edge. @types/blessed omits Element#wrap, and blessed keeps the lines it wrapped while the content stays the
+// same, so the content is cleared: the next setContent() wraps it anew.
+const setContentWrapping = (element: Widgets.BoxElement, isWrapping: boolean): void => {
+  Reflect.set(element, 'wrap', isWrapping)
+  element.setContent('')
+}
+
 // Removes an element that a widget owns for good. blessed's destroy() detaches the element and frees the screen
 // listeners of its subtree, but two things stay behind: the screen keeps every descendant that ever took keys or
 // clicks (the input and the buttons of a prompt, for example) in its keyable and clickable lists, and it moves the
@@ -59,4 +67,7 @@ const destroyElement = (element: Widgets.Node): void => {
   }
 }
 
-export { Box, ask, createElement, createList, createPrompt, createQuestion, createScreen, destroyElement, readInput, toCells }
+export {
+  Box, ask, createElement, createList, createPrompt, createQuestion, createScreen, destroyElement, readInput,
+  setContentWrapping, toCells
+}

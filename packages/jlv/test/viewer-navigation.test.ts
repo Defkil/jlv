@@ -134,11 +134,20 @@ describe('viewport keys', () => {
 })
 
 describe('wrap toggle', () => {
-  it('flips the wrap flag with w without changing the screen', async t => {
+  // Upstream flipped blessed's wrap flag of the panel itself, which has no content, so w changed nothing on screen.
+  it('cuts overlong rows at the panel edge with w and wraps them again with a second w', async t => {
     const viewer = openFileViewer(t, characterization)
-    const before = screenText(viewer.screen)
+    const wrapped = screenText(viewer.screen)
+    // The first two records are longer than the panel and continue on rows 2 and 4.
+    assert.equal(wrapped[2], `│${' '.repeat(78)}│`)
     await press(viewer, 'w')
-    assert.equal(viewer.panel.wrap, false)
-    assert.deepEqual(screenText(viewer.screen), before)
+    assert.equal(viewer.panel.isWrappingRows, false)
+    const cut = screenText(viewer.screen)
+    assert.deepEqual([cut[1], cut[2], cut[3]], [wrapped[1], wrapped[3], wrapped[5]])
+    assert.equal(cut[21], '│ 2026-10-11T10:11:00.000Z  error  *  foxtrot 11                               │')
+    assert.equal(cellStyle(viewer.screen, 2, 1).background, 7)
+    await press(viewer, 'w')
+    assert.equal(viewer.panel.isWrappingRows, true)
+    assert.deepEqual(screenText(viewer.screen), wrapped)
   })
 })

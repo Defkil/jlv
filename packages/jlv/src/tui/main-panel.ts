@@ -5,7 +5,9 @@ import type { Widgets } from 'blessed'
 import { valueAtField } from '../field-path.js'
 import { readLog, type LogEntry } from '../log.js'
 import { BaseWidget } from './base-widget.js'
-import { ask, createElement, createPrompt, createQuestion, destroyElement, readInput, toCells } from './blessed-boundary.js'
+import {
+  ask, createElement, createPrompt, createQuestion, destroyElement, readInput, setContentWrapping, toCells
+} from './blessed-boundary.js'
 import { formatRows, levelColors, markup } from './formatting.js'
 import { LogDetails } from './log-details.js'
 import { Picker } from './picker.js'
@@ -28,6 +30,7 @@ interface MainPanelOptions {
   readonly currentPage?: number
   readonly initialRow?: number
   readonly colSpacing?: number
+  // Whether rows longer than the panel continue on the next line; w toggles it. Rows wrap unless this is false.
   readonly wrap?: boolean
 }
 
@@ -72,7 +75,8 @@ class MainPanel extends BaseWidget {
   currentPage: number
   initialRow: number
   colSpacing: number
-  wrap: boolean
+  // Upstream kept this flag in blessed's own Element#wrap of the panel, which has no content, so w changed nothing.
+  isWrappingRows: boolean
   row: number
   rows: LogEntry[]
   lastSearchTerm: string | undefined
@@ -101,7 +105,7 @@ class MainPanel extends BaseWidget {
     this.currentPage = options.currentPage || 1
     this.initialRow = options.initialRow || 0
     this.colSpacing = options.colSpacing || 2
-    this.wrap = options.wrap || true
+    this.isWrappingRows = options.wrap !== false
     this.row = 0
     this.rows = []
     this.lastSearchTerm = undefined
@@ -110,6 +114,7 @@ class MainPanel extends BaseWidget {
     this.sort = options.sort || '-timestamp'
     this.mode = 'normal'
     this.append(this.rowsElement)
+    setContentWrapping(this.rowsElement, this.isWrappingRows)
 
     this.log('pageWidth', this.pageWidth)
     this.on('resize', () => {
@@ -201,7 +206,8 @@ class MainPanel extends BaseWidget {
       return
     }
     if (key.name === 'w') {
-      this.wrap = !this.wrap
+      this.isWrappingRows = !this.isWrappingRows
+      setContentWrapping(this.rowsElement, this.isWrappingRows)
       this.update()
       return
     }
