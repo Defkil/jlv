@@ -1,6 +1,5 @@
-// The row order of the legacy viewer, which sorted with lodash 4.17: a stable ascending sort by the value at the
-// sort key, reversed as a whole for a descending sort, so equal values then appear in reverse file order.
-import { fieldReader } from '../field-path.js'
+// The value comparison of the legacy viewer, which sorted with lodash 4.17: the order of lodash.sortBy for two values
+// of parsed JSON. The record view uses it for orders by a field other than the time.
 
 // The operand of JavaScript's relational comparison for a value of parsed JSON: an array becomes the text of its
 // elements, any other object the text of Object.prototype.toString.
@@ -40,14 +39,4 @@ const compareAscending = (value: unknown, other: unknown): number => {
     : 0
 }
 
-// Sorts by the value at the key, a property path such as level or data.user.name.
-const sortRows = <Row>(rows: readonly Row[], key: string, isDescending: boolean): Row[] => {
-  const readField = fieldReader(key)
-  const sorted = rows
-    .map((row, index) => ({ row, index, value: readField(row) }))
-    .toSorted((left, right) => compareAscending(left.value, right.value) || left.index - right.index)
-    .map(({ row }) => row)
-  return isDescending ? sorted.toReversed() : sorted
-}
-
-export { compareAscending, sortRows }
+export { compareAscending }

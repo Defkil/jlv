@@ -12,11 +12,11 @@ describe('search', () => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, '/')
     assert.equal(viewer.panel.mode, 'search')
-    assert.equal(screenText(viewer.screen)[23], '  SEARCH  1/32 | 20 | sort: -timestamp')
+    assert.equal(screenText(viewer.screen)[23], '  SEARCH  1/32 | 20 | sort: -timestamp | 3 skipped')
     assert.equal(dialog(screenText(viewer.screen), 8, 9)[0], '│  Search:                             │')
     await press(viewer, 'CHARLIE', keys.enter)
-    assert.equal(viewer.panel.row, 5)
-    assert.equal(viewer.panel.initialRow, 5)
+    assert.equal(viewer.panel.row, 3)
+    assert.equal(viewer.panel.initialRow, 3)
     assert.equal(viewer.panel.mode, 'normal')
     assert.equal(screenText(viewer.screen)[1], '│ 2026-10-11T10:26:00.000Z  warn   *  charlie 26                               │')
   })
@@ -29,7 +29,7 @@ describe('search', () => {
       await press(viewer, 'n')
       visited.push(viewer.panel.row)
     }
-    assert.deepEqual(visited, [5, 11, 17, 23, 29])
+    assert.deepEqual(visited, [3, 9, 15, 21, 27])
   })
 
   it('reports a missing match in a message box and keeps the cursor', async t => {
@@ -58,11 +58,11 @@ describe('search', () => {
   it('offers the previous term again with ? and searches on from the cursor', async t => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, '/', 'bravo', keys.enter)
-    assert.equal(viewer.panel.row, 6)
+    assert.equal(viewer.panel.row, 4)
     await press(viewer, '?')
     assert.equal(dialog(screenText(viewer.screen), 11, 12)[0], '│   bravo                              │')
     await press(viewer, keys.enter)
-    assert.equal(viewer.panel.row, 12)
+    assert.equal(viewer.panel.row, 10)
   })
 
   it('looks at the timestamp and the message only', async t => {

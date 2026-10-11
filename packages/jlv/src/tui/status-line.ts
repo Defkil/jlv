@@ -1,5 +1,5 @@
 // Successor of upstream src/widgets/StatusLine.js: the bottom line with the mode, the cursor position, the page
-// height, the sort and the filters of the main panel.
+// height, the sort and the filters of the main panel, and what it reports about the input.
 import type { Widgets } from 'blessed'
 import { Box, toCells } from './blessed-boundary.js'
 import { markup } from './formatting.js'
@@ -18,6 +18,7 @@ interface PanelState {
   readonly pageHeight: number
   readonly filters: readonly StatusFilter[]
   readonly levelFilter: unknown
+  readonly inputStatus: string
   readonly on: (event: 'update', listener: () => void) => unknown
 }
 
@@ -73,7 +74,9 @@ class StatusLine extends Box {
     const sort = this.sort ? markup`| sort: {bold}${this.sort}{/}` : ''
     const filterExpression = this.filters.map(filter => `${filter.key}:${String(filter.value)}`).join(' ')
     const filters = filterExpression ? markup`| filters: {bold}${filterExpression}{/}` : ''
-    this.setContent(` ${mode} ${line} ${pageSize} ${sort} ${filters}`)
+    const { inputStatus } = this.mainPanel
+    const input = inputStatus ? `| ${inputStatus}` : ''
+    this.setContent(` ${[mode, line, pageSize, sort, filters, input].filter(Boolean).join(' ')}`)
     this.screen.render()
   }
 }

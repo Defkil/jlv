@@ -1,9 +1,10 @@
 // Successor of upstream src/widgets/MainPanel.js: the records with the cursor, paging, search, sorting, filters and
-// the dialogs that change them. It keeps upstream's behavior, including the defects that the characterization
-// records for later phases.
+// the dialogs that change them. The records come from the bounded store through a record view, which orders them
+// once per revision; the panel parses only the rows it shows. It keeps upstream's behavior, including the defects
+// that the characterization records for later phases.
 import type { Widgets } from 'blessed'
-import { valueAtField } from '../field-path.js'
-import { readLog, type LogEntry } from '../log.js'
+import { fieldReader, valueAtField } from '../field-path.js'
+import type { LogEntry } from '../log.js'
 import { BaseWidget } from './base-widget.js'
 import {
   ask, createElement, createPrompt, createQuestion, destroyElement, readInput, setContentWrapping, toCells
@@ -11,7 +12,7 @@ import {
 import { formatRows, levelColors, markup } from './formatting.js'
 import { LogDetails } from './log-details.js'
 import { Picker } from './picker.js'
-import { sortRows } from './row-order.js'
+import type { RecordView, ViewOrder, ViewQuery } from './record-view.js'
 
 type PanelMode = 'normal' | 'sort' | 'filter' | 'search' | 'GOTO'
 
@@ -22,10 +23,21 @@ type Filter =
 
 type PickerCallback = (error: unknown, value: string | undefined) => void
 
+// How far the input has come: the lines skipped so far and whether records still arrive.
+interface InputProgress {
+  readonly skipped: number
+  readonly activity: 'loading' | 'live' | 'done'
+}
+
 interface MainPanelOptions {
   readonly screen: Widgets.Screen
+  readonly view: RecordView
+  // What the border label names: the file, or the inputs.
+  readonly label: string
+  readonly progress?: InputProgress
   // The initial level filter. The command line passes text, or a number for a numeric level such as pino's 30.
   readonly level?: unknown
+  // The initial order; -timestamp without one.
   readonly sort?: string | undefined
   readonly currentPage?: number
   readonly initialRow?: number
@@ -34,7 +46,10 @@ interface MainPanelOptions {
   readonly wrap?: boolean
 }
 
-const entryFields: readonly string[] = ['timestamp', 'level', 'message']
+const entryFields: ReadonlySet<string> = new Set(['timestamp', 'level', 'message'])
+
+// The orders that the sort picker offers.
+const sortFields: readonly string[] = [...entryFields, 'arrival']
 
 // Upstream called levelColors[level](level): a level without a color throws here, and formatRows then shows the raw
 // value.
@@ -50,7 +65,7 @@ const colorLevel = (level: unknown): string => {
 const hasData = (data: unknown): boolean => typeof data === 'object' && data !== null && Object.keys(data).length > 0
 
 const isKeptByFilter = (line: LogEntry, filter: Filter): boolean => {
-  const key = entryFields.includes(filter.key) ? filter.key : `data.${filter.key}`
+  const key = entryFields.has(filter.key) ? filter.key : `data.${filter.key}`
   const value = valueAtField(line, key)
   if (!value) {
     return false
@@ -84,23 +99,22 @@ class MainPanel extends BaseWidget {
   filters: Filter[]
   sort: string
   mode: PanelMode
-  file: string | undefined
-  rawLines: LogEntry[] | undefined
-  linesCache: LogEntry[] = []
-  // The records change with dataRevision, the sort and the filters with queryRevision. The visible order is computed
-  // once per pair of revisions, never on cursor moves or renders; orderComputations counts how often.
-  dataRevision = 0
+  readonly view: RecordView
+  readonly sourceLabel: string
+  readonly progress: InputProgress | undefined
+  // The sort and the filters change with queryRevision, the records with the store's data revision. The view
+  // computes the visible order once per pair of revisions, never on cursor moves or renders.
   queryRevision = 0
-  orderComputations = 0
-  orderDataRevision = -1
-  orderQueryRevision = -1
+  // The order shown last and the query revision it belongs to.
+  shownOrder: readonly number[] = []
+  shownQueryRevision = 0
   // The one element that shows the rows. Every render replaces its content; the panel's other children, the border
   // label and open dialogs, stay (plan section 0.10). The persistent element follows danielannan17/json-log-viewer
   // 8a1aef1.
   readonly rowsElement: Widgets.BoxElement = createElement({ screen: this.screen, tags: true })
 
   constructor (options: MainPanelOptions) {
-    super({ top: '0', height: '99%', handleKeys: true, ...options })
+    super({ top: '0', height: '99%', handleKeys: true, screen: options.screen })
 
     this.currentPage = options.currentPage || 1
     this.initialRow = options.initialRow || 0
@@ -113,7 +127,14 @@ class MainPanel extends BaseWidget {
     this.filters = []
     this.sort = options.sort || '-timestamp'
     this.mode = 'normal'
+    this.view = options.view
+    this.sourceLabel = options.label
+    this.progress = options.progress
     this.append(this.rowsElement)
+    // blessed places a border label one cell further left when it creates it than when it changes it later. The
+    // label is created here, so that every render puts it in the same place; upstream rendered twice before the
+    // first screen, once empty and once after reading the file.
+    this.setLabel(' ')
     setContentWrapping(this.rowsElement, this.isWrappingRows)
 
     this.log('pageWidth', this.pageWidth)
@@ -132,64 +153,123 @@ class MainPanel extends BaseWidget {
   // PageUp and PageDown move by the page height, and by at least one record when the viewport shows a single row.
   get pageStep (): number { return Math.max(this.pageHeight, 1) }
 
-  loadFile (file: string): void {
-    this.file = file
-    this.rawLines = readLog(file)
-    this.dataRevision += 1
-    this.log('loaded', this.lines.length)
-    this.renderLines()
-  }
-
   get lastRow (): number {
-    return this.lines.length - 1
+    return this.order.length - 1
   }
 
-  get lines (): LogEntry[] {
-    if (this.orderDataRevision !== this.dataRevision || this.orderQueryRevision !== this.queryRevision) {
-      this.linesCache = this.calcLines()
-      this.orderDataRevision = this.dataRevision
-      this.orderQueryRevision = this.queryRevision
-      this.orderComputations += 1
-    }
-    return this.linesCache
+  // How often the view computed the visible order.
+  get orderComputations (): number {
+    return this.view.computations
   }
 
-  calcLines (): LogEntry[] {
-    if (!this.rawLines) {
-      return []
+  // The order in which the view shows the records, and its filter.
+  get query (): ViewQuery {
+    const isDescending = this.sort.startsWith('-')
+    const key = this.sortKey
+    let order: ViewOrder
+    if (key === 'arrival') {
+      order = { kind: 'arrival', isDescending }
+    } else if (key === 'timestamp') {
+      order = { kind: 'time', isDescending }
+    } else {
+      order = { kind: 'field', isDescending, read: fieldReader(key) }
     }
-
-    this.log('calcLines', this.sort, this.filters, this.levelFilter)
-
-    const sort = (lines: LogEntry[]): LogEntry[] => this.sort ? sortRows(lines, this.sortKey, this.sort.startsWith('-')) : lines
-
-    const filters = structuredClone(this.filters)
-    if (this.levelFilter) {
-      filters.push({ key: 'level', value: this.levelFilter })
+    const filters = this.levelFilter ? [...this.filters, { key: 'level', value: this.levelFilter }] : this.filters
+    return {
+      revision: this.queryRevision,
+      order,
+      isKept: filters.length === 0 ? undefined : entry => isKeptByLastFilter(entry, filters)
     }
+  }
 
-    if (filters.length === 0) {
-      return sort(this.rawLines)
+  // The records arrive at one end of the order: the end for arrival and time in ascending order, the start
+  // otherwise. A cursor there follows the newest records.
+  get isNewestLast (): boolean {
+    return !this.sort.startsWith('-') && (this.sortKey === 'arrival' || this.sortKey === 'timestamp')
+  }
+
+  // The sequences of the visible records in order. When only the records changed, a cursor at the end where the
+  // records arrive stays there, and any other cursor stays on its record while that record is visible.
+  get order (): readonly number[] {
+    const { query } = this
+    if (!this.view.isStale(query)) {
+      return this.shownOrder
     }
+    const previous = this.shownOrder
+    const isDataChange = this.shownQueryRevision === this.queryRevision
+    const isFollowing = previous.length === 0 || this.row === (this.isNewestLast ? previous.length - 1 : 0)
+    const selected = previous[this.row]
+    const order = this.view.order(query)
+    this.shownOrder = order
+    this.shownQueryRevision = this.queryRevision
+    if (!isDataChange) {
+      return order
+    }
+    const offset = this.row - this.initialRow
+    if (isFollowing) {
+      this.row = this.isNewestLast ? Math.max(order.length - 1, 0) : 0
+      this.initialRow = this.isNewestLast ? this.row - this.pageHeight : 0
+    } else if (selected !== undefined) {
+      const row = order.indexOf(selected)
+      if (row !== -1) {
+        this.row = row
+        this.initialRow = row - offset
+      }
+    }
+    return order
+  }
 
-    this.log('filters', filters)
+  // The row of the record at a position of the visible order.
+  entryAt (position: number): LogEntry | undefined {
+    const sequence = this.order[position]
+    return sequence === undefined ? undefined : this.view.entry(sequence)
+  }
 
-    return sort(this.rawLines.filter(line => isKeptByLastFilter(line, filters)))
+  // What the status line reports about the input: whether records still arrive, how many the store keeps of those
+  // that arrived, and how many lines were skipped.
+  get inputStatus (): string {
+    const { store } = this.view
+    const parts: string[] = []
+    if (this.progress !== undefined && this.progress.activity !== 'done') {
+      parts.push(this.progress.activity)
+    }
+    if (store.evicted > 0) {
+      parts.push(`kept ${String(store.retained)} of ${String(store.seen)}`)
+    }
+    if (this.progress !== undefined && this.progress.skipped > 0) {
+      parts.push(`${String(this.progress.skipped)} skipped`)
+    }
+    return parts.join(' | ')
+  }
+
+  // Shows the records that arrived since the last render, or the end of the input. An open dialog keeps its mode.
+  refresh (): void {
+    this.clampCursor()
+    this.showRows()
+    this.update()
   }
 
   renderLines (shouldNotify = true): void {
     this.clampCursor()
     this.resetMode()
-    this.rows = this.lines.slice(this.initialRow, this.initialRow + Math.max(toCells(this.height) - 2, 0))
+    this.showRows()
     this.update(shouldNotify)
+  }
+
+  // Parses the records of the viewport.
+  showRows (): void {
+    const height = Math.max(toCells(this.height) - 2, 0)
+    this.rows = this.order.slice(this.initialRow, this.initialRow + height).map(sequence => this.view.entry(sequence))
   }
 
   // Keeps the cursor on a record, or on row 0 of an empty view, and inside the viewport, whatever moved it: an empty
   // log, a tiny terminal, a line number past either end or without digits, G on a partial last page or C on a later
   // page.
   clampCursor (): void {
+    // The order comes first: computing it after new records may move the cursor along with its record.
+    const { lastRow } = this
     const row = Number.isNaN(this.row) ? 0 : this.row
-    this.row = Math.min(Math.max(row, 0), Math.max(this.lastRow, 0))
+    this.row = Math.min(Math.max(row, 0), Math.max(lastRow, 0))
     const initialRow = Number.isNaN(this.initialRow) ? 0 : this.initialRow
     this.initialRow = Math.min(Math.max(initialRow, this.row - this.pageHeight, 0), this.row)
   }
@@ -265,8 +345,9 @@ class MainPanel extends BaseWidget {
       return
     }
     if (character === 'q') {
-      // eslint-disable-next-line unicorn/no-process-exit -- upstream quits from the panel; phase 5 moves the process lifecycle out of the widgets
-      process.exit(0)
+      // The application ends the process; upstream called process.exit here.
+      this.emit('quit')
+      return
     }
     if (character === 'A') {
       this.moveToFirstViewportLine()
@@ -307,7 +388,7 @@ class MainPanel extends BaseWidget {
 
   openSort (): void {
     this.setMode('sort')
-    this.openPicker('Sort by', entryFields, (error, sort) => {
+    this.openPicker('Sort by', sortFields, (error, sort) => {
       if (!sort) {
         this.resetMode()
         return
@@ -473,17 +554,19 @@ class MainPanel extends BaseWidget {
     })
   }
 
+  // Parses the records from the start row on until one matches.
   searchTerm (term: string, isCaseSensitive: boolean, startRow: number): number {
     const searchTerm = isCaseSensitive ? term : term.toLowerCase()
-    return this.lines.findIndex((entry, index) => {
-      if (index < startRow) {
-        return false
+    const { order } = this
+    for (let index = Math.max(startRow, 0); index < order.length; index += 1) {
+      const sequence = order[index] ?? 0
+      const entry = this.view.entry(sequence)
+      const text = `${String(entry.timestamp)} ${String(entry.message)}`
+      if ((isCaseSensitive ? text : text.toLowerCase()).includes(searchTerm)) {
+        return index
       }
-      const match = isCaseSensitive
-        ? `${String(entry.timestamp)} ${String(entry.message)}`
-        : `${String(entry.timestamp)} ${String(entry.message)}`.toLowerCase()
-      return match.includes(searchTerm)
-    })
+    }
+    return -1
   }
 
   message (text: string): void {
@@ -618,7 +701,7 @@ class MainPanel extends BaseWidget {
   }
 
   update (shouldNotify = true): void {
-    this.setLabel(markup`[{bold} ${String(this.file)} {/}] [{bold} ${String(this.row + 1)}/${String(this.lastRow + 1)} {/}]`)
+    this.setLabel(markup`[{bold} ${this.sourceLabel} {/}] [{bold} ${String(this.row + 1)}/${String(this.lastRow + 1)} {/}]`)
 
     const columns = [
       { title: 'Timestamp', key: 'timestamp' },
@@ -644,3 +727,4 @@ class MainPanel extends BaseWidget {
 }
 
 export { MainPanel }
+export type { InputProgress, MainPanelOptions }

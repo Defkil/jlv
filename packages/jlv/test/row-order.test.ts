@@ -1,8 +1,10 @@
-// The row order that replaces lodash.sortBy and lodash.reverse. The expected orders were recorded from lodash
-// 4.17.11 with the same rows, including mixed types whose order depends on the sort algorithm.
+// The value comparison that replaces lodash.sortBy's. The expected orders were recorded from lodash 4.17.11 with the
+// same rows, including mixed types whose order depends on the sort algorithm. Directions, missing values and ties
+// of the viewer's orders are tested with the record view.
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { compareAscending, sortRows } from '../src/tui/row-order.js'
+import { fieldReader } from '../src/field-path.js'
+import { compareAscending } from '../src/tui/row-order.js'
 
 const values: readonly unknown[] = [
   'b', 'a', 'B', 10, 9, '10', '9', null, undefined, NaN, true, false, 0, -1, '', [2, 1], [1], { a: 1 }, 'x',
@@ -11,18 +13,23 @@ const values: readonly unknown[] = [
 const rows = values.map((value, index) => ({ index, v: value }))
 const indexes = (sorted: readonly { readonly index: number }[]): number[] => sorted.map(row => row.index)
 
+// A stable ascending sort by the value at the key, as lodash.sortBy did.
+const sortAscending = <Row>(sortedRows: readonly Row[], key: string): Row[] => {
+  const read = fieldReader(key)
+  return sortedRows
+    .map((row, index) => ({ row, index, value: read(row) }))
+    .toSorted((left, right) => compareAscending(left.value, right.value) || left.index - right.index)
+    .map(({ row }) => row)
+}
+
 describe('row order', () => {
   it('sorts ascending in the order of lodash.sortBy', () => {
-    assert.deepEqual(indexes(sortRows(rows, 'v', false)), [5, 6, 2, 1, 0, 13, 11, 12, 14, 10, 23, 16, 4, 3, 15, 19, 21, 17, 18, 20, 22, 7, 8, 9])
-  })
-
-  it('sorts descending as the reverse of the ascending order', () => {
-    assert.deepEqual(indexes(sortRows(rows, 'v', true)), [9, 8, 7, 22, 20, 18, 17, 21, 19, 15, 3, 4, 16, 23, 10, 14, 12, 11, 13, 0, 1, 2, 6, 5])
+    assert.deepEqual(indexes(sortAscending(rows, 'v')), [5, 6, 2, 1, 0, 13, 11, 12, 14, 10, 23, 16, 4, 3, 15, 19, 21, 17, 18, 20, 22, 7, 8, 9])
   })
 
   it('sorts by a nested key and keeps equal values in their order', () => {
     const nested = [{ index: 0, data: { k: 'b' } }, { index: 1, data: {} }, { index: 2, data: { k: 'a' } }, { index: 3 }, { index: 4, data: { k: 'a' } }]
-    assert.deepEqual(indexes(sortRows(nested, 'data.k', false)), [2, 4, 0, 1, 3])
+    assert.deepEqual(indexes(sortAscending(nested, 'data.k')), [2, 4, 0, 1, 3])
   })
 
   it('orders defined values before null, undefined and NaN', () => {

@@ -52,12 +52,13 @@ describe('transform configuration', () => {
     }
   })
 
-  it('shows mapped records and an undefined timestamp in the viewer', t => {
+  // Neither record has a time that the viewer can sort by: Monolog's date has no zone, and the second record has
+  // none at all. Both sort last, so they keep their order; upstream showed the undefined timestamp first and as text.
+  it('shows mapped records in their order and a missing timestamp as empty', t => {
     const viewer = openFileViewer(t, logFile)
     const rows = screenText(viewer.screen)
     assert.equal(rows[0], topBorder('monolog.log', '1/2'))
-    assert.equal(rows[1], '│ undefined                            DEBUG  *  no datetime                   │')
-    assert.equal(rows[2], '│                                                                              │')
-    assert.equal(rows[3], '│ 2017-12-06 09:23:42.253060  INFO  *  Matched route "**_heartbeat_check" (p   │')
+    assert.equal(rows[1], '│ 2017-12-06 09:23:42.253060  INFO  *  Matched route "**_heartbeat_check" (p   │')
+    assert.equal(rows[2], '│                             DEBUG  *  no datetime                            │')
   })
 })

@@ -95,7 +95,7 @@ describe('main panel lifecycle', () => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, ...Array.from({ length: 10 }, () => keys.down))
     assert.equal(screenText(viewer.screen)[0], topBorder('characterization.log', '11/32'))
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  11/32 | 20 | sort: -timestamp')
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  11/32 | 20 | sort: -timestamp | 3 skipped')
   })
 
   it('destroys a prompt and a message when they close', async t => {
@@ -130,7 +130,7 @@ describe('main panel lifecycle', () => {
     assert.deepEqual(children(viewer.panel), ['element', 'box', 'prompt'])
     assert.ok(screenText(viewer.screen).some(row => row.includes('Search:')))
     await press(viewer, 'charlie', keys.enter)
-    assert.equal(viewer.panel.row, 5)
+    assert.equal(viewer.panel.row, 3)
     assert.deepEqual(children(viewer.panel), ['element', 'box'])
     assert.equal(Reflect.get(viewer.screen, 'grabKeys'), false)
   })
@@ -167,7 +167,9 @@ describe('main panel lifecycle', () => {
     assert.equal(viewer.panel.orderComputations, computations + 2)
     await press(viewer, 'f')
     assert.equal(viewer.panel.orderComputations, computations + 3)
-    viewer.panel.loadFile('characterization.log')
+    viewer.append('{"timestamp":"2026-10-11T12:00:00.000Z","level":"info","message":"late"}\n')
+    assert.equal(viewer.panel.orderComputations, computations + 4)
+    await press(viewer, keys.down, keys.up, keys.pageDown)
     assert.equal(viewer.panel.orderComputations, computations + 4)
   })
 })

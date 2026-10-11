@@ -103,9 +103,15 @@ const trunc = (text: unknown, length: number, shouldIgnoreColors = false): strin
   return `${output}{/}`
 }
 
+// A missing value, undefined or null, measures as empty and is shown as empty. Upstream printed its text form, so a
+// row with a missing timestamp or message was wider than the panel and wrapped onto a second line.
 const padEnd = (text: unknown, length: number, shouldIgnoreColors = false): string => {
   const spaceCount = length - textLength(text, shouldIgnoreColors)
-  return spaceCount < 0 ? trunc(text, length, shouldIgnoreColors) : `${String(text)}${spaces(spaceCount)}`
+  if (spaceCount < 0) {
+    return trunc(text, length, shouldIgnoreColors)
+  }
+  // eslint-disable-next-line @typescript-eslint/no-base-to-string -- like upstream, an object cell shows [object Object]
+  return `${text === undefined || text === null ? '' : String(text)}${spaces(spaceCount)}`
 }
 
 // The width of every column but the last from its widest value; the last column gets the rest of maxWidth.

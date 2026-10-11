@@ -60,6 +60,13 @@ export default defineConfig([
     }
   },
   {
+    files: ['packages/jlv/src/application.ts'],
+    rules: {
+      // Plan section 4.1 names this module application.ts; Unicorn 77 would shorten the file name to app.ts.
+      'unicorn/name-replacements': ['error', { checkFilenames: false }]
+    }
+  },
+  {
     files: ['eslint.config.js'],
     rules: {
       // ESLint's flat config composes presets when its configuration module loads.

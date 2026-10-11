@@ -1,10 +1,31 @@
 // Characterization of cursor movement, paging, go-to-line and wrapping in the viewer.
 import assert from 'node:assert/strict'
-import { describe, it } from 'node:test'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { describe, it, type TestContext } from 'node:test'
 import { fixturePath, legacyViewerFixtures } from '../../format-fixtures/src/catalog.js'
 import { cellStyle, keys, openFileViewer, press, screenText, topBorder } from './support/terminal.js'
 
 const characterization = fixturePath(legacyViewerFixtures.characterization)
+
+// A log whose newest record has a message array. The panel pads the array by its number of elements but prints its
+// text, so that row is longer than the panel. The directory is removed after the test.
+const overlongLog = (context: TestContext): string => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'jlv-wrap-'))
+  context.after(() => {
+    process.chdir(tmpdir())
+    rmSync(directory, { recursive: true, force: true })
+  })
+  const records = [
+    { timestamp: '2026-10-11T10:02:00.000Z', level: 'info', message: ['an array message whose text is longer than the panel is wide'] },
+    { timestamp: '2026-10-11T10:01:00.000Z', level: 'warn', message: 'short' },
+    { timestamp: '2026-10-11T10:00:00.000Z', level: 'error', message: 'last' }
+  ]
+  const file = path.join(directory, 'overlong.log')
+  writeFileSync(file, records.map(record => `${JSON.stringify(record)}\n`).join(''))
+  return file
+}
 
 // The prompt and picker boxes span columns 20 to 59 of the 80-column screen.
 const dialog = (rows: readonly string[], from: number, to: number): string[] => rows.slice(from, to).map(row => row.slice(20, 60))
@@ -17,12 +38,12 @@ describe('arrows', () => {
     assert.equal(viewer.panel.initialRow, 0)
     const rows = screenText(viewer.screen)
     assert.equal(rows[0], topBorder('characterization.log', '4/32'))
-    assert.equal(rows[23], '  NORMAL  4/32 | 20 | sort: -timestamp')
-    // The first two records wrap onto two lines each, so the fourth record sits on screen row 6.
-    assert.equal(cellStyle(viewer.screen, 2, 6).background, 7)
+    assert.equal(rows[23], '  NORMAL  4/32 | 20 | sort: -timestamp | 3 skipped')
+    // The fourth record sits on screen row 4.
+    assert.equal(cellStyle(viewer.screen, 2, 4).background, 7)
     await press(viewer, keys.up)
     assert.equal(viewer.panel.row, 2)
-    assert.equal(cellStyle(viewer.screen, 2, 5).background, 7)
+    assert.equal(cellStyle(viewer.screen, 2, 3).background, 7)
   })
 
   it('stops at the first record', async t => {
@@ -40,8 +61,6 @@ describe('paging', () => {
     assert.equal(viewer.panel.initialRow, 20)
     assert.deepEqual(screenText(viewer.screen).slice(0, 14), [
       topBorder('characterization.log', '24/32'),
-      '│ 2026-10-11T10:11:00.000Z  error  *  foxtrot 11                               │',
-      '│ 2026-10-11T10:10:00.000Z  warn   *  kilo 10                                  │',
       '│ 2026-10-11T10:09:00.000Z  info      delta 09                                 │',
       '│ 2026-10-11T10:08:00.000Z  debug  *  charlie 08                               │',
       '│ 2026-10-11T10:07:00.000Z  error  *  bravo 07                                 │',
@@ -52,7 +71,9 @@ describe('paging', () => {
       '│ 2026-10-11T10:02:00.000Z  warn   *  charlie 02                               │',
       '│ 2026-10-11T10:01:00.000Z  info   *  bravo 01                                 │',
       '│ 2026-10-11T10:00:00.000Z  debug     alpha 00                                 │',
-      '│                                                                              │'
+      `│${' '.repeat(78)}│`,
+      '│                           warn      no timestamp                             │',
+      `│${' '.repeat(78)}│`
     ])
   })
 
@@ -70,7 +91,7 @@ describe('paging', () => {
     await press(viewer, keys.down, keys.down, keys.down, keys.pageUp)
     assert.equal(viewer.panel.row, 0)
     assert.equal(viewer.panel.initialRow, 0)
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/32 | 20 | sort: -timestamp')
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/32 | 20 | sort: -timestamp | 3 skipped')
     await press(viewer, '$', keys.up, keys.pageUp, keys.pageUp)
     assert.equal(viewer.panel.row, 0)
     assert.equal(viewer.panel.initialRow, 0)
@@ -81,7 +102,8 @@ describe('paging', () => {
     await press(viewer, '$')
     assert.equal(viewer.panel.row, 31)
     assert.equal(viewer.panel.initialRow, 11)
-    assert.equal(screenText(viewer.screen)[21], '│ 2026-10-11T10:00:00.000Z  debug     alpha 00                                 │')
+    assert.equal(screenText(viewer.screen)[19], '│ 2026-10-11T10:00:00.000Z  debug     alpha 00                                 │')
+    assert.equal(screenText(viewer.screen)[21], '│                           warn      no timestamp                             │')
     await press(viewer, '0')
     assert.equal(viewer.panel.row, 0)
     assert.equal(viewer.panel.initialRow, 0)
@@ -105,12 +127,12 @@ describe('go to line', () => {
       '│                                      │',
       '└──────────────────────────────────────┘'
     ])
-    assert.equal(screenText(viewer.screen)[23], '  GOTO  1/32 | 20 | sort: -timestamp')
+    assert.equal(screenText(viewer.screen)[23], '  GOTO  1/32 | 20 | sort: -timestamp | 3 skipped')
     await press(viewer, '5', keys.enter)
     assert.equal(viewer.panel.row, 4)
     assert.equal(viewer.panel.initialRow, 4)
     assert.equal(viewer.panel.mode, 'normal')
-    assert.equal(screenText(viewer.screen)[1], '│ 2026-10-11T10:27:00.000Z  error     delta 27                                 │')
+    assert.equal(screenText(viewer.screen)[1], '│ 2026-10-11T10:25:00.000Z  info   *  bravo 25                                 │')
   })
 })
 
@@ -136,15 +158,20 @@ describe('viewport keys', () => {
 describe('wrap toggle', () => {
   // Upstream flipped blessed's wrap flag of the panel itself, which has no content, so w changed nothing on screen.
   it('cuts overlong rows at the panel edge with w and wraps them again with a second w', async t => {
-    const viewer = openFileViewer(t, characterization)
+    const viewer = openFileViewer(t, overlongLog(t))
     const wrapped = screenText(viewer.screen)
-    // The first two records are longer than the panel and continue on rows 2 and 4.
-    assert.equal(wrapped[2], `│${' '.repeat(78)}│`)
+    // The first record is longer than the panel and continues on row 2.
+    assert.deepEqual(wrapped.slice(1, 5).map(row => row.slice(0, 50)), [
+      '│ 2026-10-11T10:02:00.000Z  info      an array mes',
+      '│ than the panel is wide                          ',
+      '│ 2026-10-11T10:01:00.000Z  warn      short       ',
+      '│ 2026-10-11T10:00:00.000Z  error     last        '
+    ])
     await press(viewer, 'w')
     assert.equal(viewer.panel.isWrappingRows, false)
     const cut = screenText(viewer.screen)
-    assert.deepEqual([cut[1], cut[2], cut[3]], [wrapped[1], wrapped[3], wrapped[5]])
-    assert.equal(cut[21], '│ 2026-10-11T10:11:00.000Z  error  *  foxtrot 11                               │')
+    assert.deepEqual([cut[1]?.slice(0, 50), cut[2], cut[3]], [wrapped[1]?.slice(0, 50), wrapped[3], wrapped[4]])
+    assert.equal(cut[4], `│${' '.repeat(78)}│`)
     assert.equal(cellStyle(viewer.screen, 2, 1).background, 7)
     await press(viewer, 'w')
     assert.equal(viewer.panel.isWrappingRows, true)

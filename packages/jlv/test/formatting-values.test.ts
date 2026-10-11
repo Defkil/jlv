@@ -15,10 +15,11 @@ describe('formatRows with values other than text', () => {
     ])
   })
 
-  it('prints empty values as text but pads them as if they had no width', () => {
+  // Upstream printed null as text as well; a missing value is empty now, as wide as it is measured.
+  it('prints missing values as empty and other empty values as text, padded as if they had no width', () => {
     const rows = [{ a: null, b: 'x' }, { a: false, b: 'y' }, { a: 0, b: 'z' }, { a: 'abc', b: 'w' }]
     assert.deepEqual(formatRows(rows, [{ key: 'a' }, { key: 'b' }], 1, 20), [
-      'null    x               ',
+      '    x               ',
       'false    y               ',
       '0    z               ',
       'abc w               '
@@ -90,7 +91,9 @@ describe('formatting helpers with values other than text', () => {
     assert.throws(() => trunc(['{bold}xyz'], 2), TypeError)
     assert.equal(trunc('{bold}abc{/bold}', -1), '{/}')
     assert.equal(trunc('abc', -1), '')
-    assert.equal(padEnd(undefined, 3, true), 'undefined   ')
+    // Upstream printed a missing value as text after measuring it as empty, which made its row too wide.
+    assert.equal(padEnd(undefined, 3, true), ' '.repeat(3))
+    assert.equal(padEnd(null, 3, true), ' '.repeat(3))
     assert.throws(() => padEnd(5, 3, true), RangeError)
     assert.throws(() => padEnd(5, 3), TypeError)
     assert.throws(() => padEnd('ab', NaN, true), RangeError)

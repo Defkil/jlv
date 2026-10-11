@@ -50,7 +50,8 @@ describe('cursor targets past the records', () => {
     assert.equal(viewer.panel.row, 31)
     assert.equal(viewer.panel.initialRow, 20)
     await press(viewer, keys.enter)
-    assert.equal(screenText(viewer.screen)[3]?.slice(4, 76), '┌─ 2026-10-11T10:00:00.000Z - debug - alpha 00 ────────────────────────┐')
+    // The last record is the second of the two without a timestamp, which come last.
+    assert.equal(screenText(viewer.screen)[3]?.slice(4, 76), '┌─ undefined - warn - no timestamp ────────────────────────────────────┐')
   })
 
   it('moves to the nearest record for line numbers past either end or without digits', async t => {

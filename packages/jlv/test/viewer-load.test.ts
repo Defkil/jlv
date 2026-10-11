@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { fixturePath, legacyViewerFixtures } from '../../format-fixtures/src/catalog.js'
 import { upstreamFixture } from './support/fixtures.js'
 import { readLog } from '../src/log.js'
-import { cellStyle, keys, openFileViewer, press, screenText, topBorder } from './support/terminal.js'
+import { cellStyle, keys, openFileViewer, press, screenText, topBorder, visibleEntries } from './support/terminal.js'
 
 const characterization = fixturePath(legacyViewerFixtures.characterization)
 const empty = fixturePath(legacyViewerFixtures.empty)
@@ -19,14 +19,11 @@ const levelColumn = 28
 const defaultColor = 0x1_FF
 
 describe('initial load', () => {
+  // The status line counts the three lines that were skipped: truncated JSON, plain text and null.
   it('renders newest first with the file label and the status line', t => {
     const viewer = openFileViewer(t, characterization)
     assert.deepEqual(screenText(viewer.screen), [
       topBorder('characterization.log', '1/32'),
-      '│ undefined                          warn      no timestamp                    │',
-      '│                                                                              │',
-      '│ undefined                               undefined                            │',
-      '│                                                                              │',
       '│ 2026-10-11T10:29:00.000Z  info   *  foxtrot 29                               │',
       '│ 2026-10-11T10:28:00.000Z  debug  *  echo 28                                  │',
       '│ 2026-10-11T10:27:00.000Z  error     delta 27                                 │',
@@ -44,36 +41,49 @@ describe('initial load', () => {
       '│ 2026-10-11T10:15:00.000Z  error     delta 15                                 │',
       '│ 2026-10-11T10:14:00.000Z  warn   *  charlie 14                               │',
       '│ 2026-10-11T10:13:00.000Z  fatal  *  bravo 13                                 │',
+      '│ 2026-10-11T10:12:00.000Z  debug     alpha 12                                 │',
+      '│ 2026-10-11T10:11:00.000Z  error  *  foxtrot 11                               │',
+      '│ 2026-10-11T10:10:00.000Z  warn   *  kilo 10                                  │',
+      '│ 2026-10-11T10:09:00.000Z  info      delta 09                                 │',
       '└──────────────────────────────────────────────────────────────────────────────┘',
-      '  NORMAL  1/32 | 20 | sort: -timestamp'
+      '  NORMAL  1/32 | 20 | sort: -timestamp | 3 skipped'
     ])
     assert.equal(viewer.panel.sort, '-timestamp')
     assert.equal(viewer.panel.pageHeight, 20)
   })
 
-  it('sorts records without a timestamp first and wraps their undefined cells onto a second line', t => {
+  // Upstream sorted the records without a timestamp first in descending order, the last of them first, and printed
+  // their missing cells as undefined after measuring them as empty, so that each of their rows wrapped onto a second
+  // line. Plan section 5 orders missing times last in both directions, where wrapped rows would push the last record
+  // below the viewport.
+  it('sorts records without a timestamp last in arrival order and shows their missing cells as empty', async t => {
     const viewer = openFileViewer(t, characterization)
-    const [first, second] = viewer.panel.lines
-    assert.equal(first?.timestamp, undefined)
-    assert.equal(first?.message, 'no timestamp')
+    const entries = visibleEntries(viewer.panel)
     // A numeric JSON line becomes an entry without any field.
-    assert.deepEqual(second, { data: {} })
+    assert.deepEqual(entries.slice(-2), [{ data: {} }, { level: 'warn', message: 'no timestamp', data: {} }])
+    await press(viewer, '$')
+    assert.deepEqual(screenText(viewer.screen).slice(19, 23), [
+      '│ 2026-10-11T10:00:00.000Z  debug     alpha 00                                 │',
+      `│${' '.repeat(78)}│`,
+      '│                           warn      no timestamp                             │',
+      '└──────────────────────────────────────────────────────────────────────────────┘'
+    ])
   })
 
   it('colors the known levels, leaves trace and fatal plain and highlights the cursor row', t => {
     const viewer = openFileViewer(t, characterization)
     assert.deepEqual(cellStyle(viewer.screen, 2, 1), { foreground: 0, background: 7, isBold: false })
     assert.deepEqual(cellStyle(viewer.screen, levelColumn, 5), { foreground: 228, background: defaultColor, isBold: true })
-    assert.deepEqual(cellStyle(viewer.screen, levelColumn, 6), { foreground: 6, background: defaultColor, isBold: false })
-    assert.deepEqual(cellStyle(viewer.screen, levelColumn, 7), { foreground: 1, background: defaultColor, isBold: false })
-    assert.deepEqual(cellStyle(viewer.screen, levelColumn, 8), { foreground: 214, background: defaultColor, isBold: false })
-    assert.deepEqual(cellStyle(viewer.screen, levelColumn, 12), { foreground: defaultColor, background: defaultColor, isBold: false })
-    assert.deepEqual(cellStyle(viewer.screen, levelColumn, 21), { foreground: defaultColor, background: defaultColor, isBold: false })
+    assert.deepEqual(cellStyle(viewer.screen, levelColumn, 2), { foreground: 6, background: defaultColor, isBold: false })
+    assert.deepEqual(cellStyle(viewer.screen, levelColumn, 3), { foreground: 1, background: defaultColor, isBold: false })
+    assert.deepEqual(cellStyle(viewer.screen, levelColumn, 4), { foreground: 214, background: defaultColor, isBold: false })
+    assert.deepEqual(cellStyle(viewer.screen, levelColumn, 8), { foreground: defaultColor, background: defaultColor, isBold: false })
+    assert.deepEqual(cellStyle(viewer.screen, levelColumn, 17), { foreground: defaultColor, background: defaultColor, isBold: false })
   })
 
   it('shows only the first line of a multi-line message and leaves an uppercase level unpadded', async t => {
     const viewer = openFileViewer(t, characterization)
-    await press(viewer, keys.pageDown)
+    await press(viewer, 'g', '19', keys.enter)
     const rows = screenText(viewer.screen)
     assert.equal(rows[2], '│ 2026-10-11T10:10:00.000Z  warn   *  kilo 10                                  │')
     assert.equal(rows[7], '│ 2026-10-11T10:05:00.000Z  INFO  *  foxtrot 05                                │')
@@ -114,7 +124,7 @@ describe('upstream workflow-engine fixture', () => {
   // Replaces the useful expectations of the skipped upstream browser.test.js with the real widgets.
   it('renders timestamp, colored level and message columns sized to their content', async t => {
     const viewer = openFileViewer(t, workflowEngine)
-    assert.equal(viewer.panel.lines.length, 74)
+    assert.equal(visibleEntries(viewer.panel).length, 74)
     await press(viewer, '$')
     const rows = screenText(viewer.screen)
     assert.equal(rows[21], '│ 2017-09-25T22:48:38.035Z  debug  *  Updated instance \'hemo\' with attributes  │')
@@ -142,7 +152,7 @@ describe('resize', () => {
     const rows = screenText(viewer.screen)
     assert.equal(rows.length, 30)
     assert.equal(rows[0], topBorder('characterization.log', '1/32', 100))
-    assert.equal(rows[29], '  NORMAL  1/32 | 26 | sort: -timestamp')
+    assert.equal(rows[29], '  NORMAL  1/32 | 26 | sort: -timestamp | 3 skipped')
     assert.equal(viewer.panel.pageHeight, 26)
   })
 })

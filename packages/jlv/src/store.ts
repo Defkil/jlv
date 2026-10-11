@@ -16,8 +16,8 @@ const initialArenaBytes = 256 * 1024
 const initialSlots = 1024
 
 interface StoreLimits {
-  readonly maximumRecords?: number
-  readonly maximumBytes?: number
+  readonly maximumRecords?: number | undefined
+  readonly maximumBytes?: number | undefined
 }
 
 interface StoredRecord {

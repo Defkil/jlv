@@ -1,12 +1,19 @@
 // Headless terminal for characterization tests: real key sequences go in through a stream, and the
 // logical screen (characters and attributes per cell) comes out, independent of escape-code output.
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { PassThrough, Writable } from 'node:stream'
 import type { TestContext } from 'node:test'
 import { setImmediate as nextTurn } from 'node:timers/promises'
 import type { Widgets } from 'blessed'
+import { Ingestion } from '../../src/application.js'
+import type { SourceInformation } from '../../src/input/files.js'
+import { LineSplitter } from '../../src/input/lines.js'
+import { parseEntry, readMapping, type LogEntry } from '../../src/log.js'
+import { RecordStore } from '../../src/store.js'
 import { createScreen } from '../../src/tui/blessed-boundary.js'
 import { MainPanel } from '../../src/tui/main-panel.js'
+import { RecordView } from '../../src/tui/record-view.js'
 import { StatusLine } from '../../src/tui/status-line.js'
 
 export class TerminalOutput extends Writable {
@@ -37,6 +44,10 @@ export interface Viewer {
   readonly screen: Widgets.Screen
   readonly panel: MainPanel
   readonly status: Widgets.BoxElement
+  readonly store: RecordStore
+  readonly ingestion: Ingestion
+  // Lets more lines arrive at the file's source and shows them, as the application does after each chunk.
+  readonly append: (text: string) => void
 }
 
 export interface ViewerOptions {
@@ -44,6 +55,8 @@ export interface ViewerOptions {
   readonly rows?: number
   readonly level?: string
   readonly sort?: string
+  readonly maximumRecords?: number
+  readonly maximumBytes?: number
 }
 
 // The main panel's top border with its label: the file name and the cursor position.
@@ -64,7 +77,8 @@ export const keys = {
   escape: '\u{1B}'
 } as const
 
-// Mirrors upstream src/index.js: a screen, a MainPanel with the file, the status line, focus, render.
+// Mirrors the command line: a screen, a MainPanel with the records of the file, the status line, focus, render.
+// The file is read through the same framing, parsing and store as the command line, but at once.
 // blessed binds parentless elements to the newest screen once several exist, so each test owns the only
 // live screen and destroys it afterwards.
 export const openViewer = (context: TestContext, file: string, options: ViewerOptions = {}): Viewer => {
@@ -79,14 +93,29 @@ export const openViewer = (context: TestContext, file: string, options: ViewerOp
     warnings: false
   })
   context.after(() => { screen.destroy() })
-  const panel = new MainPanel({ screen, level: options.level, sort: options.sort })
-  panel.loadFile(file)
+  const mapping = readMapping()
+  const store = new RecordStore({ maximumRecords: options.maximumRecords, maximumBytes: options.maximumBytes })
+  const ingestion = new Ingestion({ store, mapping })
+  const source: SourceInformation = { identifier: '1', label: file, order: 0 }
+  const fileLines = new LineSplitter()
+  ingestion.accept(source, [...fileLines.push(readFileSync(file)), ...fileLines.end()])
+  ingestion.activity = 'done'
+  const view = new RecordView(store, text => parseEntry(text, mapping))
+  const panel = new MainPanel({ screen, view, label: file, progress: ingestion, level: options.level, sort: options.sort })
   const status = new StatusLine({ screen, mainPanel: panel })
   screen.append(status)
   panel.setCurrent()
   screen.render()
-  return { input, output, screen, panel, status }
+  const lines = new LineSplitter()
+  const append = (text: string): void => {
+    ingestion.accept(source, lines.push(Buffer.from(text, 'utf8')))
+    panel.refresh()
+  }
+  return { input, output, screen, panel, status, store, ingestion, append }
 }
+
+// The rows of all visible records, in order.
+export const visibleEntries = (panel: MainPanel): LogEntry[] => panel.order.map(sequence => panel.view.entry(sequence))
 
 // The panel label shows the file name as given, so the viewer opens the file from its own directory.
 export const openFileViewer = (context: TestContext, file: string, options: ViewerOptions = {}): Viewer => {

@@ -36,7 +36,7 @@ const visibleFields = (rows: readonly string[]): [string, string] => [rows[4]?.s
 describe('details', () => {
   it('opens the cursor record with Enter and shows nested data as an indented tree', async t => {
     const viewer = openFileViewer(t, characterization)
-    await press(viewer, keys.down, keys.down, keys.down, keys.enter)
+    await press(viewer, keys.down, keys.enter)
     assert.deepEqual(detailsBox(screenText(viewer.screen), 3, 10), [
       '┌─ 2026-10-11T10:28:00.000Z - debug - echo 28 ─────────────────────────┐',
       '│                                                                      │',
@@ -50,7 +50,7 @@ describe('details', () => {
 
   it('toggles between the tree and pretty-printed JSON with j', async t => {
     const viewer = openFileViewer(t, characterization)
-    await press(viewer, keys.down, keys.down, keys.down, keys.enter, 'j')
+    await press(viewer, keys.down, keys.enter, 'j')
     assert.deepEqual(detailsBox(screenText(viewer.screen), 4, 12), [
       '│ {                                                                    │',
       '│   "requestId": "req-28",                                             │',
@@ -78,7 +78,7 @@ describe('details', () => {
 
   it('shows an empty tree and {} for a record without extra data', async t => {
     const viewer = openFileViewer(t, characterization)
-    await press(viewer, keys.down, keys.down, keys.down, keys.down, keys.enter)
+    await press(viewer, keys.down, keys.down, keys.enter)
     assert.deepEqual(detailsBox(screenText(viewer.screen), 3, 5), [
       '┌─ 2026-10-11T10:27:00.000Z - error - delta 27 ────────────────────────┐',
       '│                                                                      │'

@@ -29,7 +29,11 @@ interface RunOptions {
   readonly directory?: string
 }
 
-// Starts the CLI, sends the keys after its first screen output, and collects both outputs until it exits.
+// The CLI reads the file after it opened the screen and redraws as records arrive. The keys go out once its output
+// has been quiet for this long.
+const quietPeriod = 300
+
+// Starts the CLI, sends the keys once its screen output stops, and collects both outputs until it exits.
 const run = async (parameters: readonly string[], options: RunOptions = {}): Promise<Result> => {
   const preload = options.isSized === false ? [] : ['--import', terminalSize]
   const child = spawn(process.execPath, [...preload, cli, ...parameters], {
@@ -39,7 +43,7 @@ const run = async (parameters: readonly string[], options: RunOptions = {}): Pro
   })
   let output = ''
   let errors = ''
-  let hasSentKeys = false
+  let keyTimer: NodeJS.Timeout | undefined
   child.stderr.setEncoding('utf8')
   child.stderr.on('data', (chunk: string) => {
     errors += chunk
@@ -47,17 +51,19 @@ const run = async (parameters: readonly string[], options: RunOptions = {}): Pro
   child.stdout.setEncoding('utf8')
   child.stdout.on('data', (chunk: string) => {
     output += chunk
-    if (hasSentKeys || options.keys === undefined) {
+    const { keys } = options
+    if (keys === undefined) {
       return
     }
-    hasSentKeys = true
-    child.stdin.write(options.keys)
+    clearTimeout(keyTimer)
+    keyTimer = setTimeout(() => { child.stdin.write(keys) }, quietPeriod)
   })
   const timer = setTimeout(() => { child.kill() }, 10_000)
   const code = await new Promise<number | null>(resolve => {
     child.on('exit', exitCode => { resolve(exitCode) })
   })
   clearTimeout(timer)
+  clearTimeout(keyTimer)
   return { code, output: stripVTControlCharacters(output), errors }
 }
 
@@ -71,10 +77,12 @@ describe('command line', () => {
   it('renders the file and exits with 0 on q', async () => {
     const result = await run(['characterization.log'], { keys: 'q' })
     assert.equal(result.code, 0)
-    // The border label shows the file name and the cursor position again (plan section 0.10).
-    assert.match(compact(result.output), /\[characterization\.log\]\[1\/32\]/u)
+    // The border label shows the file name and the cursor position again (plan section 0.10). The screen shows the
+    // empty store first and then redraws only the cells that change, so the position and the status line arrive in
+    // pieces; the rows arrive whole.
+    assert.match(compact(result.output), /\[characterization\.log\]\[1\/0\]/u)
     assert.match(compact(result.output), /foxtrot29/u)
-    assert.match(result.output, /NORMAL {2}1\/32 \| 20 \| sort: -timestamp/u)
+    assert.match(result.output, /NORMAL {2}1\/0 \| 20 \| sort: -timestamp/u)
   })
 
   it('exits with 0 on Ctrl-C', async () => {
@@ -84,10 +92,9 @@ describe('command line', () => {
 
   it('applies -l and --sort from the command line', async () => {
     const level = await run(['-l', 'error', 'characterization.log'], { keys: 'q' })
-    assert.match(level.output, /NORMAL {2}1\/7 /u)
+    assert.match(level.output, /NORMAL {2}1\/0 \| 20 \| sort: -timestamp \| filters: level:error/u)
     assert.match(compact(level.output), /delta27/u)
     assert.doesNotMatch(compact(level.output), /foxtrot29/u)
-    assert.match(level.output, /filters: level:error/u)
     const sort = await run(['--sort', 'level', 'characterization.log'], { keys: 'q' })
     assert.match(sort.output, /sort: level/u)
   })
@@ -101,7 +108,7 @@ describe('command line', () => {
   it('filters numeric levels given with -l as numbers', async () => {
     const result = await run(['-l', '30', 'numeric-levels.log'], { keys: 'q' })
     assert.equal(result.code, 0)
-    assert.match(result.output, /NORMAL {2}1\/2 \| 20 \| sort: -timestamp \| filters: level:30/u)
+    assert.match(result.output, /NORMAL {2}1\/0 \| 20 \| sort: -timestamp \| filters: level:30/u)
     assert.match(compact(result.output), /numericinfoagain/u)
     assert.doesNotMatch(compact(result.output), /numericwarn/u)
   })
@@ -109,7 +116,8 @@ describe('command line', () => {
   it('accepts a sort field that starts with a dash in the = form', async () => {
     const result = await run(['--sort=-level', 'characterization.log'], { keys: 'q' })
     assert.equal(result.code, 0)
-    assert.match(result.output, /NORMAL {2}1\/32 \| 20 \| sort: -level/u)
+    assert.match(result.output, /NORMAL {2}1\/0 \| 20 \| sort: -level/u)
+    assert.match(compact(result.output), /2026-10-11T10:14:00\.000Zwarn\*charlie14/u)
   })
 
   // minimist read --sort -timestamp as a --sort flag without a value, and upstream crashed on it while loading the
@@ -151,7 +159,8 @@ describe('command line', () => {
       for (const name of ['5', '0']) {
         const result = await run([name], { keys: 'q', directory })
         assert.equal(result.code, 0)
-        assert.match(result.output, /NORMAL {2}1\/32 \| 20 \| sort: -timestamp/u)
+        assert.match(compact(result.output), /\[\d\]\[1\/0\]/u)
+        assert.match(compact(result.output), /foxtrot29/u)
       }
     } finally {
       rmSync(directory, { recursive: true, force: true })
