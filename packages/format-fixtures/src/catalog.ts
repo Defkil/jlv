@@ -29,6 +29,12 @@ export const legacyViewerFixtures = {
     description: 'A zero-byte log.',
     entries: 0,
     skippedLines: 0
+  },
+  numericLevels: {
+    path: 'legacy-viewer/numeric-levels.log',
+    description: 'Three records with the numeric pino levels 30 and 40.',
+    entries: 3,
+    skippedLines: 0
   }
 } as const satisfies Readonly<Record<string, LegacyViewerFixture>>
 

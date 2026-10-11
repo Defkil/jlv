@@ -1,11 +1,9 @@
 // Successor of upstream src/widgets/Picker.js: a list dialog that emits select with the chosen item, or with
 // undefined when it is closed with Escape.
 import type { Widgets } from 'blessed'
-import BaseWidget = require('./base-widget.js')
-import boundary = require('./blessed-boundary.js')
-import formatting = require('./formatting.js')
-
-const { markup } = formatting
+import { BaseWidget } from './base-widget.js'
+import { createList } from './blessed-boundary.js'
+import { markup } from './formatting.js'
 
 interface PickerOptions {
   readonly items: readonly string[]
@@ -55,7 +53,7 @@ class Picker extends BaseWidget {
 
   update (): void {
     this.setLabel(markup`{bold} ${this.label} {/}`)
-    this.list = boundary.createList({
+    this.list = createList({
       screen: this.screen,
       interactive: true,
       keys: true,
@@ -109,4 +107,4 @@ class Picker extends BaseWidget {
   }
 }
 
-export = Picker
+export { Picker }

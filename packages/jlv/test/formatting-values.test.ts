@@ -2,9 +2,7 @@
 // cell whose formatting fails shows its raw value. The expectations were recorded from the upstream module.
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import formatting from '../src/tui/formatting.js'
-
-const { formatRows, maxLengths, padEnd, spaces, stripColors, textLength, trunc } = formatting
+import { formatRows, maxLengths, padEnd, spaces, stripColors, textLength, trunc } from '../src/tui/formatting.js'
 
 const failingFormat = (): string => { throw new Error('no format') }
 

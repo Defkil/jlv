@@ -1,10 +1,10 @@
 // Successor of upstream src/log.js: reads a whole JSON-lines file into the legacy rows of the viewer and applies the
 // [transform] mapping from ~/.json-log-viewer. Streaming input and the final record model replace it in later phases.
-import fs = require('node:fs')
-import os = require('node:os')
-import path = require('node:path')
-import ini = require('ini')
-import lodash = require('lodash')
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import ini from 'ini'
+import lodash from 'lodash'
 
 // A row of the viewer: the three known fields when the record has them, every other field below data.
 type LogEntry = {
@@ -92,4 +92,5 @@ const readLog = (file: string, reader: LogReader = fs): LogEntry[] => {
   })
 }
 
-export = { readLog, transform }
+export { readLog, transform }
+export type { ConfigFileSystem, LogEntry, LogReader }

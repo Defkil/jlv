@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { fixturePath, legacyViewerFixtures } from '../../format-fixtures/src/catalog.js'
-import LogDetails from '../src/tui/log-details.js'
+import { LogDetails } from '../src/tui/log-details.js'
 import { keys, openFileViewer, press, screenText } from './support/terminal.js'
 
 const characterization = fixturePath(legacyViewerFixtures.characterization)

@@ -6,7 +6,7 @@ import { setImmediate as nextTurn } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { fixturePath, legacyViewerFixtures } from '../../format-fixtures/src/catalog.js'
 import { upstreamFixture } from './support/fixtures.js'
-import log from '../src/log.js'
+import { readLog } from '../src/log.js'
 import { cellStyle, keys, openFileViewer, plainTopBorder, press, screenText } from './support/terminal.js'
 
 const characterization = fixturePath(legacyViewerFixtures.characterization)
@@ -82,7 +82,6 @@ describe('initial load', () => {
 
 describe('malformed rows', () => {
   it('skips invalid JSON and null lines but keeps numbers as empty entries', () => {
-    const { readLog } = log
     const entries = readLog(characterization)
     assert.equal(entries.length, legacyViewerFixtures.characterization.entries)
     assert.deepEqual(entries.filter(entry => entry.timestamp === undefined), [
@@ -92,7 +91,6 @@ describe('malformed rows', () => {
   })
 
   it('reads a pretty-printed JSON document as nothing', () => {
-    const { readLog } = log
     assert.deepEqual(readLog(prettyMonolog), [])
   })
 })

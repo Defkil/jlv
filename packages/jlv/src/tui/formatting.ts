@@ -1,6 +1,6 @@
 // Successor of upstream src/utils.js: the column layout of the main panel and its blessed markup. Cells whose value
 // is not text keep upstream's behavior: they fail inside padEnd, and formatRows then shows the raw value.
-import lodash = require('lodash')
+import lodash from 'lodash'
 
 // A blessed tag such as {bold} or {/red-fg}. The pattern is global, so test() continues where the previous match
 // ended: like upstream, the result of hasColors depends on the calls made before it.
@@ -149,4 +149,4 @@ const levelColors: Readonly<Record<string, (text: string) => string>> = {
   error: text => markup`{red-fg}${text}{/red-fg}`
 }
 
-export = { formatRows, maxLengths, hasColors, stripColors, spaces, padEnd, textLength, trunc, levelColors, markup }
+export { formatRows, maxLengths, hasColors, stripColors, spaces, padEnd, textLength, trunc, levelColors, markup }

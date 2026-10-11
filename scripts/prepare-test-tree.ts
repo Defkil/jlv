@@ -1,6 +1,6 @@
 // Completes the emitted test tree in .test-dist. tsc emits only TypeScript, so this copies what the
 // emitted tests need next to them: package manifests (their module type decides how Node loads the
-// emitted files), JavaScript sources that are not ported yet, and fixture files.
+// emitted files) and fixture files.
 import { copyFileSync, mkdirSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 
@@ -11,7 +11,7 @@ const packagesOutput = path.join(outputRoot, 'packages')
 const isMirrored = (relativePath: string): boolean => {
   const segments = relativePath.split(path.sep)
   const fileName = segments.at(-1) ?? ''
-  const isWanted = fileName === 'package.json' || segments.includes('fixtures') || (segments[0] === 'src' && !fileName.endsWith('.ts'))
+  const isWanted = fileName === 'package.json' || segments.includes('fixtures')
   return isWanted && !segments.includes('node_modules')
 }
 
@@ -31,4 +31,4 @@ for (const packageName of readdirSync(packagesOutput)) {
     copied += 1
   }
 }
-process.stdout.write(`Mirrored ${String(copied)} manifest, source and fixture files into ${path.relative(repositoryRoot, outputRoot)}.\n`)
+process.stdout.write(`Mirrored ${String(copied)} manifest and fixture files into ${path.relative(repositoryRoot, outputRoot)}.\n`)

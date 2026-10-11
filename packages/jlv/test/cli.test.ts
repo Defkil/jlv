@@ -1,4 +1,4 @@
-// Characterization of the upstream command line (src/index.js) as a spawned process with pipes.
+// Characterization of the command line (src/cli.ts, upstream src/index.js) as a spawned process with pipes.
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import path from 'node:path'
@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { stripVTControlCharacters } from 'node:util'
 import { fixturePath, legacyViewerFixtures } from '../../format-fixtures/src/catalog.js'
 
-const cli = fileURLToPath(new URL('../src/index.js', import.meta.url))
+const cli = fileURLToPath(new URL('../src/cli.js', import.meta.url))
 const characterization = fixturePath(legacyViewerFixtures.characterization)
 // blessed sizes the screen from stdout; a pipe has no size, so the size is given before the CLI starts.
 const terminalSize = 'data:text/javascript,process.stdout.columns=80;process.stdout.rows=24'
@@ -15,6 +15,7 @@ const terminalSize = 'data:text/javascript,process.stdout.columns=80;process.std
 interface Result {
   readonly code: number | null
   readonly output: string
+  readonly errors: string
 }
 
 // blessed moves the cursor over blank cells instead of writing spaces, so row text is compared without spaces.
@@ -25,7 +26,7 @@ interface RunOptions {
   readonly isSized?: boolean
 }
 
-// Starts the CLI, sends the keys after its first screen output, and collects output until it exits.
+// Starts the CLI, sends the keys after its first screen output, and collects both outputs until it exits.
 const run = async (parameters: readonly string[], options: RunOptions = {}): Promise<Result> => {
   const preload = options.isSized === false ? [] : ['--import', terminalSize]
   const child = spawn(process.execPath, [...preload, cli, ...parameters], {
@@ -34,7 +35,12 @@ const run = async (parameters: readonly string[], options: RunOptions = {}): Pro
     stdio: ['pipe', 'pipe', 'pipe']
   })
   let output = ''
+  let errors = ''
   let hasSentKeys = false
+  child.stderr.setEncoding('utf8')
+  child.stderr.on('data', (chunk: string) => {
+    errors += chunk
+  })
   child.stdout.setEncoding('utf8')
   child.stdout.on('data', (chunk: string) => {
     output += chunk
@@ -49,7 +55,7 @@ const run = async (parameters: readonly string[], options: RunOptions = {}): Pro
     child.on('exit', exitCode => { resolve(exitCode) })
   })
   clearTimeout(timer)
-  return { code, output: stripVTControlCharacters(output) }
+  return { code, output: stripVTControlCharacters(output), errors }
 }
 
 describe('command line', () => {
@@ -87,5 +93,27 @@ describe('command line', () => {
     const result = await run(['characterization.log'], { keys: 'q', isSized: false })
     assert.equal(result.code, 0)
     assert.doesNotMatch(result.output, /characterization\.log/u)
+  })
+
+  it('filters numeric levels given with -l as numbers', async () => {
+    const result = await run(['-l', '30', 'numeric-levels.log'], { keys: 'q' })
+    assert.equal(result.code, 0)
+    assert.match(result.output, /NORMAL {2}1\/2 \| 20 \| sort: -timestamp \| filters: level:30/u)
+    assert.match(compact(result.output), /numericinfoagain/u)
+    assert.doesNotMatch(compact(result.output), /numericwarn/u)
+  })
+
+  // minimist reads --sort -timestamp as a --sort flag without a value, so the README's example fails like upstream.
+  it('fails with exit code 1 when --sort gets no field name', async () => {
+    const result = await run(['characterization.log', '--sort', '-timestamp'])
+    assert.equal(result.code, 1)
+    assert.match(result.errors, /TypeError/u)
+  })
+
+  // Upstream crashed inside blessed and its exception handler with exit code 7.
+  it('fails with exit code 1 when --log gets no file name', async () => {
+    const result = await run(['characterization.log', '--log'])
+    assert.equal(result.code, 1)
+    assert.match(result.errors, /TypeError: The --log option needs a text value\./u)
   })
 })

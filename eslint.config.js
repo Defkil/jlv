@@ -10,8 +10,8 @@ export default defineConfig([
   {
     ignores: [
       '**/node_modules/**', '**/dist/**', '.test-dist/**', '.artifacts/**',
-      // Temporary: legacy JavaScript joins the lint scope as it is ported or retired (plan §8 phases 3 and 4).
-      'packages/jlv/src/**/*.js', 'packages/jlv-pino/**', 'src/**', 'test/**'
+      // Temporary: the v1 wrapper and the jlv-pino import stay out of the lint scope until phase 4 retires them.
+      'packages/jlv-pino/**', 'src/**', 'test/**'
     ]
   },
   {
@@ -40,14 +40,6 @@ export default defineConfig([
     rules: {
       // TSDoc comments must retain their standard layout in public declarations.
       'unicorn/no-asterisk-prefix-in-documentation-comments': 'off'
-    }
-  },
-  {
-    files: ['packages/jlv/src/**/*.ts'],
-    rules: {
-      // Temporary (plan §8 phase 3): ported modules stay CommonJS while upstream JavaScript still requires them;
-      // the command line port switches packages/jlv to ES modules and removes this entry.
-      '@typescript-eslint/no-require-imports': ['error', { allowAsImport: true }]
     }
   },
   {

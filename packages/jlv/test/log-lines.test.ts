@@ -6,10 +6,8 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, it } from 'node:test'
-import log from '../src/log.js'
+import { readLog, transform } from '../src/log.js'
 import { valueAt } from './support/fixtures.js'
-
-const { readLog, transform } = log
 
 const textReader = (text: string): { readonly readFileSync: () => string } => ({ readFileSync: () => text })
 

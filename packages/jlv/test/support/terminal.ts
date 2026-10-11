@@ -5,9 +5,9 @@ import { PassThrough, Writable } from 'node:stream'
 import type { TestContext } from 'node:test'
 import { setImmediate as nextTurn } from 'node:timers/promises'
 import type { Widgets } from 'blessed'
-import boundary from '../../src/tui/blessed-boundary.js'
-import MainPanel from '../../src/tui/main-panel.js'
-import StatusLine from '../../src/tui/status-line.js'
+import { createScreen } from '../../src/tui/blessed-boundary.js'
+import { MainPanel } from '../../src/tui/main-panel.js'
+import { StatusLine } from '../../src/tui/status-line.js'
 
 export class TerminalOutput extends Writable {
   readonly isTTY = true
@@ -64,7 +64,7 @@ export const keys = {
 export const openViewer = (context: TestContext, file: string, options: ViewerOptions = {}): Viewer => {
   const input = new PassThrough()
   const output = new TerminalOutput(options.columns ?? 80, options.rows ?? 24)
-  const screen = boundary.createScreen({
+  const screen = createScreen({
     input,
     output,
     terminal: 'xterm-256color',

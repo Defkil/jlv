@@ -1,7 +1,7 @@
 // The only module that loads the terminal backend (plan §4.2). Widgets extend Box and create their parts through
 // these factories. The declarations of blessed 0.1.81 are corrected in src/types/blessed.d.ts; callback payloads
 // that they describe wrongly are normalized here before they reach the widgets.
-import blessed = require('blessed')
+import blessed from 'blessed'
 import type { ScreenOptions, Widgets } from 'blessed'
 
 const { Box } = blessed
@@ -40,4 +40,4 @@ const ask = (question: Widgets.QuestionElement, text: string, callback: (error: 
 // percentages of the options. Number() keeps upstream's implicit conversion.
 const toCells: (size: number | string) => number = Number
 
-export = { Box, ask, createElement, createList, createPrompt, createQuestion, createScreen, readInput, toCells }
+export { Box, ask, createElement, createList, createPrompt, createQuestion, createScreen, readInput, toCells }

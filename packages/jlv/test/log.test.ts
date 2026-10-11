@@ -2,9 +2,7 @@
 import assert from 'node:assert/strict'
 import { before, describe, it } from 'node:test'
 import { readUpstreamFixture, valueAt } from './support/fixtures.js'
-import log from '../src/log.js'
-
-const { readLog, transform } = log
+import { readLog, transform } from '../src/log.js'
 
 describe('readLog', () => {
   let entries: ReturnType<typeof readLog> = []

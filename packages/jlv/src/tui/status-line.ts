@@ -1,10 +1,8 @@
 // Successor of upstream src/widgets/StatusLine.js: the bottom line with the mode, the cursor position, the page
 // height, the sort and the filters of the main panel.
 import type { Widgets } from 'blessed'
-import boundary = require('./blessed-boundary.js')
-import formatting = require('./formatting.js')
-
-const { markup } = formatting
+import { Box, toCells } from './blessed-boundary.js'
+import { markup } from './formatting.js'
 
 interface StatusFilter {
   readonly key: string
@@ -28,12 +26,12 @@ interface StatusLineOptions {
   readonly mainPanel: PanelState
 }
 
-class StatusLine extends boundary.Box {
+class StatusLine extends Box {
   readonly mainPanel: PanelState
 
   constructor (options: StatusLineOptions) {
     super({
-      top: boundary.toCells(options.screen.height) - 1,
+      top: toCells(options.screen.height) - 1,
       left: 0,
       width: '100%',
       height: 1,
@@ -48,7 +46,7 @@ class StatusLine extends boundary.Box {
     this.mainPanel = options.mainPanel
     this.mainPanel.on('update', this.update.bind(this))
     this.on('resize', () => {
-      this.position.top = boundary.toCells(options.screen.height) - 1
+      this.position.top = toCells(options.screen.height) - 1
       this.update()
     })
     this.update()
@@ -80,4 +78,4 @@ class StatusLine extends boundary.Box {
   }
 }
 
-export = StatusLine
+export { StatusLine }

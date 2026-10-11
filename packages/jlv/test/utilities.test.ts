@@ -3,9 +3,7 @@
 // the TypeScript port in src/tui/formatting.ts, where upstream's len is named textLength.
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import formatting from '../src/tui/formatting.js'
-
-const { formatRows, maxLengths, stripColors, hasColors, spaces, padEnd, textLength, trunc } = formatting
+import { formatRows, maxLengths, stripColors, hasColors, spaces, padEnd, textLength, trunc } from '../src/tui/formatting.js'
 
 describe('hasColors', () => {
   it('is false for string with no colors', () => {

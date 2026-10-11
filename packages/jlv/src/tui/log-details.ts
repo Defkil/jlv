@@ -1,15 +1,11 @@
 // Successor of upstream src/widgets/LogDetails.js: a dialog with the data of one record as an indented tree or as
 // pretty-printed JSON. j toggles the view; Enter and Escape close the dialog.
 import type { Widgets } from 'blessed'
-import lodash = require('lodash')
-import type log = require('../log.js')
-import BaseWidget = require('./base-widget.js')
-import boundary = require('./blessed-boundary.js')
-import formatting = require('./formatting.js')
-
-type LogEntry = ReturnType<typeof log.readLog>[number]
-
-const { markup } = formatting
+import lodash from 'lodash'
+import type { LogEntry } from '../log.js'
+import { BaseWidget } from './base-widget.js'
+import { createElement } from './blessed-boundary.js'
+import { markup } from './formatting.js'
 
 const formatKey = (key: string, padding?: number): string => {
   const label = padding ? `${key}:`.padEnd(padding + 1) : `${key}:`
@@ -89,7 +85,7 @@ class LogDetails extends BaseWidget {
     const content = this.json
       ? JSON.stringify(this.entryData, undefined, 2)
       : formatObject(this.entryData)
-    this.element = boundary.createElement({
+    this.element = createElement({
       screen: this.screen,
       scrollable: true,
       alwaysScroll: true,
@@ -106,4 +102,4 @@ class LogDetails extends BaseWidget {
   }
 }
 
-export = LogDetails
+export { LogDetails }

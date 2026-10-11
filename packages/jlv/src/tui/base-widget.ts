@@ -1,6 +1,6 @@
 // Successor of upstream src/widgets/BaseWidget.js: a bordered box that attaches itself to the screen.
 import type { Widgets } from 'blessed'
-import boundary = require('./blessed-boundary.js')
+import { Box } from './blessed-boundary.js'
 
 // A widget joins a screen directly or through the screen of a parent element.
 type Placement =
@@ -12,7 +12,7 @@ type BaseWidgetOptions = Widgets.BoxOptions & Placement & {
   readonly handleKeys?: boolean
 }
 
-class BaseWidget extends boundary.Box {
+class BaseWidget extends Box {
   constructor (options: BaseWidgetOptions) {
     super({
       top: 'center',
@@ -48,4 +48,4 @@ class BaseWidget extends boundary.Box {
   }
 }
 
-export = BaseWidget
+export { BaseWidget }

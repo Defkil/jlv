@@ -2,15 +2,13 @@
 // the dialogs that change them. It keeps upstream's behavior, including the defects that the characterization
 // records for later phases.
 import type { Widgets } from 'blessed'
-import lodash = require('lodash')
-import log = require('../log.js')
-import BaseWidget = require('./base-widget.js')
-import boundary = require('./blessed-boundary.js')
-import formatting = require('./formatting.js')
-import LogDetails = require('./log-details.js')
-import Picker = require('./picker.js')
-
-type LogEntry = ReturnType<typeof log.readLog>[number]
+import lodash from 'lodash'
+import { readLog, type LogEntry } from '../log.js'
+import { BaseWidget } from './base-widget.js'
+import { ask, createElement, createPrompt, createQuestion, readInput, toCells } from './blessed-boundary.js'
+import { formatRows, levelColors, markup } from './formatting.js'
+import { LogDetails } from './log-details.js'
+import { Picker } from './picker.js'
 
 type PanelMode = 'normal' | 'sort' | 'filter' | 'search' | 'GOTO'
 
@@ -31,9 +29,6 @@ interface MainPanelOptions {
   readonly colSpacing?: number
   readonly wrap?: boolean
 }
-
-const { formatRows, levelColors, markup } = formatting
-const { readLog } = log
 
 const entryFields: readonly string[] = ['timestamp', 'level', 'message']
 
@@ -111,8 +106,8 @@ class MainPanel extends BaseWidget {
     this.renderLines()
   }
 
-  get pageHeight (): number { return boundary.toCells(this.height) - 3 }
-  get pageWidth (): number { return boundary.toCells(this.width) - 2 - 2 }
+  get pageHeight (): number { return toCells(this.height) - 3 }
+  get pageWidth (): number { return toCells(this.width) - 2 - 2 }
 
   loadFile (file: string): void {
     this.file = file
@@ -165,7 +160,7 @@ class MainPanel extends BaseWidget {
 
   renderLines (shouldNotify = true): void {
     this.resetMode()
-    this.rows = this.lines.slice(this.initialRow, this.initialRow + boundary.toCells(this.height) - 2)
+    this.rows = this.lines.slice(this.initialRow, this.initialRow + toCells(this.height) - 2)
     this.update(shouldNotify)
   }
 
@@ -395,7 +390,7 @@ class MainPanel extends BaseWidget {
 
   // Asks for text and calls back only with a non-empty answer; an empty answer renders the panel again.
   prompt (text: string, value: string | undefined, callback: (input: string) => void): void {
-    const inputDialog = boundary.createPrompt({
+    const inputDialog = createPrompt({
       parent: this,
       border: 'line',
       height: 'shrink',
@@ -409,7 +404,7 @@ class MainPanel extends BaseWidget {
       padding: 1
     })
 
-    boundary.readInput(inputDialog, text, value || '', (error, input) => {
+    readInput(inputDialog, text, value || '', (error, input) => {
       if (error) {
         return
       }
@@ -453,7 +448,7 @@ class MainPanel extends BaseWidget {
   }
 
   message (text: string): void {
-    const question = boundary.createQuestion({
+    const question = createQuestion({
       parent: this,
       border: 'line',
       height: 'shrink',
@@ -468,7 +463,7 @@ class MainPanel extends BaseWidget {
       padding: 1
     })
 
-    boundary.ask(question, text, (_error, isAccepted) => {
+    ask(question, text, (_error, isAccepted) => {
       this.log('value', isAccepted)
       this.renderLines()
     })
@@ -604,7 +599,7 @@ class MainPanel extends BaseWidget {
     const content = formatRows(this.rows, columns, this.colSpacing, this.pageWidth - 1)
       .map((row, index) => highlight(row, index))
       .join('\n')
-    const list = boundary.createElement({ screen: this.screen, tags: true, content })
+    const list = createElement({ screen: this.screen, tags: true, content })
     // Upstream PR #13 removes the children while it iterates over them, so every second child stays (see
     // viewer-render-leak.test.ts). Phase 4 replaces this with one persistent row element.
     for (const child of this.children) {
@@ -618,4 +613,4 @@ class MainPanel extends BaseWidget {
   }
 }
 
-export = MainPanel
+export { MainPanel }
