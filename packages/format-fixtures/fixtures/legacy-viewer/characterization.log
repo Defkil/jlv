@@ -1,0 +1,36 @@
+{"timestamp":"2026-10-11T10:00:00.000Z","level":"debug","message":"alpha 00"}
+{"timestamp":"2026-10-11T10:07:00.000Z","level":"error","message":"bravo 07","requestId":"req-07","user":{"id":7,"name":"user 07"}}
+{"timestamp":"2026-10-11T10:14:00.000Z","level":"warn","message":"charlie 14","requestId":"req-14","user":{"id":14,"name":"user 14"}}
+{"timestamp":"2026-10-11T10:21:00.000Z","level":"info","message":"delta 21"}
+{"timestamp":"2026-10-11T11:00:00.000Z","level":"info"
+{"timestamp":"2026-10-11T10:28:00.000Z","level":"debug","message":"echo 28","requestId":"req-28","user":{"id":28,"name":"user 28"}}
+{"timestamp":"2026-10-11T10:05:00.000Z","level":"INFO","message":"foxtrot 05","requestId":"req-05","user":{"id":5,"name":"user 05"}}
+{"timestamp":"2026-10-11T10:12:00.000Z","level":"debug","message":"alpha 12"}
+{"timestamp":"2026-10-11T10:19:00.000Z","level":"error","message":"bravo 19","requestId":"req-19","user":{"id":19,"name":"user 19"}}
+{"timestamp":"2026-10-11T10:26:00.000Z","level":"warn","message":"charlie 26","requestId":"req-26","user":{"id":26,"name":"user 26"}}
+not json at all
+{"timestamp":"2026-10-11T10:03:00.000Z","level":"error","message":"delta 03"}
+{"timestamp":"2026-10-11T10:10:00.000Z","level":"warn","message":"kilo 10\nsecond line","requestId":"req-10","user":{"id":10,"name":"user 10"}}
+{"timestamp":"2026-10-11T10:17:00.000Z","level":"info","message":"lima 17 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx","requestId":"req-17","user":{"id":17,"name":"user 17"}}
+{"timestamp":"2026-10-11T10:24:00.000Z","level":"debug","message":"alpha 24"}
+
+{"timestamp":"2026-10-11T10:01:00.000Z","level":"info","message":"bravo 01","requestId":"req-01","user":{"id":1,"name":"user 01"}}
+{"timestamp":"2026-10-11T10:08:00.000Z","level":"debug","message":"charlie 08","requestId":"req-08","user":{"id":8,"name":"user 08"}}
+{"timestamp":"2026-10-11T10:15:00.000Z","level":"error","message":"delta 15"}
+null
+{"timestamp":"2026-10-11T10:22:00.000Z","level":"trace","message":"echo 22","requestId":"req-22","user":{"id":22,"name":"user 22"}}
+{"timestamp":"2026-10-11T10:29:00.000Z","level":"info","message":"foxtrot 29","requestId":"req-29","user":{"id":29,"name":"user 29"}}
+{"timestamp":"2026-10-11T10:06:00.000Z","level":"warn","message":"alpha 06"}
+{"timestamp":"2026-10-11T10:13:00.000Z","level":"fatal","message":"bravo 13","requestId":"req-13","user":{"id":13,"name":"user 13"}}
+{"timestamp":"2026-10-11T10:20:00.000Z","level":"debug","message":"charlie 20","requestId":"req-20","user":{"id":20,"name":"user 20"},"tags":["a","b"],"count":0,"enabled":false,"note":null}
+42
+{"timestamp":"2026-10-11T10:27:00.000Z","level":"error","message":"delta 27"}
+{"timestamp":"2026-10-11T10:04:00.000Z","level":"debug","message":"echo 04","requestId":"req-04","user":{"id":4,"name":"user 04"}}
+{"timestamp":"2026-10-11T10:11:00.000Z","level":"error","message":"foxtrot 11","requestId":"req-11","user":{"id":11,"name":"user 11"}}
+{"timestamp":"2026-10-11T10:18:00.000Z","level":"warn","message":"alpha 18"}
+{"timestamp":"2026-10-11T10:25:00.000Z","level":"info","message":"bravo 25","requestId":"req-25","user":{"id":25,"name":"user 25"}}
+{"level":"warn","message":"no timestamp"}
+{"timestamp":"2026-10-11T10:02:00.000Z","level":"warn","message":"charlie 02","requestId":"req-02","user":{"id":2,"name":"user 02"}}
+{"timestamp":"2026-10-11T10:09:00.000Z","level":"info","message":"delta 09"}
+{"timestamp":"2026-10-11T10:16:00.000Z","level":"debug","message":"echo 16","requestId":"req-16","user":{"id":16,"name":"user 16"}}
+{"timestamp":"2026-10-11T10:23:00.000Z","level":"error","message":"foxtrot 23","requestId":"req-23","user":{"id":23,"name":"user 23"}}

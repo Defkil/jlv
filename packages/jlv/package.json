@@ -18,5 +18,8 @@
     "ini": "1.3.5",
     "lodash": "4.17.11",
     "minimist": "1.2.0"
+  },
+  "devDependencies": {
+    "@types/blessed": "0.1.27"
   }
 }

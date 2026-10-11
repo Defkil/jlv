@@ -11,7 +11,7 @@ export default defineConfig([
     ignores: [
       '**/node_modules/**', '**/dist/**', '.test-dist/**', '.artifacts/**',
       // Temporary: legacy JavaScript joins the lint scope as it is ported or retired (plan §8 phases 3 and 4).
-      'packages/jlv/src/**/*.js', 'packages/jlv/test/**/*.js', 'packages/jlv-pino/**', 'src/**', 'test/**'
+      'packages/jlv/src/**/*.js', 'packages/jlv-pino/**', 'src/**', 'test/**'
     ]
   },
   {
