@@ -42,7 +42,7 @@ and contributors, whose history it imports, and replaces the jlv 1 wrapper and j
 - Wide characters such as CJK in two cells, and combining marks combined with their character.
 - Bounded memory: the viewer keeps the newest 50,000 records and at most 64 MiB of them (`--max-records`,
   `--max-bytes`) and shows `kept <retained> of <seen>`; the plain and JSON output and `--save` get every record.
-- `--version`, `--help` and exit codes 0, 1, 2 and 130.
+- `--version`, `--help` and the exit codes 0, 1 and 2, and 130, 143 and 129 after Ctrl-C, SIGTERM and SIGHUP.
 - This changelog, a contributing guide, a code of conduct, a security policy and the documentation of the formats,
   the configuration and the migration, whose examples are tests. The package is built, tested as an installed tarball
   and published by CI with npm provenance.
@@ -88,8 +88,9 @@ and contributors, whose history it imports, and replaces the jlv 1 wrapper and j
 ### Security
 
 - Log text cannot act on the terminal: no escape sequence of a log reaches it, and blessed tags in log text stay text.
-- The runtime dependencies are neo-blessed, ini 6, tinyglobby and csv-parse, without install scripts or native code,
-  replacing minimist, ini 1.3, lodash and blessed-contrib with their prototype pollution advisories.
+- The runtime dependencies are neo-blessed, ini 6, tinyglobby and csv-parse, without install scripts, native code or
+  known advisories. They replace blessed, blessed-contrib, lodash, minimist and ini 1.3, whose graph had 23
+  advisories, among them prototype pollution through minimist, ini and lodash.
 - A configuration file cannot load code; plugins load only from the command line.
 
 ## [1.0.1] - 2020-08-12
