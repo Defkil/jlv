@@ -1,4 +1,4 @@
-// Characterization of cursor movement, paging and go-to-line in the upstream viewer on blessed 0.1.81.
+// Characterization of cursor movement, paging, go-to-line and wrapping in the viewer.
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { fixturePath, legacyViewerFixtures } from '../../format-fixtures/src/catalog.js'

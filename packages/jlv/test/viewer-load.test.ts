@@ -1,5 +1,5 @@
-// Characterization of the upstream viewer on blessed 0.1.81: initial load, layout, colors, malformed
-// rows, empty logs and resize. Expectations record observed behavior, including known defects.
+// Characterization of the viewer: initial load, layout, colors, malformed rows, empty logs and resize.
+// Expectations record observed upstream behavior, including the defects that are still open.
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { setImmediate as nextTurn } from 'node:timers/promises'
