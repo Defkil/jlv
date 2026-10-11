@@ -11,7 +11,8 @@ describes the remaining steps.
 
 - [Log formats](docs/formats.md): the formats that jlv reads and how it chooses one, the record, timestamps, levels,
   diagnostics and plugins.
-- [Configuration](docs/configuration.md): `jlv.config.json`, the legacy `.json-log-viewer` and the command line.
+- [Configuration](docs/configuration.md): `jlv.config.json`, the legacy `.json-log-viewer`, filters and profiles, and
+  the command line.
 - [Migrating to jlv 2](docs/migration.md): what changes for users of jlv 1 and json-log-viewer.
 
 ## Development

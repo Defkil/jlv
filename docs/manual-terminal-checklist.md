@@ -180,16 +180,28 @@ once the store evicts, and the numbers of skipped lines and failed inputs.
     `<viewer> -c monolog.config.json monolog.log` the status line shows
     `config: monolog.config.json` and the times show in UTC; `<viewer> broken.log` shows
     `2 skipped | 1 warning`.
+13. **Filters, correlation, keys and text.** In `docs\examples`, run
+    `<viewer> -c profiles.config.json pino.log`: `f` offers `add a filter` and the profiles
+    `problems` and `api-1 errors`; `p` applies `problems`, and the status line shows
+    `filters: profile problems`. `f`, `a`, `m`, `slow` and Enter adds a filter; `f` then lists
+    `remove ...` for each filter and `clear all filters`. `?` shows the keys, scrolls with
+    PageDown and closes with `q`. With
+    `<viewer> ..\..\packages\format-fixtures\fixtures\legacy-viewer\characterization.log`
+    the identifiers `req-NN` show in colors; `c` on a record shows only that record, `c`
+    again shows all, and the cursor stays on the record. Open the search with `/` and press
+    Ctrl-C: the viewer ends with exit code 130 and the prompt is restored. Finally
+    `& $node -e "console.log(JSON.stringify({ level: 'info', message: '\u001b]0;pwned\u0007\u001b[31mred {bold}x' }))" | <viewer>`:
+    the window title stays as it was, and the message shows `red {bold}x` without color.
 
 ### Record, Part B
 
-| Runtime | Console path | Keys (1) | Follow newest (2) | Ctrl-C and q (3) | Input ends (4) | Eviction (5) | Follow (6) | Save (7) | Plain (8) | No console (9) | Typed (10) | Formats (12) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 22.9.0 | | | | | | | | | | | | |
-| 22.x latest: | | | | | | | | | | | | |
-| 24.x latest: | | | | | | | | | | | | |
-| 26.x latest: | | | | | | | | | | | | |
-| Linux, Node: | | | | | | | | | | | | |
+| Runtime | Console path | Keys (1) | Follow newest (2) | Ctrl-C and q (3) | Input ends (4) | Eviction (5) | Follow (6) | Save (7) | Plain (8) | No console (9) | Typed (10) | Formats (12) | Filters (13) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 22.9.0 | | | | | | | | | | | | | |
+| 22.x latest: | | | | | | | | | | | | | |
+| 24.x latest: | | | | | | | | | | | | | |
+| 26.x latest: | | | | | | | | | | | | | |
+| Linux, Node: | | | | | | | | | | | | | |
 
 ## Probe
 
