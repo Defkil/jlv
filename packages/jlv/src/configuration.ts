@@ -17,6 +17,7 @@ import path from 'node:path'
 import ini from 'ini'
 import type { FieldMapping, FieldPath, FilterClause, FilterGroup, JsonValue, LogLevel, TimestampUnit } from './api.js'
 import { parsePath } from './field-path.js'
+import { fieldProblem } from './filters.js'
 import { isCsvDelimiter } from './formats/csv.js'
 import { asJsonObject, isLogLevel, isPlainObject, jsonProblem, logLevels, timestampUnits } from './record.js'
 import type { LegacyExtra } from './tui/log-row.js'
@@ -208,6 +209,10 @@ class JsonReader {
   clause (value: unknown, place: string): FilterClause {
     const clause = this.object(value, place, ['field', 'operator', 'value'])
     const field = this.path(clause['field'], `${place}.field`)
+    const problem = fieldProblem(field)
+    if (problem !== undefined) {
+      this.fail(`${place}.field`, problem)
+    }
     const operator = this.oneOf(clause['operator'], `${place}.operator`, ['equals', 'contains'] as const)
     const operand = clause['value']
     if (operator === 'contains') {
@@ -222,9 +227,9 @@ class JsonReader {
     const profile = this.object(value, place, ['mode', 'clauses'])
     const mode = this.oneOf(profile['mode'], `${place}.mode`, ['all', 'any'] as const)
     const clauses = profile['clauses']
-    return Array.isArray(clauses)
+    return Array.isArray(clauses) && clauses.length > 0
       ? { mode, clauses: clauses.map((clause: unknown, index) => this.clause(clause, `${place}.clauses[${String(index)}]`)) }
-      : this.fail(`${place}.clauses`, 'must be a list of clauses')
+      : this.fail(`${place}.clauses`, 'must be a list of at least one clause')
   }
 }
 
@@ -294,6 +299,18 @@ const readJsonConfiguration = (text: string, label: string): Configuration => {
 
 const errorMessage = (error: unknown): string => error instanceof Error ? error.message : String(error)
 
+// A clause of --where: JSON text in the form of a profile's clauses (plan section 6.1).
+const readFilterClause = (text: string, label: string): FilterClause => {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch (error) {
+    const example = '{"field":["message"],"operator":"contains","value":"timeout"}'
+    throw new ConfigurationError(`${label} takes a clause in JSON, such as ${example}: ${errorMessage(error)}`, { cause: error })
+  }
+  return new JsonReader(label).clause(parsed, 'the clause')
+}
+
 // A configuration file is JSON by its extension, or by text that starts with {; anything else is legacy INI.
 const isJsonText = (file: string, text: string): boolean =>
   path.extname(file).toLowerCase() === '.json' || text.replace(/^\u{FEFF}/u, '').trimStart().startsWith('{')
@@ -348,7 +365,7 @@ const loadConfiguration = (options: ConfigurationOptions): Configuration => {
 }
 
 export {
-  ConfigurationError, discoveryCandidates, legacyPath, loadConfiguration, noConfiguration, readJsonConfiguration,
-  readLegacyMapping
+  ConfigurationError, discoveryCandidates, legacyPath, loadConfiguration, noConfiguration, readFilterClause,
+  readJsonConfiguration, readLegacyMapping
 }
 export type { Configuration, ConfigurationOptions, LegacyMapping }

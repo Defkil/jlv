@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } 
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { after, describe, it } from 'node:test'
-import { ConfigurationError, loadConfiguration, readJsonConfiguration, readLegacyMapping } from '../src/configuration.js'
+import { ConfigurationError, loadConfiguration, readFilterClause, readJsonConfiguration, readLegacyMapping } from '../src/configuration.js'
 import { readUpstreamFixture } from './support/fixtures.js'
 import { readRecords, rowsOf, shownRows } from './support/records.js'
 
@@ -128,7 +128,7 @@ describe('jlv.config.json', () => {
       maxRecords: 1000,
       maxBytes: 1_048_576,
       profiles: {
-        errors: { mode: 'any', clauses: [{ field: ['level'], operator: 'equals', value: 50 }, { field: ['msg'], operator: 'contains', value: 'fail' }] }
+        errors: { mode: 'any', clauses: [{ field: ['level'], operator: 'equals', value: 50 }, { field: ['fields', 'msg'], operator: 'contains', value: 'fail' }] }
       }
     }), 'jlv.config.json')
     assert.deepEqual(configuration, {
@@ -142,7 +142,7 @@ describe('jlv.config.json', () => {
       maximumRecords: 1000,
       maximumBytes: 1_048_576,
       profiles: {
-        errors: { mode: 'any', clauses: [{ field: ['level'], operator: 'equals', value: 50 }, { field: ['msg'], operator: 'contains', value: 'fail' }] }
+        errors: { mode: 'any', clauses: [{ field: ['level'], operator: 'equals', value: 50 }, { field: ['fields', 'msg'], operator: 'contains', value: 'fail' }] }
       }
     })
   })
@@ -188,10 +188,43 @@ describe('jlv.config.json', () => {
     assert.equal(jsonError(json({ version: 1, csv: { delimiter: ';;' } })), 'jlv.config.json: csv.delimiter must be one ASCII character other than a quote')
     assert.equal(jsonError(json({ version: 1, maxRecords: 0 })), 'jlv.config.json: maxRecords must be a whole number from 1 to 4294967295')
     assert.equal(jsonError(json({ version: 1, profiles: { p: { mode: 'some', clauses: [] } } })), 'jlv.config.json: profiles.p.mode must be one of all, any')
-    assert.equal(jsonError(json({ version: 1, profiles: { p: { mode: 'all', clauses: [{ field: ['m'], operator: 'contains', value: 1 }] } } })),
+    assert.equal(jsonError(json({ version: 1, profiles: { p: { mode: 'all', clauses: [{ field: ['message'], operator: 'contains', value: 1 }] } } })),
       'jlv.config.json: profiles.p.clauses[0].value must be text')
-    assert.equal(jsonError(json({ version: 1, profiles: { p: { mode: 'all', clauses: [{ field: ['m'], operator: 'matches', value: 'x' }] } } })),
+    assert.equal(jsonError(json({ version: 1, profiles: { p: { mode: 'all', clauses: [{ field: ['message'], operator: 'matches', value: 'x' }] } } })),
       'jlv.config.json: profiles.p.clauses[0].operator must be one of equals, contains')
+    assert.equal(jsonError(json({ version: 1, profiles: { p: { mode: 'any', clauses: [] } } })),
+      'jlv.config.json: profiles.p.clauses must be a list of at least one clause')
+  })
+
+  // A field that names no part of the record would never match; the usual mistake is an original field without
+  // "fields" in front.
+  it('takes clause fields that start with a part of the record', () => {
+    assert.equal(jsonError(json({ version: 1, profiles: { p: { mode: 'all', clauses: [{ field: ['route'], operator: 'equals', value: '/' }] } } })),
+      'jlv.config.json: profiles.p.clauses[0].field must start with a part of the record, identifier, source, position, ' +
+      'timestamp, timestampText, level, message, correlationIdentifier, fields; an original field is ["fields","route"]')
+  })
+})
+
+describe('clauses of --where', () => {
+  it('read the JSON of a profile\'s clause and name --where in their errors', () => {
+    assert.deepEqual(readFilterClause('{"field":["fields","status"],"operator":"equals","value":0}', '--where'),
+      { field: ['fields', 'status'], operator: 'equals', value: 0 })
+    assert.deepEqual(readFilterClause('{"field":["message"],"operator":"contains","value":"slow"}', '--where'),
+      { field: ['message'], operator: 'contains', value: 'slow' })
+    const failure = (text: string): string => {
+      try {
+        readFilterClause(text, '--where')
+      } catch (error) {
+        assert.ok(error instanceof ConfigurationError)
+        return error.message
+      }
+      return assert.fail('no error')
+    }
+    assert.match(failure('message~slow'), /^--where takes a clause in JSON, such as \{"field":\["message"\],"operator":"contains","value":"timeout"\}: /u)
+    assert.equal(failure('{"field":["message"],"operator":"contains"}'), '--where: the clause.value must be text')
+    assert.equal(failure('{"field":"message","operator":"equals","value":1}'),
+      '--where: the clause.field must be a list of keys and indexes, such as ["message"] for "message"')
+    assert.equal(failure('[1]'), '--where: the clause must be an object')
   })
 })
 
