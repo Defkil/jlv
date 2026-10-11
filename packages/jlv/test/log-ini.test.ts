@@ -1,8 +1,7 @@
-// Reading the ~/.json-log-viewer mapping with ini 6. The mapping stays loaded for the rest of the process once
-// found, so this file reads exactly one configuration.
+// Reading the ~/.json-log-viewer mapping with ini 6.
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { readLog, transform } from '../src/log.js'
+import { readLog, readMapping, transform } from '../src/log.js'
 
 // ini 1.3.5 wrote the [__proto__] section into Object.prototype (CVE-2020-7788). It also read the line of spaces as
 // a key '' and the header with a trailing space as a key '[transform]', so for it this file had no [transform]
@@ -25,12 +24,12 @@ const mappingFile = [
 describe('mapping configuration read with ini 6', () => {
   it('maps own fields, drops prototype keys, names no field for a nested section and leaves Object.prototype alone', () => {
     const record = { msg: 'm', time: '2026-10-11T10:00:00.000Z', lvl: 'info' }
-    const mapped = transform(record, { existsSync: () => true, readFileSync: () => mappingFile })
+    const mapping = readMapping({ existsSync: () => true, readFileSync: () => mappingFile })
+    const mapped = transform(record, mapping)
     assert.deepEqual(mapped, { message: 'm', level: undefined, timestamp: '2026-10-11T10:00:00.000Z', extra: record, nested: undefined })
     assert.equal(Object.getPrototypeOf(mapped), Object.prototype)
     assert.equal(Reflect.get({}, 'polluted'), undefined)
-    // The mapping is now loaded, so readLog applies it as well.
-    assert.deepEqual(readLog('', { readFileSync: () => `${JSON.stringify(record)}\n` }), [
+    assert.deepEqual(readLog('', { readFileSync: () => `${JSON.stringify(record)}\n` }, mapping), [
       { timestamp: '2026-10-11T10:00:00.000Z', level: undefined, message: 'm', data: { extra: record, nested: undefined } }
     ])
   })

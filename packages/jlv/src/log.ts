@@ -1,10 +1,11 @@
-// Successor of upstream src/log.js: reads a whole JSON-lines file into the legacy rows of the viewer and applies the
-// [transform] mapping from ~/.json-log-viewer. Streaming input and the final record model replace it in later phases.
+// Successor of upstream src/log.js: turns JSON lines into the legacy rows of the viewer and applies the [transform]
+// mapping from ~/.json-log-viewer. The final record model replaces these rows in a later phase.
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import ini from 'ini'
 import { valueAtField } from './field-path.js'
+import { LineSplitter } from './input/lines.js'
 
 // A row of the viewer: the three known fields when the record has them, every other field below data.
 type LogEntry = {
@@ -25,36 +26,48 @@ interface ConfigFileSystem {
 
 type Mapping = Readonly<Record<string, unknown>>
 
-const entryFields = ['timestamp', 'level', 'message'] as const
+// What a line holds: a record of the viewer, nothing (an empty line), or a line that the viewer skips because it is
+// no JSON or a JSON value that upstream dropped (null, false, 0 or empty text).
+type ParsedLine =
+  | { readonly kind: 'record', readonly value: unknown }
+  | { readonly kind: 'blank' }
+  | { readonly kind: 'skipped', readonly reason: 'invalid-json' | 'empty-value' }
 
-interface TransformCache {
-  // The [transform] section once found, undefined before.
-  mapping: Mapping | undefined
+// The mapping file exists but cannot be read; the command line reports it before it opens a screen.
+class MappingFileError extends Error {
+  constructor (message: string, options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'MappingFileError'
+  }
 }
 
-// Like upstream, a missing file or section is looked up again for the next record, and a found section stays for
-// the rest of the process.
-const transformCache: TransformCache = { mapping: undefined }
+const entryFields = ['timestamp', 'level', 'message'] as const
+
+const mappingFileName = '.json-log-viewer'
 
 // An INI section: ini 6 returns sections as objects without a prototype, and other values as text, booleans, null
 // or lists.
 const isSection = (value: unknown): value is Mapping => typeof value === 'object' && value !== null && !Array.isArray(value)
 
-const loadTransform = (fileSystem: ConfigFileSystem): Mapping | undefined => {
-  if (transformCache.mapping === undefined) {
-    const transformFile = path.join(os.homedir(), '.json-log-viewer')
-    if (!fileSystem.existsSync(transformFile)) {
-      return undefined
-    }
-    const parsed: unknown = ini.parse(fileSystem.readFileSync(transformFile, 'utf8'))
-    // Only a [transform] section maps fields; a top-level transform key is no mapping.
-    const mapping = isSection(parsed) ? parsed['transform'] : undefined
-    if (!isSection(mapping)) {
-      return undefined
-    }
-    transformCache.mapping = mapping
+// Reads the [transform] section of ~/.json-log-viewer once per invocation. Without the file or the section there is
+// no mapping. Upstream looked the file up again for every record until it found a section, and dropped every line
+// while the file could not be read; a file that cannot be read is now a configuration error.
+const readMapping = (fileSystem: ConfigFileSystem = fs, home = os.homedir()): Mapping | undefined => {
+  const mappingFile = path.join(home, mappingFileName)
+  if (!fileSystem.existsSync(mappingFile)) {
+    return undefined
   }
-  return transformCache.mapping
+  let text: string
+  try {
+    text = fileSystem.readFileSync(mappingFile, 'utf8')
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    throw new MappingFileError(`cannot read the mapping file ${mappingFile}: ${reason}`, { cause: error })
+  }
+  const parsed: unknown = ini.parse(text)
+  // Only a [transform] section maps fields; a top-level transform key is no mapping.
+  const mapping = isSection(parsed) ? parsed['transform'] : undefined
+  return isSection(mapping) ? mapping : undefined
 }
 
 // The path of a mapping value as lodash.get resolved it: INI text, true, false and null by their text form, key[]=
@@ -66,8 +79,7 @@ const mappingPath = (value: unknown): string | readonly string[] | undefined => 
   return isSection(value) ? undefined : String(value)
 }
 
-const transform = (entry: unknown, fileSystem: ConfigFileSystem = fs): unknown => {
-  const mapping = loadTransform(fileSystem)
+const transform = (entry: unknown, mapping: Mapping | undefined): unknown => {
   if (!mapping) {
     return entry
   }
@@ -80,13 +92,22 @@ const transform = (entry: unknown, fileSystem: ConfigFileSystem = fs): unknown =
   }))
 }
 
-const parse = (line: string): unknown => {
-  try {
-    return transform(JSON.parse(line))
-  } catch {
-    // An invalid line, or a configuration that cannot be read, drops the line.
-    return undefined
+// JSON's whitespace: a line of only these characters is empty, not malformed.
+const blankPattern = /^[\t\n\r ]*$/
+
+// Parses one line as upstream did: JSON.parse, then the mapping, and a falsy result is no record.
+const parseLine = (text: string, mapping: Mapping | undefined): ParsedLine => {
+  if (blankPattern.test(text)) {
+    return { kind: 'blank' }
   }
+  let value: unknown
+  try {
+    value = JSON.parse(text)
+  } catch {
+    return { kind: 'skipped', reason: 'invalid-json' }
+  }
+  const record = transform(value, mapping)
+  return record ? { kind: 'record', value: record } : { kind: 'skipped', reason: 'empty-value' }
 }
 
 const entryFieldNames: readonly string[] = entryFields
@@ -106,10 +127,20 @@ const toEntry = (line: unknown): LogEntry => {
   return { ...fields, data }
 }
 
-const readLog = (file: string, reader: LogReader = fs): LogEntry[] => {
-  const contents = reader.readFileSync(file).toString()
-  return contents.split('\n').filter(Boolean).map(line => parse(line)).filter(Boolean).map(line => toEntry(line))
+// The rows of a whole file, framed and parsed like a stream that ends with the file.
+const readLog = (file: string, reader: LogReader = fs, mapping: Mapping | undefined = readMapping()): LogEntry[] => {
+  const contents = reader.readFileSync(file)
+  const splitter = new LineSplitter()
+  const events = [...splitter.push(typeof contents === 'string' ? Buffer.from(contents, 'utf8') : contents), ...splitter.end()]
+  const entries: LogEntry[] = []
+  for (const event of events) {
+    const parsed = event.kind === 'line' ? parseLine(event.bytes.toString('utf8'), mapping) : undefined
+    if (parsed?.kind === 'record') {
+      entries.push(toEntry(parsed.value))
+    }
+  }
+  return entries
 }
 
-export { readLog, transform }
-export type { ConfigFileSystem, LogEntry, LogReader }
+export { MappingFileError, parseLine, readLog, readMapping, toEntry, transform }
+export type { ConfigFileSystem, LogEntry, LogReader, Mapping, ParsedLine }

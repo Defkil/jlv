@@ -1,5 +1,5 @@
-// Characterization of the ~/.json-log-viewer [transform] mapping. Upstream loads the file once per
-// process and keeps it, so this test file sets up its own home directory before the first read.
+// Characterization of the ~/.json-log-viewer [transform] mapping. This test file sets up its own home directory
+// before the first read.
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -40,10 +40,16 @@ describe('transform configuration', () => {
     assert.deepEqual(entry, { timestamp: undefined, level: 'DEBUG', message: 'no datetime', data: { extra: withoutDate } })
   })
 
-  it('keeps the first configuration for the rest of the process', () => {
+  // Upstream kept the first mapping it found for the rest of the process and looked for the file again for every
+  // record until then. The mapping is read once for each read of the log now.
+  it('reads the mapping file once for each read of the log', () => {
     writeFileSync(configFile, '[transform]\nmessage=channel\n')
-    const [, entry] = readLog(logFile)
-    assert.equal(entry?.message, 'no datetime')
+    try {
+      const [, entry] = readLog(logFile)
+      assert.deepEqual(entry, { message: 'app', data: {} })
+    } finally {
+      writeFileSync(configFile, readUpstreamFixture('transform1.ini'))
+    }
   })
 
   it('shows mapped records and an undefined timestamp in the viewer', t => {

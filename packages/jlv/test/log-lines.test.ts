@@ -1,12 +1,11 @@
 // Characterization of how upstream src/log.js turns lines into rows and applies a [transform] mapping. The
-// expectations were recorded from the upstream module. The mapping stays loaded for the rest of the process once
-// found, so the tests that read rows without a mapping come first.
+// expectations were recorded from the upstream module, except where a test names the change.
 import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, it } from 'node:test'
-import { readLog, transform } from '../src/log.js'
+import { MappingFileError, parseLine, readLog, readMapping, transform } from '../src/log.js'
 import { valueAt } from './support/fixtures.js'
 
 const textReader = (text: string): { readonly readFileSync: () => string } => ({ readFileSync: () => text })
@@ -43,8 +42,11 @@ describe('readLog lines', () => {
     ])
   })
 
-  it('accepts CRLF line ends but drops a first line that starts with a byte order mark', () => {
+  // Upstream split the text at line feeds only and dropped the first line when it started with a byte order mark,
+  // which JSON.parse rejects; the line framing of plan section 6.1 removes the mark.
+  it('accepts CRLF line ends and a byte order mark at the start', () => {
     assert.deepEqual(readLog('', textReader('\u{FEFF}{"message":"bom"}\r\n{"message":"crlf","level":"info"}\r\n')), [
+      { message: 'bom', data: {} },
       { level: 'info', message: 'crlf', data: {} }
     ])
   })
@@ -59,12 +61,14 @@ describe('readLog lines', () => {
     assert.deepEqual(readLog('', { readFileSync: () => Buffer.from('{"message":"b\u{E9}"}\n') }), [{ message: 'b\u{E9}', data: {} }])
   })
 
-  it('drops every line while the configuration file cannot be read', () => {
+  // Upstream looked for the mapping file again for every record and dropped every line while it could not be read.
+  it('reports a mapping file that cannot be read as a configuration error', () => {
     const home = mkdtempSync(path.join(tmpdir(), 'jlv-unreadable-home-'))
     try {
       mkdirSync(path.join(home, '.json-log-viewer'))
       withHome(home, () => {
-        assert.deepEqual(readLog('', textReader('{"message":"m"}\n')), [])
+        assert.throws(() => readMapping(), MappingFileError)
+        assert.throws(() => readLog('', textReader('{"message":"m"}\n')), /^MappingFileError: cannot read the mapping file /u)
       })
     } finally {
       rmSync(home, { recursive: true, force: true })
@@ -75,7 +79,26 @@ describe('readLog lines', () => {
   // Upstream mapped through the characters of the text: every record became { 0: undefined }.
   it('ignores a transform key outside a [transform] section', () => {
     const record = { message: 'm' }
-    assert.equal(transform(record, { existsSync: () => true, readFileSync: () => 'transform=x\n' }), record)
+    assert.equal(readMapping({ existsSync: () => true, readFileSync: () => 'transform=x\n' }), undefined)
+    assert.equal(transform(record, undefined), record)
+  })
+})
+
+describe('parseLine', () => {
+  it('tells records, empty lines and skipped lines apart', () => {
+    assert.deepEqual(parseLine('{"a":1}', undefined), { kind: 'record', value: { a: 1 } })
+    assert.deepEqual(parseLine('7', undefined), { kind: 'record', value: 7 })
+    assert.deepEqual(parseLine('', undefined), { kind: 'blank' })
+    assert.deepEqual(parseLine(' \t\r', undefined), { kind: 'blank' })
+    assert.deepEqual(parseLine('{"a":', undefined), { kind: 'skipped', reason: 'invalid-json' })
+    for (const empty of ['null', 'false', '0', '""']) {
+      assert.deepEqual(parseLine(empty, undefined), { kind: 'skipped', reason: 'empty-value' })
+    }
+  })
+
+  // As upstream, the mapping applies before the falsy test, so a null line becomes a record of undefined fields.
+  it('maps a line before it drops falsy values', () => {
+    assert.deepEqual(parseLine('null', { message: 'msg' }), { kind: 'record', value: { message: undefined } })
   })
 })
 
@@ -87,7 +110,7 @@ describe('transform mapping', () => {
       existsSync: () => true,
       readFileSync: () => '[transform]\nm=a.b[0].c\nd=x.y\nt=top\nmissing=nope.nothing\nall=$\nempty=\nc=constructor\np=a.__proto__\n'
     }
-    const mapped = transform(record, fileSystem)
+    const mapped = transform(record, readMapping(fileSystem))
     assert.deepEqual(mapped, { m: 'deep', d: 'dotted', t: 'v', missing: undefined, all: record, empty: undefined, c: undefined, p: undefined })
     assert.notEqual(valueAt(mapped, ['all']), record)
   })

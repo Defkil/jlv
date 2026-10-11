@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { before, describe, it } from 'node:test'
 import { readUpstreamFixture, valueAt } from './support/fixtures.js'
-import { readLog, transform } from '../src/log.js'
+import { readLog, readMapping, transform } from '../src/log.js'
 
 describe('readLog', () => {
   let entries: ReturnType<typeof readLog> = []
@@ -53,7 +53,7 @@ describe('transform', () => {
 
   describe('when config doesn\'t exist', () => {
     it('returns the unmodified line', () => {
-      assert.equal(transform('something', fileSystem), 'something')
+      assert.equal(transform('something', readMapping(fileSystem)), 'something')
     })
   })
 
@@ -62,7 +62,7 @@ describe('transform', () => {
       hasConfig = true
       contents = readUpstreamFixture('transform1.ini')
       const logEntry: unknown = JSON.parse(readUpstreamFixture('monolog.log.json'))
-      const entry = transform(logEntry, fileSystem)
+      const entry = transform(logEntry, readMapping(fileSystem))
       assert.equal(valueAt(entry, ['timestamp']), '2017-12-06 09:23:42.253060')
       assert.equal(valueAt(entry, ['level']), 'INFO')
     })
