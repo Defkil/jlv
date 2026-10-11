@@ -91,6 +91,10 @@ const applicationOptions = (overrides: Partial<ApplicationOptions> = {}): Applic
 // What the terminal shows so far, without escape sequences.
 const shown = (output: Writable): string => output instanceof TerminalOutput ? stripVTControlCharacters(output.written) : ''
 
+// Whether the terminal has shown the text. blessed moves the cursor over blank cells instead of writing spaces, so
+// the comparison leaves spaces out.
+const hasShown = (output: Writable, text: string): boolean => shown(output).replaceAll(' ', '').includes(text.replaceAll(' ', ''))
+
 const waitFor = async (isReady: () => boolean, what: string): Promise<void> => {
   const deadline = performance.now() + 5000
   while (!isReady()) {
@@ -109,11 +113,11 @@ describe('viewer with live standard input', () => {
     const { stdin, stdout, keyboard, signals, state, environment } = harness()
     const running = runApplication(applicationOptions(), environment)
     stdin.write(record(1, 'first arrival'))
-    await waitFor(() => shown(stdout).includes('first arrival'), 'the first record')
-    assert.match(shown(stdout), /\[ stdin \]/u)
+    await waitFor(() => hasShown(stdout, 'first arrival'), 'the first record')
+    assert.ok(hasShown(stdout, '[ stdin ]'))
     assert.equal(signalListeners(signals), 3)
     stdin.write(record(2, 'second arrival'))
-    await waitFor(() => shown(stdout).includes('second arrival'), 'the second record')
+    await waitFor(() => hasShown(stdout, 'second arrival'), 'the second record')
     keyboard.write('q')
     assert.equal(await running, 0)
     // The pipe never ended; quitting stops reading it, closes the keyboard and stops listening for signals.
@@ -133,11 +137,28 @@ describe('viewer with live standard input', () => {
       }
     })()
     stdin.end(record(1, 'only record'))
-    await waitFor(() => shown(stdout).includes('only record'), 'the record')
+    await waitFor(() => hasShown(stdout, 'only record'), 'the record')
     await delay(150)
     assert.equal(isDone, false)
     keyboard.write('q')
     assert.equal(await running, 0)
+  })
+})
+
+describe('several files', () => {
+  // The record view's tests show the order by time across sources; the screen output holds only changed cells.
+  it('names the first input and how many more and shows the records of both files', async () => {
+    const first = path.join(directory, 'first.log')
+    const second = path.join(directory, 'second.log')
+    writeFileSync(first, record(1, 'first file at 1') + record(3, 'first file at 3'))
+    writeFileSync(second, record(2, 'second file at 2') + record(4, 'second file at 4'))
+    const { stdout, keyboard, environment } = harness()
+    const running = runApplication(applicationOptions({ inputs: [first, second] }), environment)
+    await waitFor(() => hasShown(stdout, 'second file at 4'), 'the records of the second file')
+    keyboard.write('q')
+    assert.equal(await running, 0)
+    assert.match(shown(stdout).replaceAll(' ', ''), /\[\S*first\.logand1more\]/u)
+    assert.ok(hasShown(stdout, 'first file at 1') && hasShown(stdout, 'second file at 2'))
   })
 })
 
@@ -152,7 +173,7 @@ describe('ending the viewer', () => {
     it(`ends with ${String(exitCode)} on ${name} and closes the keyboard`, async () => {
       const subject = harness()
       const running = runApplication(applicationOptions({ inputs: ['characterization.log'] }), subject.environment)
-      await waitFor(() => shown(subject.stdout).includes('foxtrot 29'), 'the records')
+      await waitFor(() => hasShown(subject.stdout, 'foxtrot 29'), 'the records')
       stop(subject)
       assert.equal(await running, exitCode)
       assert.equal(subject.state.isKeyboardClosed, true)
@@ -171,7 +192,7 @@ describe('ending the viewer', () => {
       }
     })()
     // The screen redraws only the cells that change, so the status line arrives in pieces; the rows arrive whole.
-    await waitFor(() => shown(stdout).includes('foxtrot 29'), 'the records')
+    await waitFor(() => hasShown(stdout, 'foxtrot 29'), 'the records')
     await delay(150)
     assert.equal(isDone, false)
     keyboard.write('q')
@@ -296,8 +317,8 @@ describe('following files', () => {
     writeFileSync(followed, record(5, 'newer by time') + record(1, 'older by time'))
     const { stdout, keyboard, signals, state, environment } = harness()
     const running = runApplication(applicationOptions({ inputs: [followed], isFollowing: true }), environment)
-    await waitFor(() => shown(stdout).includes('older by time'), 'the records')
-    assert.match(shown(stdout), /sort: arrival \| live/u)
+    await waitFor(() => hasShown(stdout, 'older by time'), 'the records')
+    assert.ok(hasShown(stdout, 'sort: arrival | live'))
     keyboard.write('q')
     assert.equal(await running, 0)
     assert.equal(state.isKeyboardClosed, true)
@@ -317,7 +338,7 @@ describe('saving records', () => {
       inputs: ['characterization.log'], level: 'warn', maximumRecords: 3, save: saved
     }), environment)
     // None of the three records that the viewer keeps is a warning, so the screen shows no row to wait for.
-    await waitFor(() => shown(stdout).includes('level:warn'), 'the viewer')
+    await waitFor(() => hasShown(stdout, 'level:warn'), 'the viewer')
     await delay(300)
     keyboard.write('q')
     assert.equal(await running, 0)
@@ -330,7 +351,7 @@ describe('saving records', () => {
     const { stdin, stdout, keyboard, environment } = harness()
     const running = runApplication(applicationOptions({ save: saved }), environment)
     stdin.write(record(1, 'one') + record(2, 'two'))
-    await waitFor(() => shown(stdout).includes('two'), 'the records')
+    await waitFor(() => hasShown(stdout, 'two'), 'the records')
     keyboard.write('q')
     assert.equal(await running, 0)
     assert.deepEqual(savedMessages(saved), ['one', 'two'])
