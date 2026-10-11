@@ -2,7 +2,7 @@
 // undefined when it is closed with Escape.
 import type { Widgets } from 'blessed'
 import { BaseWidget } from './base-widget.js'
-import { createList } from './blessed-boundary.js'
+import { createList, destroyElement } from './blessed-boundary.js'
 import { markup } from './formatting.js'
 
 interface PickerOptions {
@@ -77,9 +77,9 @@ class Picker extends BaseWidget {
     this.selected(this.items[index])
   }
 
+  // Closes the picker for good, with its list, and reports the choice.
   selected (value: string | undefined): void {
-    this.list.detach()
-    this.detach()
+    destroyElement(this)
     this.screen.render()
     this.emit('select', undefined, value)
   }

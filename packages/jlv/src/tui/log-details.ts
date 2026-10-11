@@ -4,7 +4,7 @@
 import type { Widgets } from 'blessed'
 import type { LogEntry } from '../log.js'
 import { BaseWidget } from './base-widget.js'
-import { createElement, toCells } from './blessed-boundary.js'
+import { createElement, destroyElement, toCells } from './blessed-boundary.js'
 import { markup } from './formatting.js'
 
 const formatKey = (key: string, padding?: number): string => {
@@ -62,8 +62,8 @@ class LogDetails extends BaseWidget {
         // Upstream detached the missing element of a dialog that shows no record yet.
         throw new TypeError('The details dialog shows no record.')
       }
-      this.element.detach()
-      this.detach()
+      // The dialog closes for good, with its element and label.
+      destroyElement(this)
       this.screen.render()
       return
     }
@@ -82,8 +82,10 @@ class LogDetails extends BaseWidget {
     if (element === undefined) {
       return
     }
-    const pages = key.shift ? 5 : 1
-    const step = toCells(this.height) * pages - pages * 3
+    const pageStep = (): number => {
+      const pages = key.shift ? 5 : 1
+      return toCells(this.height) * pages - pages * 3
+    }
     switch (key.name) {
       case 'home': {
         element.scroll(-element.getScrollHeight())
@@ -94,11 +96,11 @@ class LogDetails extends BaseWidget {
         break
       }
       case 'pageup': {
-        element.scroll(-step)
+        element.scroll(-pageStep())
         break
       }
       case 'pagedown': {
-        element.scroll(step)
+        element.scroll(pageStep())
         break
       }
       default: {
@@ -116,7 +118,7 @@ class LogDetails extends BaseWidget {
 
   update (): void {
     if (this.element) {
-      this.element.detach()
+      destroyElement(this.element)
       this.element = undefined
     }
     const content = this.json

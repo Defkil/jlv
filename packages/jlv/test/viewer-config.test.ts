@@ -7,7 +7,7 @@ import path from 'node:path'
 import { after, describe, it } from 'node:test'
 import { readUpstreamFixture } from './support/fixtures.js'
 import { readLog } from '../src/log.js'
-import { openFileViewer, plainTopBorder, screenText } from './support/terminal.js'
+import { openFileViewer, screenText, topBorder } from './support/terminal.js'
 
 const home = mkdtempSync(path.join(tmpdir(), 'jlv-config-home-'))
 process.env['HOME'] = home
@@ -49,7 +49,7 @@ describe('transform configuration', () => {
   it('shows mapped records and an undefined timestamp in the viewer', t => {
     const viewer = openFileViewer(t, logFile)
     const rows = screenText(viewer.screen)
-    assert.equal(rows[0], plainTopBorder())
+    assert.equal(rows[0], topBorder('monolog.log', '1/2'))
     assert.equal(rows[1], '│ undefined                            DEBUG  *  no datetime                   │')
     assert.equal(rows[2], '│                                                                              │')
     assert.equal(rows[3], '│ 2017-12-06 09:23:42.253060  INFO  *  Matched route "**_heartbeat_check" (p   │')

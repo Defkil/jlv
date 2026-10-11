@@ -71,8 +71,8 @@ describe('command line', () => {
   it('renders the file and exits with 0 on q', async () => {
     const result = await run(['characterization.log'], { keys: 'q' })
     assert.equal(result.code, 0)
-    // Since upstream PR #13 the panel shows no file label; the status line carries the position.
-    assert.doesNotMatch(result.output, /characterization\.log/u)
+    // The border label shows the file name and the cursor position again (plan section 0.10).
+    assert.match(compact(result.output), /\[characterization\.log\]\[1\/32\]/u)
     assert.match(compact(result.output), /foxtrot29/u)
     assert.match(result.output, /NORMAL {2}1\/32 \| 20 \| sort: -timestamp/u)
   })

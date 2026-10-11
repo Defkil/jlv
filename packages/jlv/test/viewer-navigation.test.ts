@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { fixturePath, legacyViewerFixtures } from '../../format-fixtures/src/catalog.js'
-import { cellStyle, keys, openFileViewer, plainTopBorder, press, screenText } from './support/terminal.js'
+import { cellStyle, keys, openFileViewer, press, screenText, topBorder } from './support/terminal.js'
 
 const characterization = fixturePath(legacyViewerFixtures.characterization)
 
@@ -16,7 +16,7 @@ describe('arrows', () => {
     assert.equal(viewer.panel.row, 3)
     assert.equal(viewer.panel.initialRow, 0)
     const rows = screenText(viewer.screen)
-    assert.equal(rows[0], plainTopBorder())
+    assert.equal(rows[0], topBorder('characterization.log', '4/32'))
     assert.equal(rows[23], '  NORMAL  4/32 | 20 | sort: -timestamp')
     // The first two records wrap onto two lines each, so the fourth record sits on screen row 6.
     assert.equal(cellStyle(viewer.screen, 2, 6).background, 7)
@@ -39,7 +39,7 @@ describe('paging', () => {
     assert.equal(viewer.panel.row, 23)
     assert.equal(viewer.panel.initialRow, 20)
     assert.deepEqual(screenText(viewer.screen).slice(0, 14), [
-      plainTopBorder(),
+      topBorder('characterization.log', '24/32'),
       '│ 2026-10-11T10:11:00.000Z  error  *  foxtrot 11                               │',
       '│ 2026-10-11T10:10:00.000Z  warn   *  kilo 10                                  │',
       '│ 2026-10-11T10:09:00.000Z  info      delta 09                                 │',

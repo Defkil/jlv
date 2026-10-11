@@ -46,8 +46,11 @@ export interface ViewerOptions {
   readonly sort?: string
 }
 
-// The main panel's top border without a label, as rendered since upstream PR #13 removes the label.
-export const plainTopBorder = (columns = 80): string => `┌${'─'.repeat(columns - 2)}┐`
+// The main panel's top border with its label: the file name and the cursor position.
+export const topBorder = (file: string, position: string, columns = 80): string => {
+  const label = `[ ${file} ] [ ${position} ]`
+  return `┌──${label}${'─'.repeat(columns - 4 - label.length)}┐`
+}
 
 export const keys = {
   up: '\u{1B}[A',

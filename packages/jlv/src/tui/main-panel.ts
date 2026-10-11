@@ -5,7 +5,7 @@ import type { Widgets } from 'blessed'
 import { valueAtField } from '../field-path.js'
 import { readLog, type LogEntry } from '../log.js'
 import { BaseWidget } from './base-widget.js'
-import { ask, createElement, createPrompt, createQuestion, readInput, toCells } from './blessed-boundary.js'
+import { ask, createElement, createPrompt, createQuestion, destroyElement, readInput, toCells } from './blessed-boundary.js'
 import { formatRows, levelColors, markup } from './formatting.js'
 import { LogDetails } from './log-details.js'
 import { Picker } from './picker.js'
@@ -80,10 +80,20 @@ class MainPanel extends BaseWidget {
   filters: Filter[]
   sort: string
   mode: PanelMode
-  updated: boolean
   file: string | undefined
   rawLines: LogEntry[] | undefined
   linesCache: LogEntry[] = []
+  // The records change with dataRevision, the sort and the filters with queryRevision. The visible order is computed
+  // once per pair of revisions, never on cursor moves or renders; orderComputations counts how often.
+  dataRevision = 0
+  queryRevision = 0
+  orderComputations = 0
+  orderDataRevision = -1
+  orderQueryRevision = -1
+  // The one element that shows the rows. Every render replaces its content; the panel's other children, the border
+  // label and open dialogs, stay (plan section 0.10). The persistent element follows danielannan17/json-log-viewer
+  // 8a1aef1.
+  readonly rowsElement: Widgets.BoxElement = createElement({ screen: this.screen, tags: true })
 
   constructor (options: MainPanelOptions) {
     super({ top: '0', height: '99%', handleKeys: true, ...options })
@@ -99,7 +109,7 @@ class MainPanel extends BaseWidget {
     this.filters = []
     this.sort = options.sort || '-timestamp'
     this.mode = 'normal'
-    this.updated = true
+    this.append(this.rowsElement)
 
     this.log('pageWidth', this.pageWidth)
     this.on('resize', () => {
@@ -116,6 +126,7 @@ class MainPanel extends BaseWidget {
   loadFile (file: string): void {
     this.file = file
     this.rawLines = readLog(file)
+    this.dataRevision += 1
     this.log('loaded', this.lines.length)
     this.renderLines()
   }
@@ -125,9 +136,11 @@ class MainPanel extends BaseWidget {
   }
 
   get lines (): LogEntry[] {
-    if (this.updated) {
+    if (this.orderDataRevision !== this.dataRevision || this.orderQueryRevision !== this.queryRevision) {
       this.linesCache = this.calcLines()
-      this.updated = false
+      this.orderDataRevision = this.dataRevision
+      this.orderQueryRevision = this.queryRevision
+      this.orderComputations += 1
     }
     return this.linesCache
   }
@@ -289,9 +302,15 @@ class MainPanel extends BaseWidget {
     })
   }
 
+  // Tells listeners such as the status line that the panel changed.
   setUpdated (): void {
-    this.updated = true
     this.emit('update')
+  }
+
+  // The sort or the filters changed, so the visible order is computed again on its next use.
+  setQueryChanged (): void {
+    this.queryRevision += 1
+    this.setUpdated()
   }
 
   setMode (mode: PanelMode): void {
@@ -351,7 +370,7 @@ class MainPanel extends BaseWidget {
 
   setSort (sort: string): void {
     this.sort = sort
-    this.setUpdated()
+    this.setQueryChanged()
     this.renderLines()
   }
 
@@ -363,7 +382,7 @@ class MainPanel extends BaseWidget {
   filterChanged (): void {
     this.row = 0
     this.initialRow = 0
-    this.setUpdated()
+    this.setQueryChanged()
     this.renderLines()
   }
 
@@ -403,6 +422,7 @@ class MainPanel extends BaseWidget {
     })
 
     readInput(inputDialog, text, value || '', (error, input) => {
+      destroyElement(inputDialog)
       if (error) {
         return
       }
@@ -462,6 +482,7 @@ class MainPanel extends BaseWidget {
     })
 
     ask(question, text, (_error, isAccepted) => {
+      destroyElement(question)
       this.log('value', isAccepted)
       this.renderLines()
     })
@@ -559,13 +580,12 @@ class MainPanel extends BaseWidget {
   }
 
   displayDetails (): void {
-    const details = new LogDetails({ screen: this.screen })
     const entry = this.rows[this.relativeRow]
     if (entry === undefined) {
-      // Upstream read the fields of the missing record, which threw a TypeError.
+      // Upstream read the fields of the missing record, which threw a TypeError, and left an empty dialog behind.
       throw new TypeError('There is no record at the cursor.')
     }
-    details.display(entry)
+    new LogDetails({ screen: this.screen }).display(entry)
   }
 
   get relativeRow (): number {
@@ -594,13 +614,7 @@ class MainPanel extends BaseWidget {
     const content = formatRows(this.rows, columns, this.colSpacing, this.pageWidth - 1)
       .map((row, index) => highlight(row, index))
       .join('\n')
-    const list = createElement({ screen: this.screen, tags: true, content })
-    // Upstream PR #13 removes the children while it iterates over them, so every second child stays (see
-    // viewer-render-leak.test.ts). Phase 4 replaces this with one persistent row element.
-    for (const child of this.children) {
-      this.remove(child)
-    }
-    this.append(list)
+    this.rowsElement.setContent(content)
     this.screen.render()
     if (shouldNotify) {
       this.setUpdated()

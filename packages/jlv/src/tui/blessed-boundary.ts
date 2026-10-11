@@ -42,4 +42,21 @@ const ask = (question: Widgets.QuestionElement, text: string, callback: (error: 
 // percentages of the options. Number() keeps upstream's implicit conversion.
 const toCells: (size: number | string) => number = Number
 
-export { Box, ask, createElement, createList, createPrompt, createQuestion, createScreen, readInput, toCells }
+// Removes an element that a widget owns for good. blessed's destroy() detaches the element and frees the screen
+// listeners of its subtree, but two things stay behind: the screen keeps every descendant that ever took keys or
+// clicks (the input and the buttons of a prompt, for example) in its keyable and clickable lists, and it moves the
+// focus back only when the element itself had it, so a focused descendant keeps receiving keys. Both are handled.
+const destroyElement = (element: Widgets.Node): void => {
+  const subtree = new Set<Widgets.Node>()
+  element.forDescendants(node => { subtree.add(node) }, true)
+  const { screen } = element
+  const hasFocus = subtree.has(screen.focused)
+  screen.keyable = screen.keyable.filter(candidate => !subtree.has(candidate))
+  screen.clickable = screen.clickable.filter(candidate => !subtree.has(candidate))
+  element.destroy()
+  if (hasFocus && subtree.has(screen.focused)) {
+    screen.rewindFocus()
+  }
+}
+
+export { Box, ask, createElement, createList, createPrompt, createQuestion, createScreen, destroyElement, readInput, toCells }
