@@ -31,7 +31,7 @@ class StatusLine extends Box {
 
   constructor (options: StatusLineOptions) {
     super({
-      top: toCells(options.screen.height) - 1,
+      top: Math.max(toCells(options.screen.height) - 1, 0),
       left: 0,
       width: '100%',
       height: 1,
@@ -46,7 +46,7 @@ class StatusLine extends Box {
     this.mainPanel = options.mainPanel
     this.mainPanel.on('update', this.update.bind(this))
     this.on('resize', () => {
-      this.position.top = toCells(options.screen.height) - 1
+      this.position.top = Math.max(toCells(options.screen.height) - 1, 0)
       this.update()
     })
     this.update()

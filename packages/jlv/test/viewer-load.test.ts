@@ -96,15 +96,17 @@ describe('malformed rows', () => {
 })
 
 describe('empty log', () => {
-  it('shows 1/0, moves the cursor to -1 and fails to open details', async t => {
+  // Upstream moved the cursor to -1 (status 0/0) and threw a TypeError for details.
+  it('shows 1/0, keeps the cursor on row 0 and opens no details', async t => {
     const viewer = openFileViewer(t, empty)
     const rows = screenText(viewer.screen)
     assert.equal(rows[0], topBorder('empty.log', '1/0'))
     assert.equal(rows[23], '  NORMAL  1/0 | 20 | sort: -timestamp')
     await press(viewer, keys.down)
-    assert.equal(viewer.panel.row, -1)
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  0/0 | 20 | sort: -timestamp')
-    assert.throws(() => { viewer.panel.displayDetails() }, TypeError)
+    assert.equal(viewer.panel.row, 0)
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/0 | 20 | sort: -timestamp')
+    viewer.panel.displayDetails()
+    assert.equal(viewer.screen.children.length, 2)
   })
 })
 

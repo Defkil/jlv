@@ -125,7 +125,8 @@ const maxLengths = (columns: readonly Column[], rows: readonly Row[], spacing: n
   for (const length of Object.values(lengths)) {
     width += length
   }
-  lengths[lastColumn.key] = maxWidth - width
+  // The last column is empty, not negative, when the other columns use up the width; NaN stays NaN.
+  lengths[lastColumn.key] = Math.max(maxWidth - width, 0)
   return lengths
 }
 

@@ -76,7 +76,7 @@ class LogDetails extends BaseWidget {
   }
 
   // Home and End jump to the first and the last line of the data. PageUp and PageDown move by the height of the
-  // dialog less three lines, five pages at once with Shift.
+  // dialog less three lines, at least one line, and five pages at once with Shift.
   scrollByKey (key: Widgets.Events.IKeyEventArg): void {
     const { element } = this
     if (element === undefined) {
@@ -84,7 +84,7 @@ class LogDetails extends BaseWidget {
     }
     const pageStep = (): number => {
       const pages = key.shift ? 5 : 1
-      return toCells(this.height) * pages - pages * 3
+      return Math.max(toCells(this.height) * pages - pages * 3, 1)
     }
     switch (key.name) {
       case 'home': {

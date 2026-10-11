@@ -120,8 +120,12 @@ class MainPanel extends BaseWidget {
     this.renderLines()
   }
 
-  get pageHeight (): number { return toCells(this.height) - 3 }
-  get pageWidth (): number { return toCells(this.width) - 2 - 2 }
+  // The rows after the first one that the viewport shows, and the columns inside the border and the padding. Neither
+  // is negative on a tiny terminal.
+  get pageHeight (): number { return Math.max(toCells(this.height) - 3, 0) }
+  get pageWidth (): number { return Math.max(toCells(this.width) - 2 - 2, 0) }
+  // PageUp and PageDown move by the page height, and by at least one record when the viewport shows a single row.
+  get pageStep (): number { return Math.max(this.pageHeight, 1) }
 
   loadFile (file: string): void {
     this.file = file
@@ -169,9 +173,20 @@ class MainPanel extends BaseWidget {
   }
 
   renderLines (shouldNotify = true): void {
+    this.clampCursor()
     this.resetMode()
-    this.rows = this.lines.slice(this.initialRow, this.initialRow + toCells(this.height) - 2)
+    this.rows = this.lines.slice(this.initialRow, this.initialRow + Math.max(toCells(this.height) - 2, 0))
     this.update(shouldNotify)
+  }
+
+  // Keeps the cursor on a record, or on row 0 of an empty view, and inside the viewport, whatever moved it: an empty
+  // log, a tiny terminal, a line number past either end or without digits, G on a partial last page or C on a later
+  // page.
+  clampCursor (): void {
+    const row = Number.isNaN(this.row) ? 0 : this.row
+    this.row = Math.min(Math.max(row, 0), Math.max(this.lastRow, 0))
+    const initialRow = Number.isNaN(this.initialRow) ? 0 : this.initialRow
+    this.initialRow = Math.min(Math.max(initialRow, this.row - this.pageHeight, 0), this.row)
   }
 
   override handleKeyPress (character: string | undefined, key: Widgets.Events.IKeyEventArg): void {
@@ -567,25 +582,25 @@ class MainPanel extends BaseWidget {
 
   pageDown (): void {
     const relativeRow = this.relativeRow
-    this.row = Math.min(this.lastRow, this.row + this.pageHeight)
+    this.row = Math.min(this.lastRow, this.row + this.pageStep)
     this.initialRow = this.row - relativeRow
     this.renderLines()
   }
 
   pageUp (): void {
     const relativeRow = this.relativeRow
-    this.row = Math.max(0, this.row - this.pageHeight)
+    this.row = Math.max(0, this.row - this.pageStep)
     this.initialRow = Math.max(0, this.row - relativeRow)
     this.renderLines()
   }
 
   displayDetails (): void {
     const entry = this.rows[this.relativeRow]
-    if (entry === undefined) {
-      // Upstream read the fields of the missing record, which threw a TypeError, and left an empty dialog behind.
-      throw new TypeError('There is no record at the cursor.')
+    // An empty view has no record to show. Upstream read the fields of the missing record there, which threw a
+    // TypeError and ended the process.
+    if (entry !== undefined) {
+      new LogDetails({ screen: this.screen }).display(entry)
     }
-    new LogDetails({ screen: this.screen }).display(entry)
   }
 
   get relativeRow (): number {
