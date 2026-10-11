@@ -104,8 +104,10 @@ describe('file follower', () => {
       assert.deepEqual(await poll(follower), [])
       writeFileSync(file, 'b\n')
       assert.deepEqual(await poll(follower), ['1:b'])
-      // A directory in its place counts as no file.
+      // A directory in its place counts as no file. On Node 22.9.0, Windows keeps the name of a deleted file that is
+      // still open, so the directory can only take its place once a poll has closed the file.
       unlinkSync(file)
+      assert.deepEqual(await poll(follower), [])
       mkdirSync(file)
       assert.deepEqual(await poll(follower), [])
       rmSync(file, { recursive: true })
