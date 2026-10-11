@@ -48,7 +48,7 @@ export default defineConfig([
     }
   },
   {
-    files: ['packages/**/test/**/*.ts'],
+    files: ['packages/**/test/**/*.ts', 'scripts/**/*.test.ts'],
     rules: {
       // node:test registers suites, tests and hooks synchronously; the runner tracks their promises.
       '@typescript-eslint/no-floating-promises': ['error', {

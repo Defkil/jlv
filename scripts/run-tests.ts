@@ -9,7 +9,9 @@ const outputRoot = path.resolve(import.meta.dirname, '..')
 const repositoryRoot = path.resolve(outputRoot, '..')
 const packagesOutput = path.join(outputRoot, 'packages')
 
-const testFiles = readdirSync(packagesOutput, { recursive: true, withFileTypes: true })
+// The tests of the packages and of the repository's scripts.
+const testFiles = [packagesOutput, path.join(outputRoot, 'scripts')]
+  .flatMap(directory => readdirSync(directory, { recursive: true, withFileTypes: true }))
   .filter(entry => entry.isFile() && entry.name.endsWith('.test.js') && !entry.parentPath.split(path.sep).includes('node_modules'))
   .map(entry => path.join(entry.parentPath, entry.name))
   .toSorted((left, right) => left.localeCompare(right))
