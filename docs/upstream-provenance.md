@@ -25,14 +25,14 @@ repository root until it is retired.
 
 | Source item | Original commit and author | Affected behavior | Local commit |
 | --- | --- | --- | --- |
-| None yet. Upstream PR #13 is next (plan §8 phase 2). | | | |
+| [gistia/json-log-viewer PR #13](https://github.com/gistia/json-log-viewer/pull/13), "Fix memory leak / performance degradation" | `e29eb7e7e5542e29e321f7b256b93194d808ac22`, Dima Sabanin, 2018-12-04; applied unchanged with `git am --directory=packages/jlv`, original author and author date kept | `MainPanel.update()` removes the panel's children before it appends the new row element, so renders no longer accumulate row elements. Side effects, recorded by the characterization: the border label with file name and position disappears, each render removes only every second child, and a second resize detaches an open prompt that keeps reading keys. The persistent row widget of plan §8 phase 4 supersedes this cleanup. | `bffe9f4` fix(tui): apply upstream render leak patch |
 
 ## Candidates
 
 Plan §3.5 and §7 list the fork commits and upstream items that later phases evaluate,
-including the farolanf fixes, the danielannan17 persistent row element and upstream PR #13.
-They are not part of the code until a row above names a local commit. PR #20 by Philipp
-(wmnnd) is superseded rather than merged; its installability report is acknowledged here.
+including the farolanf fixes and the danielannan17 persistent row element. They are not
+part of the code until a row above names a local commit. PR #20 by Philipp (wmnnd) is
+superseded rather than merged; its installability report is acknowledged here.
 
 ## License notices
 

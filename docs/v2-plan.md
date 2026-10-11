@@ -32,6 +32,11 @@ Research completed: 2026-10-11. Registry/GitHub checks and scratch experiments a
    - Tests keep one live blessed screen per process; ported widgets pass `screen` or `parent` explicitly.
    - Phase 5 builds the bounded store as an off-heap byte arena unless an alternative meets the 256 MiB target on the same fixture. Retaining parsed records peaked at 274 to 277 MiB on Node 26.10.0 (238 MiB on 22.9.0); the arena peaked at 127 to 131 MiB.
    - Node 22.9.0 needs the ConDrv console fallback; the latest 22 release opens `\\.\CONIN$` directly.
+10. **Phase 2 results (2026-10-11).** They bind phases 3 and 4:
+    - Upstream PR #13 (`bffe9f4`) fixes the per-render element leak but also removes the main panel's border label (file name and position) and only every second child per render; a second resize detaches an open prompt that keeps reading keys. The characterization records this state. Phase 4's persistent row widget must restore the label and must not remove dialogs.
+    - Tests run from `.test-dist`: `scripts/prepare-test-tree.ts` mirrors package manifests, not yet ported JavaScript and fixtures, and `scripts/run-tests.ts` links each package's dependencies into the mirror and gives every run an empty home directory. Tests reach upstream modules only through `packages/jlv/test/support/legacy.ts`; the port replaces each loader with an import of the ported module.
+    - `packages/jlv/test/package.json` marks the tests as ES modules while `packages/jlv` is CommonJS. Remove it when `packages/jlv` becomes `type: module`. Until then, compiled TypeScript under `packages/jlv/src` is CommonJS too, and the legacy JavaScript still requires it.
+    - The temporary ignores in `eslint.config.js` keep legacy JavaScript out of the lint scope; remove each entry as its code is ported or retired.
 
 ## 1. Scope and verified starting point
 
