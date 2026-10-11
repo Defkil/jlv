@@ -2,7 +2,8 @@
 // 4.17.11 with the same record and paths; only prototype members differ on purpose.
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { fieldReader, parsePath, valueAtField } from '../src/field-path.js'
+import { asJsonObject, isPlainObject } from '../src/record.js'
+import { fieldReader, formatPath, parsePath, valueAtField, valueAtPath } from '../src/field-path.js'
 
 const record = {
   a: { b: [{ c: 'deep' }] },
@@ -92,6 +93,23 @@ describe('field paths', () => {
       assert.equal(valueAtField(record, path), undefined, path)
     }
     assert.equal(valueAtField(record, ['__proto__', 'constructor']), undefined)
+  })
+
+  it('follow segment lists of the record model through parsed JSON, with numbers or canonical text as indexes', () => {
+    const value: unknown = JSON.parse('{"a":{"b":[{"c":"deep"},null]},"x.y":"dotted","list":[10,20],"zero":0,"__proto__":{"p":1}}')
+    assert.ok(isPlainObject(value))
+    const parsed = asJsonObject(value)
+    assert.equal(valueAtPath(parsed, ['a', 'b', 0, 'c']), 'deep')
+    assert.equal(valueAtPath(parsed, ['a', 'b', '0', 'c']), 'deep')
+    assert.equal(valueAtPath(parsed, ['a', 'b', 1]), null)
+    assert.equal(valueAtPath(parsed, ['x.y']), 'dotted')
+    assert.equal(valueAtPath(parsed, ['zero']), 0)
+    assert.deepEqual(valueAtPath(parsed, ['__proto__']), { p: 1 })
+    for (const path of [[], ['missing'], ['x', 'y'], ['list', 2], ['list', -1], ['list', '01'], ['list', 1.5], ['list', 'length'],
+      ['zero', 'toFixed'], ['constructor'], ['a', 'constructor'], ['a', 'b', 0, 'c', 0]]) {
+      assert.equal(valueAtPath(parsed, path), undefined, formatPath(path))
+    }
+    assert.equal(formatPath(['datetime', 'date', 0]), '["datetime","date",0]')
   })
 
   it('never invoke accessors', () => {

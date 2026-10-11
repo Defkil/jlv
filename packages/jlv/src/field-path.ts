@@ -1,7 +1,13 @@
-// Field lookup for the legacy viewer rows. Paths keep the grammar of lodash 4.17, which upstream used for the
-// ~/.json-log-viewer mapping, the filters and the sort key: names separated by dots, [number] and ["text"] or
-// ['text'] brackets with backslash escapes. Lookups read own properties only, so a path never reaches prototype
-// members such as constructor or __proto__, and they never invoke accessors.
+// Field lookup without evaluation (plan section 5). Paths of the record model are lists of segments, which
+// valueAtPath follows through parsed JSON: object keys and array indexes, so ["log.level"] names a key with a dot.
+//
+// Text paths keep the grammar of lodash 4.17, which upstream used for the ~/.json-log-viewer mapping, the filters and
+// the sort key: names separated by dots, [number] and ["text"] or ['text'] brackets with backslash escapes. Legacy
+// mappings are parsed into segments with parsePath.
+//
+// All lookups read own properties only, so a path never reaches prototype members such as constructor or __proto__,
+// and they never invoke accessors.
+import type { FieldPath, JsonValue } from './api.js'
 
 // One segment: a name, a bracketed number or quoted text, or an empty name before a dot or an empty bracket pair.
 const segmentPattern = /[^.[\]]+|\[(?:(-?\d+(?:\.\d+)?)|(["'])((?:(?!\2)[^\\]|\\.)*?)\2)\]|(?=(?:\.|\[\])(?:\.|\[\]|$))/g
@@ -50,4 +56,37 @@ const fieldReader = (path: string): ((value: unknown) => unknown) => {
 const valueAtField = (value: unknown, path: string | readonly string[]): unknown =>
   typeof path === 'string' ? fieldReader(path)(value) : valueAt(value, path)
 
-export { fieldReader, parsePath, valueAt, valueAtField }
+// An array index in its canonical decimal form.
+const indexPattern = /^(?:0|[1-9]\d*)$/
+
+const isJsonArray = (value: JsonValue): value is readonly JsonValue[] => Array.isArray(value)
+
+// The element or the own property of a JSON value; text, numbers, booleans and null have none.
+const childOf = (value: JsonValue, segment: string | number): JsonValue | undefined => {
+  if (typeof value !== 'object' || value === null) {
+    return undefined
+  }
+  if (isJsonArray(value)) {
+    const index = typeof segment === 'number' || !indexPattern.test(segment) ? segment : Number(segment)
+    return typeof index === 'number' && Number.isSafeInteger(index) && index >= 0 ? value[index] : undefined
+  }
+  const key = String(segment)
+  return Object.hasOwn(value, key) ? value[key] : undefined
+}
+
+// The value at a path of segments in parsed JSON; an empty path or a missing step gives undefined.
+const valueAtPath = (value: JsonValue, path: FieldPath): JsonValue | undefined => {
+  let current: JsonValue | undefined = value
+  for (const segment of path) {
+    if (current === undefined) {
+      return undefined
+    }
+    current = childOf(current, segment)
+  }
+  return path.length === 0 ? undefined : current
+}
+
+// A path in diagnostics and messages, as the JSON list that a configuration file holds.
+const formatPath = (path: FieldPath): string => JSON.stringify(path)
+
+export { fieldReader, formatPath, parsePath, valueAt, valueAtField, valueAtPath }
