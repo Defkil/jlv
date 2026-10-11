@@ -706,8 +706,22 @@ class MainPanel extends BaseWidget {
     return this.initialRow + this.pageHeight
   }
 
+  // The border label with the inputs and the cursor position. blessed wraps a label that is wider than the panel onto
+  // the first row, so a long name, such as an absolute path, keeps only its end.
+  get borderLabel (): string {
+    const position = `${String(this.row + 1)}/${String(this.lastRow + 1)}`
+    // The label starts three cells in and ends at the padding before the right border; brackets and spaces take nine.
+    const room = toCells(this.width) - 5 - 9 - position.length
+    const { sourceLabel } = this
+    let label = sourceLabel
+    if (sourceLabel.length > room) {
+      label = room > 1 ? `…${sourceLabel.slice(sourceLabel.length - room + 1)}` : ''
+    }
+    return markup`[{bold} ${label} {/}] [{bold} ${position} {/}]`
+  }
+
   update (shouldNotify = true): void {
-    this.setLabel(markup`[{bold} ${this.sourceLabel} {/}] [{bold} ${String(this.row + 1)}/${String(this.lastRow + 1)} {/}]`)
+    this.setLabel(this.borderLabel)
 
     const columns = [
       { title: 'Timestamp', key: 'timestamp' },

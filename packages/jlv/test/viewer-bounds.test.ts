@@ -1,6 +1,9 @@
 // Empty logs, tiny terminals and cursor targets past the records: the cursor always stays on a record, or on row 0 of
 // an empty view, and inside the viewport; widths and page heights never become negative (plan section 7).
 import assert from 'node:assert/strict'
+import { copyFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { describe, it } from 'node:test'
 import { fixturePath, legacyViewerFixtures } from '../../format-fixtures/src/catalog.js'
 import { maxLengths } from '../src/tui/formatting.js'
@@ -75,6 +78,28 @@ describe('cursor targets past the records', () => {
     assertCursorInView(viewer)
     await press(viewer, keys.enter)
     assert.equal(viewer.screen.children.length, 3)
+  })
+})
+
+describe('long names', () => {
+  // blessed wrapped a label wider than the panel onto the first row, where it covered the first record.
+  it('keeps the end of a long file name in the border label and the first row free', t => {
+    const directory = mkdtempSync(path.join(tmpdir(), 'jlv-label-'))
+    t.after(() => {
+      process.chdir(tmpdir())
+      rmSync(directory, { recursive: true, force: true })
+    })
+    const name = `${'very-long-name-'.repeat(5)}characterization.log`
+    copyFileSync(characterization, path.join(directory, name))
+    const viewer = openFileViewer(t, path.join(directory, name))
+    const rows = screenText(viewer.screen)
+    assert.equal(rows[0], `┌──[ …${name.slice(-61)} ] [ 1/32 ]─┐`)
+    assert.equal(rows[1], '│ 2026-10-11T10:29:00.000Z  info   *  foxtrot 29                               │')
+  })
+
+  it('cuts the label to the width of a narrow terminal', t => {
+    const viewer = openFileViewer(t, characterization, { columns: 30, rows: 8 })
+    assert.equal(screenText(viewer.screen)[0], '┌──[ …ization.log ] [ 1/32 ]─┐')
   })
 })
 
