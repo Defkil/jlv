@@ -57,6 +57,8 @@ publishes, so that it can attach the provenance statement.
      and add the version's link to its npm page at the end of the file. The quality job checks the dated section.
    - Commit both as `chore(release): jlv X.Y.Z`.
    - Run `pnpm run typecheck`, `pnpm run lint`, `pnpm test` and `pnpm run check:package` locally.
+   - For a release that changes the viewer, the keyboard input or what the terminal shows, run Part B of the
+     [manual terminal checklist](manual-terminal-checklist.md) with the packed package. 2.0.0 needs all of it.
 2. **Push** `master` (or merge the branch into it and push). The workflow takes a few minutes.
 3. **Check the result** from outside the repository:
    - `npm view jlv@X.Y.Z version` prints the version, and `npm view jlv dist-tags.latest` names it.
