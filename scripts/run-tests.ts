@@ -1,6 +1,6 @@
 // Runs the emitted tests with node:test. Explicit file paths avoid shell glob differences between
 // platforms; extra arguments (for example --test-name-pattern) are passed on to node --test.
-import { spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { lstatSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -36,6 +36,50 @@ const linkDependencies = (packageName: string): void => {
   }
 }
 
+// The exit status of a process that a signal ended, as a shell reports it.
+const signalNumbers: Readonly<Record<string, number>> = { SIGHUP: 1, SIGINT: 2, SIGTERM: 15 }
+
+// Runs the tests in a child process. The child gets an empty home directory, which keeps the developer's own
+// ~/.json-log-viewer out of every test, and a temporary directory of its own: os.tmpdir() in every test file
+// points there, so whatever a test creates is removed with the run directory, even when a test process dies
+// before its after() hooks run, for example when the run is cut short.
+const runTests = async (): Promise<number> => {
+  const runDirectory = mkdtempSync(path.join(tmpdir(), 'jlv-test-run-'))
+  let signalCode: number | undefined
+  try {
+    const home = path.join(runDirectory, 'home')
+    const temporary = path.join(runDirectory, 'tmp')
+    mkdirSync(home)
+    mkdirSync(temporary)
+    const child = spawn(process.execPath, ['--enable-source-maps', '--test', ...process.argv.slice(2), ...testFiles], {
+      stdio: 'inherit',
+      env: { ...process.env, HOME: home, USERPROFILE: home, TMPDIR: temporary, TMP: temporary, TEMP: temporary }
+    })
+    // Ctrl-C reaches the whole process group or console, so the test runner stops by itself; other signals that
+    // end this process are passed on. Either way the run directory is removed after the child has exited.
+    const stop = (signal: NodeJS.Signals): void => {
+      signalCode = 128 + (signalNumbers[signal] ?? 0)
+      if (signal !== 'SIGINT') {
+        child.kill(signal)
+      }
+    }
+    const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const
+    for (const signal of signals) {
+      process.on(signal, stop)
+    }
+    const status = await new Promise<number>(resolve => {
+      child.on('exit', (code, signal) => { resolve(code ?? 128 + (signal === null ? 0 : (signalNumbers[signal] ?? 0))) })
+      child.on('error', () => { resolve(1) })
+    })
+    for (const signal of signals) {
+      process.off(signal, stop)
+    }
+    return signalCode ?? status
+  } finally {
+    rmSync(runDirectory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+  }
+}
+
 for (const packageName of readdirSync(packagesOutput)) {
   linkDependencies(packageName)
 }
@@ -44,15 +88,5 @@ if (testFiles.length === 0) {
   process.stderr.write(`No emitted tests below ${packagesOutput}; run the test build first.\n`)
   process.exitCode = 1
 } else {
-  // An empty home directory keeps the developer's own ~/.json-log-viewer out of every test.
-  const home = mkdtempSync(path.join(tmpdir(), 'jlv-test-home-'))
-  try {
-    const result = spawnSync(process.execPath, ['--enable-source-maps', '--test', ...process.argv.slice(2), ...testFiles], {
-      stdio: 'inherit',
-      env: { ...process.env, HOME: home, USERPROFILE: home }
-    })
-    process.exitCode = result.status ?? 1
-  } finally {
-    rmSync(home, { recursive: true, force: true })
-  }
+  process.exitCode = await runTests()
 }
