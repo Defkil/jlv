@@ -1,0 +1,7 @@
+{"name":"myapp","hostname":"banana.local","pid":40161,"level":30,"msg":"hi","time":"2026-10-11T10:00:00.000Z","v":0}
+{"name":"myapp","hostname":"banana.local","pid":40161,"level":40,"lang":"fr","msg":"au revoir","time":"2026-10-11T10:00:01.000Z","v":0}
+{"name":"myapp","hostname":"banana.local","pid":40161,"level":50,"err":{"message":"boom","name":"Error","stack":"Error: boom\n    at Object.<anonymous> (/srv/app.js:1:7)"},"msg":"boom","time":"2026-10-11T10:00:02.000Z","v":0}
+{"name":"myapp","hostname":"banana.local","pid":40161,"component":"db","level":20,"msg":"child logger","time":"2026-10-11T10:00:03.123Z","v":0}
+{"name":"myapp","hostname":"banana.local","pid":40161,"level":60,"msg":"fatal","time":"2026-10-11T10:00:04.000Z","v":0}
+{"name":"myapp","hostname":"banana.local","pid":40161,"level":10,"msg":"trace","time":"2026-10-11T10:00:05.000Z","v":0}
+{"name":"myapp","hostname":"banana.local","pid":40161,"req_id":7,"level":30,"msg":"request","time":"2026-10-11T10:00:06.000Z","v":0,"req":{"method":"GET","url":"/"}}

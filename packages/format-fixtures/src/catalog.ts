@@ -127,6 +127,69 @@ export const formatFixtures = {
       { level: 'fatal', message: 'fatal on the final row, without a line feed', timestamp: at(7) }
     ],
     diagnostics: []
+  },
+  bunyan: {
+    path: 'bunyan/bunyan.log',
+    description: 'bunyan records with v 0, name, hostname and pid: every level, extra fields, an error object, a child ' +
+      'logger\'s field and fractional seconds.',
+    format: 'bunyan',
+    records: [
+      { level: 'info', message: 'hi', timestamp: at(0) },
+      { level: 'warn', message: 'au revoir', timestamp: at(1) },
+      { level: 'error', message: 'boom', timestamp: at(2) },
+      { level: 'debug', message: 'child logger', timestamp: '2026-10-11T10:00:03.123Z' },
+      { level: 'fatal', message: 'fatal', timestamp: at(4) },
+      { level: 'trace', message: 'trace', timestamp: at(5) },
+      { level: 'info', message: 'request', timestamp: at(6) }
+    ],
+    diagnostics: []
+  },
+  bunyanLookalike: {
+    path: 'bunyan/bunyan-lookalike.log',
+    description: 'JSON that resembles bunyan without its signature: text levels, a message key, version 1. It stays ' +
+      'generic JSON lines, which read timestamp, level and message.',
+    format: 'jsonl',
+    records: [
+      { level: 'info', message: '' },
+      { level: 'warn', message: 'message key' },
+      { level: 'error', message: '', timestamp: at(2) }
+    ],
+    diagnostics: []
+  },
+  winston: {
+    path: 'winston/winston.log',
+    description: 'Winston\'s JSON format with an uppercase level, metadata, a stack, and the npm and syslog level names ' +
+      'http, verbose, silly, crit and notice, read with --format winston.',
+    format: 'winston',
+    settings: { format: 'winston' },
+    records: [
+      { level: 'info', message: 'server started', timestamp: at(0) },
+      { level: 'warn', message: 'slow response', timestamp: at(1) },
+      { level: 'error', message: 'request failed', timestamp: at(2) },
+      { level: 'info', message: 'GET /health 200', timestamp: at(3) },
+      { level: 'debug', message: 'cache warm', timestamp: at(4) },
+      { level: 'trace', message: 'tick', timestamp: at(5) },
+      { level: 'fatal', message: 'disk full', timestamp: at(6) },
+      { level: 'info', message: 'config reloaded', timestamp: at(7) }
+    ],
+    diagnostics: []
+  },
+  winstonAsJsonLines: {
+    path: 'winston/winston.log',
+    description: 'The same Winston output without --format: no probe claims Winston, so generic JSON lines read it and ' +
+      'keep Winston\'s own level names unknown.',
+    format: 'jsonl',
+    records: [
+      { level: 'info', message: 'server started', timestamp: at(0) },
+      { level: 'warn', message: 'slow response', timestamp: at(1) },
+      { level: 'error', message: 'request failed', timestamp: at(2) },
+      { level: 'unknown', message: 'GET /health 200', timestamp: at(3) },
+      { level: 'unknown', message: 'cache warm', timestamp: at(4) },
+      { level: 'unknown', message: 'tick', timestamp: at(5) },
+      { level: 'unknown', message: 'disk full', timestamp: at(6) },
+      { level: 'unknown', message: 'config reloaded', timestamp: at(7) }
+    ],
+    diagnostics: []
   }
 } as const satisfies Readonly<Record<string, FormatFixture>>
 

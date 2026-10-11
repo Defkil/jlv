@@ -1,0 +1,8 @@
+{"level":"info","message":"server started","timestamp":"2026-10-11T10:00:00.000Z","service":"api"}
+{"level":"WARN","message":"slow response","timestamp":"2026-10-11T10:00:01.000Z","service":"api","durationMs":1200}
+{"level":"error","message":"request failed","timestamp":"2026-10-11T10:00:02.000Z","stack":"Error: x\n    at handler (/srv/api.js:9:3)","service":"api"}
+{"level":"http","message":"GET /health 200","timestamp":"2026-10-11T10:00:03.000Z"}
+{"level":"verbose","message":"cache warm","timestamp":"2026-10-11T10:00:04.000Z"}
+{"level":"silly","message":"tick","timestamp":"2026-10-11T10:00:05.000Z"}
+{"level":"crit","message":"disk full","timestamp":"2026-10-11T10:00:06.000Z"}
+{"level":"notice","message":"config reloaded","timestamp":"2026-10-11T10:00:07.000Z"}

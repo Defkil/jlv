@@ -86,8 +86,15 @@ describe('choosing a format', () => {
 
   it('prefers the strong signatures of the built-in formats over generic JSON lines', () => {
     const settings = settingsWith(builtInFormats())
-    assert.equal(chooseFormat({ text: '{"level":30,"time":1,"msg":"m"}\n' }, settings, context).format.identifier, 'pino')
-    assert.equal(chooseFormat({ text: '{"level":"info","message":"m"}\n' }, settings, context).format.identifier, 'jsonl')
+    const chosen = (text: string): string => chooseFormat({ text }, settings, context).format.identifier
+    const bunyan = '{"name":"a","hostname":"h","pid":1,"level":30,"msg":"m","time":"2026-10-11T10:00:00Z","v":0}\n'
+    assert.equal(chosen(bunyan), 'bunyan')
+    // bunyan records fit pino's signature as well; a record without bunyan's version is pino's.
+    assert.equal(chosen(bunyan.replace('"v":0', '"v":1')), 'pino')
+    assert.equal(chosen('{"level":30,"time":1,"msg":"m"}\n'), 'pino')
+    assert.equal(chosen('{"level":"info","message":"m"}\n'), 'jsonl')
+    // No probe claims Winston's output, which has many shapes.
+    assert.equal(chosen('{"level":"verbose","message":"m","timestamp":"2026-10-11T10:00:00Z"}\n'), 'jsonl')
   })
 })
 
