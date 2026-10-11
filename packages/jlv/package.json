@@ -1,11 +1,39 @@
 {
   "name": "jlv",
   "version": "0.1.2",
-  "description": "JSON Log Viewer",
-  "type": "module",
-  "author": "Felipe Coury",
-  "repository": "https://github.com/gistia/json-log-viewer",
+  "description": "Terminal viewer for JSON and other structured logs from files, globs and pipes: pino, bunyan, Winston, logfmt, CSV and Docker",
+  "keywords": [
+    "log",
+    "logs",
+    "log-viewer",
+    "json",
+    "jsonl",
+    "ndjson",
+    "pino",
+    "bunyan",
+    "winston",
+    "logfmt",
+    "csv",
+    "docker",
+    "terminal",
+    "tui",
+    "cli"
+  ],
+  "homepage": "https://github.com/Defkil/jlv/tree/master/packages/jlv#readme",
+  "bugs": {
+    "url": "https://github.com/Defkil/jlv/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Defkil/jlv.git",
+    "directory": "packages/jlv"
+  },
   "license": "MIT",
+  "author": "Oliver Grüttner <mail@olivergruettner.de>",
+  "contributors": [
+    "Felipe Coury"
+  ],
+  "type": "module",
   "engines": {
     "node": ">=22.9.0"
   },
@@ -22,6 +50,16 @@
       "types": "./dist/formats/index.d.ts",
       "default": "./dist/formats/index.js"
     }
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE",
+    "NOTICE.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "dependencies": {
     "csv-parse": "7.0.3",
