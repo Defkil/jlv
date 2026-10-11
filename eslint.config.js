@@ -8,7 +8,8 @@ const codeFiles = ['**/*.{js,mjs,ts}']
 
 export default defineConfig([
   {
-    ignores: ['**/node_modules/**', '**/dist/**', '.test-dist/**', '.artifacts/**']
+    // The shared fixtures are data; their plugin source compiles in its own test against an installed jlv.
+    ignores: ['**/node_modules/**', '**/dist/**', '.test-dist/**', '.artifacts/**', 'packages/format-fixtures/fixtures/**']
   },
   {
     linterOptions: { reportUnusedDisableDirectives: 'error', reportUnusedInlineConfigs: 'error' }

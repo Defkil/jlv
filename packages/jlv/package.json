@@ -12,6 +12,17 @@
   "bin": {
     "jv": "./dist/cli.js"
   },
+  "types": "./dist/api.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/api.d.ts",
+      "default": "./dist/api.js"
+    },
+    "./formats": {
+      "types": "./dist/formats/index.d.ts",
+      "default": "./dist/formats/index.js"
+    }
+  },
   "dependencies": {
     "csv-parse": "7.0.3",
     "ini": "6.0.0",
