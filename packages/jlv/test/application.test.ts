@@ -88,6 +88,7 @@ const applicationOptions = (overrides: Partial<ApplicationOptions> = {}): Applic
   isStrict: false,
   configuration: undefined,
   isConfigurationDisabled: false,
+  plugins: [],
   maximumRecords: undefined,
   maximumBytes: undefined,
   save: undefined,

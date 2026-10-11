@@ -5,8 +5,8 @@
 // store, and diagnostics are counted and reported.
 import path from 'node:path'
 import type {
-  FieldMapping, FormatContext, FormatSample, LogDraft, LogFormat, LogLevel, LogRecord, ParseDiagnostic, ParseEvent,
-  ParsedEntry, SourceInformation, TimestampUnit
+  FieldMapping, FormatContext, FormatSample, LogDraft, LogFormat, LogLevel, LogRecord, NormalizationResult, ParseDiagnostic,
+  ParseEvent, ParsedEntry, SourceInformation, TimestampUnit
 } from './api.js'
 import { entryJson, normalizedPathsOf, type NormalizedPaths } from './formats/metadata.js'
 import { asJsonObject, isPlainObject, levelCode } from './record.js'
@@ -424,7 +424,21 @@ class Ingestion {
       if (format === undefined) {
         continue
       }
-      const result = format.normalize(event.value, source.context)
+      let result: NormalizationResult
+      try {
+        result = format.normalize(event.value, source.context)
+      } catch (error) {
+        // Built-in formats never throw here; a plugin's format that fails or gives a result of another shape loses the
+        // record.
+        this.#diagnose(source, {
+          kind: 'diagnostic',
+          severity: 'error',
+          code: 'normalize-failure',
+          message: `skipped a record that ${format.identifier} cannot normalize: ${errorMessage(error)}`,
+          position: event.position
+        })
+        continue
+      }
       for (const diagnostic of result.diagnostics) {
         this.#diagnose(source, atEntry(diagnostic, event))
       }
@@ -474,8 +488,14 @@ const recordAt = (store: RecordStore, sources: readonly SourceState[], sequence:
   }
   const value: unknown = JSON.parse(store.textAt(sequence))
   const fields = isPlainObject(value) ? asJsonObject(value) : {}
-  const result = source.format?.normalize(fields, source.context)
-  const draft: LogDraft = result?.record ?? { level: 'unknown', message: '', fields: {} }
+  let result: NormalizationResult | undefined
+  try {
+    result = source.format?.normalize(fields, source.context)
+  } catch {
+    // A plugin's format that normalized the record once may still fail now; the row then shows the bare fields.
+    result = undefined
+  }
+  const draft: LogDraft = result?.record ?? { level: 'unknown', message: '', fields }
   return {
     record: completeRecord(draft, source.information, store.positionAt(sequence)),
     paths: result === undefined ? {} : normalizedPathsOf(result)

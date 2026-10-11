@@ -337,18 +337,22 @@ const normalizeFields = (value: JsonObject, profile: FieldProfile, context: Form
 
 // Why parsed JSON is no record value: a number beyond the range of doubles, such as 1e400, or more nesting than
 // allowed.
-type JsonProblem = 'number-out-of-range' | 'too-deep'
+type JsonProblem = 'number-out-of-range' | 'too-deep' | 'not-json'
 
 // The nesting of objects and arrays that a record may have, the record itself included (plan section 5).
 const maximumJsonDepth = 64
 
-// Checks parsed JSON: every number finite, and at most `depth` levels of objects and arrays.
+// Checks a value as JSON: every number finite, at most `depth` levels of objects and arrays, and nothing but text,
+// numbers, booleans, null, arrays and objects. JSON.parse gives only the last kind of values; plugins may give others.
 const jsonProblem = (value: unknown, depth: number = maximumJsonDepth): JsonProblem | undefined => {
   if (typeof value === 'number') {
     return Number.isFinite(value) ? undefined : 'number-out-of-range'
   }
-  if (typeof value !== 'object' || value === null) {
+  if (typeof value === 'string' || typeof value === 'boolean' || value === null) {
     return undefined
+  }
+  if (typeof value !== 'object') {
+    return 'not-json'
   }
   if (depth <= 0) {
     return 'too-deep'

@@ -8,7 +8,7 @@ import type { Widgets } from 'blessed'
 import type { ScreenOptions } from 'neo-blessed'
 import type { LogFormat, LogLevel, ParseDiagnostic, SourceInformation, TimestampUnit } from './api.js'
 import { ConfigurationError, loadConfiguration, type Configuration } from './configuration.js'
-import { builtInFormats, jsonLinesFormat } from './formats/registry.js'
+import { builtInFormatIdentifiers, builtInFormats, jsonLinesFormat } from './formats/registry.js'
 import {
   Ingestion, SourceState, StrictModeError, recordAt, sourceBatches, type IngestionSettings, type NormalizedRecord,
   type SourceBatch
@@ -17,6 +17,7 @@ import { InputError, readFileChunks, resolveInputs, type InputSource } from './i
 import { followFile, generationsOf } from './input/follow.js'
 import { defaultMaximumLineBytes } from './input/lines.js'
 import { LineWriter, SaveFileError, formatLine, jsonLine, openSaveFile, type MachineFormat } from './output.js'
+import { PluginError, loadPlugins, type LoadedPlugin } from './plugins.js'
 import { RecordStore } from './store.js'
 import type { Keyboard, KeyboardOptions } from './terminal.js'
 import { createScreen } from './tui/blessed-boundary.js'
@@ -43,6 +44,8 @@ interface ApplicationOptions {
   // The configuration file of --config, and --no-config, which turns the discovery of a file off.
   readonly configuration: string | undefined
   readonly isConfigurationDisabled: boolean
+  // The files and packages of --plugin, in their order.
+  readonly plugins: readonly string[]
   // Ends the run with exit code 1 at the first record that cannot be read.
   readonly isStrict: boolean
   readonly maximumRecords: number | undefined
@@ -524,10 +527,13 @@ const chooseKeyboard = (
   return { failure: `the viewer needs a terminal: ${reason}` }
 }
 
-// The settings of the formats: every format for the probes, and the one that --format or the configuration names.
-// Options of the command line win over the configuration.
-const ingestionSettings = (options: ApplicationOptions, configuration: Configuration): IngestionSettings => {
-  const formats: readonly LogFormat[] = builtInFormats({ csvDelimiter: configuration.csvDelimiter })
+// The settings of the formats: every format for the probes, built-in ones first, and the one that --format or the
+// configuration names. Options of the command line win over the configuration.
+const ingestionSettings = (options: ApplicationOptions, configuration: Configuration, plugins: readonly LoadedPlugin[]): IngestionSettings => {
+  const formats: readonly LogFormat[] = [
+    ...builtInFormats({ csvDelimiter: configuration.csvDelimiter }),
+    ...plugins.flatMap(plugin => plugin.formats)
+  ]
   const name = options.format ?? configuration.format
   const format = name === undefined || name === 'auto' ? undefined : formats.find(candidate => candidate.identifier === name)
   if (format === undefined && name !== undefined && name !== 'auto') {
@@ -566,6 +572,18 @@ const runApplication = async (options: ApplicationOptions, environment: Applicat
     }
     throw error
   }
+  let plugins: LoadedPlugin[]
+  try {
+    plugins = await loadPlugins(options.plugins, {
+      workingDirectory: environment.workingDirectory,
+      reservedIdentifiers: new Set(['auto', ...builtInFormatIdentifiers])
+    })
+  } catch (error) {
+    if (error instanceof PluginError) {
+      return fail(exitCodes.failure, error.message)
+    }
+    throw error
+  }
   let configuration: Configuration
   let settings: IngestionSettings
   try {
@@ -575,7 +593,7 @@ const runApplication = async (options: ApplicationOptions, environment: Applicat
       file: options.configuration,
       isDiscoveryDisabled: options.isConfigurationDisabled
     })
-    settings = ingestionSettings(options, configuration)
+    settings = ingestionSettings(options, configuration, plugins)
   } catch (error) {
     if (error instanceof ConfigurationError) {
       return fail(exitCodes.usage, error.message)

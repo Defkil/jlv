@@ -21,7 +21,9 @@ const lineError = (code: string, message: string, lineNumber: number): ParseDiag
 
 const problemMessages: Readonly<Record<JsonProblem, string>> = {
   'number-out-of-range': 'skipped a record with a number beyond the range of doubles',
-  'too-deep': 'skipped a record nested deeper than 64 levels'
+  'too-deep': 'skipped a record nested deeper than 64 levels',
+  // JSON.parse gives JSON values only; this is here for completeness.
+  'not-json': 'skipped a record with a value that is no JSON'
 }
 
 // The event of one framed line: a record with its JSON text, a diagnostic, or nothing for an empty line.

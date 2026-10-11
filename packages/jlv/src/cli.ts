@@ -29,6 +29,8 @@ options:
   --strict               stop with exit code 1 at the first record that cannot be read
   -c, --config <file>    read this configuration file, JSON or legacy INI, instead of discovering one
   --no-config            read no configuration file
+  --plugin <module>      load the formats of a plugin, a file or an installed package; repeatable. A plugin is
+                         trusted code that runs inside jlv
   --output <mode>        auto, tui, plain or jsonl (default: auto, the viewer when the terminal allows it)
   --max-records <n>      records the viewer keeps (default: 50000)
   --max-bytes <n>        bytes of records the viewer keeps (default: 67108864)
@@ -56,6 +58,7 @@ const optionDefinitions = {
   strict: { type: 'boolean' },
   config: { type: 'string', short: 'c' },
   'no-config': { type: 'boolean' },
+  plugin: { type: 'string', multiple: true },
   output: { type: 'string' },
   'max-records': { type: 'string' },
   'max-bytes': { type: 'string' },
@@ -197,6 +200,7 @@ const readOptions = (): ApplicationOptions | 'help' | 'version' => {
     isStrict: values.strict === true,
     configuration: values.config,
     isConfigurationDisabled: values['no-config'] === true,
+    plugins: values.plugin ?? [],
     maximumRecords: limitValue('max-records', values['max-records']),
     maximumBytes: limitValue('max-bytes', values['max-bytes']),
     save: values.save,
