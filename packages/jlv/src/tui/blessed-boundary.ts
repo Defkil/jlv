@@ -1,20 +1,22 @@
-// The only module that loads the terminal backend (plan §4.2). Widgets extend Box and create their parts through
-// these factories. The declarations of blessed 0.1.81 are corrected in src/types/blessed.d.ts; callback payloads
-// that they describe wrongly are normalized here before they reach the widgets.
-import blessed from 'blessed'
-import type { ScreenOptions, Widgets } from 'blessed'
+// The only module that loads the terminal backend, neo-blessed 0.2.0 (plan §4.2). Widgets extend Box and create
+// their parts through these factories. src/types/neo-blessed.d.ts declares the library with the corrected types of
+// blessed 0.1.81, whose API it keeps; callback payloads that the declarations describe wrongly are normalized here
+// before they reach the widgets.
+import terminalLibrary from 'neo-blessed'
+import type { ScreenOptions } from 'neo-blessed'
+import type { Widgets } from 'blessed'
 
-const { Box } = blessed
+const { Box } = terminalLibrary
 
-const createScreen = (options: ScreenOptions): Widgets.Screen => blessed.screen(options)
+const createScreen = (options: ScreenOptions): Widgets.Screen => terminalLibrary.screen(options)
 
-const createElement = (options: Widgets.BoxOptions): Widgets.BoxElement => blessed.element(options)
+const createElement = (options: Widgets.BoxOptions): Widgets.BoxElement => terminalLibrary.element(options)
 
-const createList = (options: Widgets.ListOptions<Widgets.ListElementStyle>): Widgets.ListElement => blessed.list(options)
+const createList = (options: Widgets.ListOptions<Widgets.ListElementStyle>): Widgets.ListElement => terminalLibrary.list(options)
 
-const createPrompt = (options: Widgets.PromptOptions): Widgets.PromptElement => blessed.prompt(options)
+const createPrompt = (options: Widgets.PromptOptions): Widgets.PromptElement => terminalLibrary.prompt(options)
 
-const createQuestion = (options: Widgets.QuestionOptions): Widgets.QuestionElement => blessed.question(options)
+const createQuestion = (options: Widgets.QuestionOptions): Widgets.QuestionElement => terminalLibrary.question(options)
 
 // Shows the prompt and reports the entered text. blessed reports a cancelled prompt with null, which the declarations
 // do not admit; it arrives here as undefined.

@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import ini from 'ini'
-import lodash from 'lodash'
+import { valueAtField } from './field-path.js'
 
 // A row of the viewer: the three known fields when the record has them, every other field below data.
 type LogEntry = {
@@ -23,26 +23,33 @@ interface ConfigFileSystem {
   readonly readFileSync: (file: string, encoding: 'utf8') => string
 }
 
+type Mapping = Readonly<Record<string, unknown>>
+
 const entryFields = ['timestamp', 'level', 'message'] as const
 
 interface TransformCache {
   // The [transform] section once found, undefined before.
-  mapping: unknown
+  mapping: Mapping | undefined
 }
 
 // Like upstream, a missing file or section is looked up again for the next record, and a found section stays for
 // the rest of the process.
 const transformCache: TransformCache = { mapping: undefined }
 
-const loadTransform = (fileSystem: ConfigFileSystem): unknown => {
+// An INI section: ini 6 returns sections as objects without a prototype, and other values as text, booleans, null
+// or lists.
+const isSection = (value: unknown): value is Mapping => typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const loadTransform = (fileSystem: ConfigFileSystem): Mapping | undefined => {
   if (transformCache.mapping === undefined) {
     const transformFile = path.join(os.homedir(), '.json-log-viewer')
     if (!fileSystem.existsSync(transformFile)) {
       return undefined
     }
-    const contents = fileSystem.readFileSync(transformFile, 'utf8')
-    const { transform: mapping }: { readonly transform?: unknown } = ini.parse(contents)
-    if (!mapping) {
+    const parsed: unknown = ini.parse(fileSystem.readFileSync(transformFile, 'utf8'))
+    // Only a [transform] section maps fields; a top-level transform key is no mapping.
+    const mapping = isSection(parsed) ? parsed['transform'] : undefined
+    if (!isSection(mapping)) {
       return undefined
     }
     transformCache.mapping = mapping
@@ -50,10 +57,14 @@ const loadTransform = (fileSystem: ConfigFileSystem): unknown => {
   return transformCache.mapping
 }
 
-// The path of a mapping value as lodash.get resolves it. INI values are text unless written as true, false, null or
-// key[]= lists; lodash reads the other values and every list element by their text form.
-const propertyPath = (value: unknown): string | string[] =>
-  Array.isArray(value) ? value.map(String) : String(value)
+// The path of a mapping value as lodash.get resolved it: INI text, true, false and null by their text form, key[]=
+// lists element by element. A nested section such as [transform.extra] names no field.
+const mappingPath = (value: unknown): string | readonly string[] | undefined => {
+  if (Array.isArray(value)) {
+    return value.map(String)
+  }
+  return isSection(value) ? undefined : String(value)
+}
 
 const transform = (entry: unknown, fileSystem: ConfigFileSystem = fs): unknown => {
   const mapping = loadTransform(fileSystem)
@@ -61,14 +72,12 @@ const transform = (entry: unknown, fileSystem: ConfigFileSystem = fs): unknown =
     return entry
   }
 
-  const mapped: Record<string, unknown> = {}
-  const fields: [string, unknown][] = Object.entries(mapping)
-  for (const [key, value] of fields) {
-    // $ copies the whole record; any other value is a lodash path into it. structuredClone copies parsed JSON the
-    // way upstream's lodash.cloneDeep did.
-    mapped[key] = value === '$' ? structuredClone(entry) : lodash.get(entry, propertyPath(value))
-  }
-  return mapped
+  // $ copies the whole record; any other value is a path into it. structuredClone copies parsed JSON the way
+  // upstream's lodash.cloneDeep did.
+  return Object.fromEntries(Object.entries(mapping).map(([key, value]) => {
+    const fieldPath = mappingPath(value)
+    return [key, value === '$' ? structuredClone(entry) : (fieldPath === undefined ? undefined : valueAtField(entry, fieldPath))]
+  }))
 }
 
 const parse = (line: string): unknown => {
@@ -80,16 +89,26 @@ const parse = (line: string): unknown => {
   }
 }
 
+const entryFieldNames: readonly string[] = entryFields
+const isEntryField = (key: string): boolean => entryFieldNames.includes(key)
+
+// The known fields in their fixed order, and every other own field below data. A value other than an object is read
+// through its object wrapper, so text gives one field per character, as with upstream's lodash.pick and lodash.omit.
+const toEntry = (line: unknown): LogEntry => {
+  const wrapper = new Object(line)
+  const fields: Record<string, unknown> = {}
+  for (const key of entryFields) {
+    if (Object.hasOwn(wrapper, key)) {
+      fields[key] = Object.getOwnPropertyDescriptor(wrapper, key)?.value
+    }
+  }
+  const data = Object.fromEntries(Object.entries(wrapper).filter(([key]) => !isEntryField(key)))
+  return { ...fields, data }
+}
+
 const readLog = (file: string, reader: LogReader = fs): LogEntry[] => {
   const contents = reader.readFileSync(file).toString()
-  const lines = lodash.compact(contents.split('\n').filter(Boolean).map(line => parse(line)))
-
-  return lines.map(line => {
-    const fields = lodash.pick(line, entryFields)
-    // lodash reads a value other than an object through its wrapper: text gives one field per character.
-    const data: Readonly<Record<string, unknown>> = lodash.omit(new Object(line), entryFields)
-    return { ...fields, data }
-  })
+  return contents.split('\n').filter(Boolean).map(line => parse(line)).filter(Boolean).map(line => toEntry(line))
 }
 
 export { readLog, transform }

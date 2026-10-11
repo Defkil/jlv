@@ -1,6 +1,5 @@
 // Successor of upstream src/utils.js: the column layout of the main panel and its blessed markup. Cells whose value
 // is not text keep upstream's behavior: they fail inside padEnd, and formatRows then shows the raw value.
-import lodash from 'lodash'
 
 // A blessed tag such as {bold} or {/red-fg}. The pattern is global, so test() continues where the previous match
 // ended: like upstream, the result of hasColors depends on the calls made before it.
@@ -122,7 +121,10 @@ const maxLengths = (columns: readonly Column[], rows: readonly Row[], spacing: n
     // Upstream read the key of the missing last column.
     throw new TypeError('The rows need at least one column.')
   }
-  const width = lodash.chain(lengths).values().sum().value() + (spacing * Object.keys(lengths).length)
+  let width = spacing * Object.keys(lengths).length
+  for (const length of Object.values(lengths)) {
+    width += length
+  }
   lengths[lastColumn.key] = maxWidth - width
   return lengths
 }
@@ -133,7 +135,7 @@ const formatRows = (rows: readonly Row[], columns: readonly Column[], spacing: n
     const { format, key } = column
     const rawValue = row[key]
     try {
-      const value = lodash.isFunction(format) ? format(rawValue) : rawValue
+      const value = format === undefined ? rawValue : format(rawValue)
       // A column without a width behaves like upstream's undefined one: the arithmetic gives NaN.
       return padEnd(value, lengths[key] ?? NaN, !format)
     } catch {

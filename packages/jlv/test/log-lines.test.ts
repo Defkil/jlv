@@ -71,17 +71,24 @@ describe('readLog lines', () => {
     }
     assert.equal(readLog('', textReader('{"message":"m"}\n')).length, 1)
   })
+
+  // Upstream mapped through the characters of the text: every record became { 0: undefined }.
+  it('ignores a transform key outside a [transform] section', () => {
+    const record = { message: 'm' }
+    assert.equal(transform(record, { existsSync: () => true, readFileSync: () => 'transform=x\n' }), record)
+  })
 })
 
 describe('transform mapping', () => {
-  it('resolves lodash paths, prefers an exact dotted key and copies the record for $', () => {
+  // Upstream's lodash.get also read inherited members: c=constructor gave the Object function.
+  it('resolves lodash paths to own fields, prefers an exact dotted key and copies the record for $', () => {
     const record = { a: { b: [{ c: 'deep' }] }, 'x.y': 'dotted', top: 'v' }
     const fileSystem = {
       existsSync: () => true,
-      readFileSync: () => '[transform]\nm=a.b[0].c\nd=x.y\nt=top\nmissing=nope.nothing\nall=$\nempty=\n'
+      readFileSync: () => '[transform]\nm=a.b[0].c\nd=x.y\nt=top\nmissing=nope.nothing\nall=$\nempty=\nc=constructor\np=a.__proto__\n'
     }
     const mapped = transform(record, fileSystem)
-    assert.deepEqual(mapped, { m: 'deep', d: 'dotted', t: 'v', missing: undefined, all: record, empty: undefined })
+    assert.deepEqual(mapped, { m: 'deep', d: 'dotted', t: 'v', missing: undefined, all: record, empty: undefined, c: undefined, p: undefined })
     assert.notEqual(valueAt(mapped, ['all']), record)
   })
 })

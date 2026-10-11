@@ -2,13 +2,14 @@
 // the dialogs that change them. It keeps upstream's behavior, including the defects that the characterization
 // records for later phases.
 import type { Widgets } from 'blessed'
-import lodash from 'lodash'
+import { valueAtField } from '../field-path.js'
 import { readLog, type LogEntry } from '../log.js'
 import { BaseWidget } from './base-widget.js'
 import { ask, createElement, createPrompt, createQuestion, readInput, toCells } from './blessed-boundary.js'
 import { formatRows, levelColors, markup } from './formatting.js'
 import { LogDetails } from './log-details.js'
 import { Picker } from './picker.js'
+import { sortRows } from './row-order.js'
 
 type PanelMode = 'normal' | 'sort' | 'filter' | 'search' | 'GOTO'
 
@@ -21,7 +22,7 @@ type PickerCallback = (error: unknown, value: string | undefined) => void
 
 interface MainPanelOptions {
   readonly screen: Widgets.Screen
-  // The initial level filter. The command line passes any value that minimist parsed.
+  // The initial level filter. The command line passes text, or a number for a numeric level such as pino's 30.
   readonly level?: unknown
   readonly sort?: string | undefined
   readonly currentPage?: number
@@ -42,9 +43,12 @@ const colorLevel = (level: unknown): string => {
   return colored
 }
 
+// A record without data counts as empty, as lodash.isEmpty did for the objects that readLog creates.
+const hasData = (data: unknown): boolean => typeof data === 'object' && data !== null && Object.keys(data).length > 0
+
 const isKeptByFilter = (line: LogEntry, filter: Filter): boolean => {
   const key = entryFields.includes(filter.key) ? filter.key : `data.${filter.key}`
-  const value: unknown = lodash.get(line, key)
+  const value = valueAtField(line, key)
   if (!value) {
     return false
   }
@@ -135,14 +139,7 @@ class MainPanel extends BaseWidget {
 
     this.log('calcLines', this.sort, this.filters, this.levelFilter)
 
-    const sort = (lines: LogEntry[]): LogEntry[] => {
-      if (!this.sort) {
-        return lines
-      }
-
-      const sorted = lodash.sortBy(lines, this.sortKey)
-      return this.sort.startsWith('-') ? lodash.reverse(sorted) : sorted
-    }
+    const sort = (lines: LogEntry[]): LogEntry[] => this.sort ? sortRows(lines, this.sortKey, this.sort.startsWith('-')) : lines
 
     const filters = structuredClone(this.filters)
     if (this.levelFilter) {
@@ -587,7 +584,7 @@ class MainPanel extends BaseWidget {
     const columns = [
       { title: 'Timestamp', key: 'timestamp' },
       { title: 'Level', key: 'level', format: (level: unknown) => colorLevel(level) },
-      { title: 'D', key: 'data', length: 1, format: (data: unknown) => lodash.isEmpty(data) ? ' ' : '*' },
+      { title: 'D', key: 'data', length: 1, format: (data: unknown) => hasData(data) ? '*' : ' ' },
       { title: 'Message', key: 'message' }
     ]
 

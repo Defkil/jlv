@@ -108,6 +108,13 @@ describe('custom filters', () => {
     assert.deepEqual(viewer.panel.lines.map(entry => entry.message), ['bravo 07'])
   })
 
+  // lodash.get found the Object function as data.constructor of every record, so upstream kept all 32.
+  it('finds no inherited member such as constructor in the data', async t => {
+    const viewer = openFileViewer(t, characterization)
+    await press(viewer, 'f', 'o', 'constructor:function', keys.enter)
+    assert.equal(viewer.panel.lines.length, 0)
+  })
+
   it('clears all filters with f instead of opening the picker', async t => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, 'f', 'm', 'alpha', keys.enter, 'f')

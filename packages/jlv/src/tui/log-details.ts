@@ -1,7 +1,6 @@
 // Successor of upstream src/widgets/LogDetails.js: a dialog with the data of one record as an indented tree or as
 // pretty-printed JSON. j toggles the view; Enter and Escape close the dialog.
 import type { Widgets } from 'blessed'
-import lodash from 'lodash'
 import type { LogEntry } from '../log.js'
 import { BaseWidget } from './base-widget.js'
 import { createElement } from './blessed-boundary.js'
@@ -17,8 +16,11 @@ const formatValue = (value: unknown): string => ` ${String(value)}`
 // Upstream prefixed new Array(width).join(' '): one space less than the width, and none for a width of 0.
 const indent = (text: string, width: number): string => `${' '.repeat(Math.max(width - 1, 0))}${text}`
 
+// Objects and arrays become nested trees, as lodash.isObject decided before.
+const isNested = (value: unknown): value is object => (typeof value === 'object' && value !== null) || typeof value === 'function'
+
 const formatEntry = (key: string, value: unknown, padding?: number, level = 0): string => {
-  const formattedValue = lodash.isObject(value) ? formatObject(value, level + 1) : formatValue(value)
+  const formattedValue = isNested(value) ? formatObject(value, level + 1) : formatValue(value)
   return `${formatKey(key, padding)}${formattedValue}`
 }
 
