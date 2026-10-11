@@ -8,7 +8,7 @@ import { builtInFormats, jsonLinesFormat } from '../src/formats/registry.js'
 import { SourceState, recordAt, type IngestionSettings } from '../src/ingestion.js'
 import { levelCode } from '../src/record.js'
 import { RecordStore } from '../src/store.js'
-import { rowOf, type LogRow } from '../src/tui/log-row.js'
+import type { LogRow } from '../src/tui/log-row.js'
 import { RecordView, type ViewOrder, type ViewQuery } from '../src/tui/record-view.js'
 
 const settings: IngestionSettings = {
@@ -26,7 +26,7 @@ const sourceOf = (order: number): SourceState =>
 
 const sources = [sourceOf(0), sourceOf(1)] as const
 
-const viewOf = (store: RecordStore): RecordView => new RecordView(store, sequence => rowOf(recordAt(store, sources, sequence)))
+const viewOf = (store: RecordStore): RecordView => new RecordView(store, sequence => recordAt(store, sources, sequence))
 
 // Appends records as the ingestion does: the record's JSON text, its normalized time and level, its source and
 // record number.
@@ -46,7 +46,10 @@ const append = (store: RecordStore, source: number, records: readonly JsonObject
   }
 }
 
-const query = (order: ViewOrder, isKept?: (entry: LogRow) => boolean, revision = 0): ViewQuery => ({ revision, order, isKept })
+const query = (order: ViewOrder, isKept?: (sequence: number) => boolean, revision = 0): ViewQuery => ({ revision, order, isKept })
+
+// A filter or an order value of a view's rows, by the sequence of their records.
+const byRow = <T>(view: RecordView, read: (entry: LogRow) => T): ((sequence: number) => T) => sequence => read(view.entry(sequence))
 
 // The messages of the visible records in the order of the query.
 const messages = (view: RecordView, viewQuery: ViewQuery): unknown[] => view.order(viewQuery).map(sequence => view.entry(sequence).message)
@@ -82,7 +85,7 @@ describe('record view', () => {
     const store = new RecordStore()
     append(store, 0, [timed(1, 'a', 'warn'), timed(2, 'b'), timed(3, 'c', 'debug'), timed(4, 'd', 'warn'), { level: null, message: 'e' }])
     const view = viewOf(store)
-    const read = fieldReader('level')
+    const read = byRow(view, fieldReader('level'))
     assert.deepEqual(messages(view, query({ kind: 'field', isDescending: false, read })), ['c', 'a', 'd', 'b', 'e'])
     assert.deepEqual(messages(view, query({ kind: 'field', isDescending: true, read }, undefined, 1)), ['a', 'd', 'c', 'b', 'e'])
   })
@@ -113,7 +116,8 @@ describe('record view', () => {
     const store = new RecordStore()
     append(store, 0, [timed(1, 'a', 'warn'), timed(2, 'b', 'info'), timed(3, 'c', 'warn')])
     const view = viewOf(store)
-    assert.deepEqual(messages(view, query({ kind: 'time', isDescending: true }, entry => entry.level === 'warn')), ['c', 'a'])
+    const isWarning = byRow(view, entry => entry.level === 'warn')
+    assert.deepEqual(messages(view, query({ kind: 'time', isDescending: true }, isWarning)), ['c', 'a'])
   })
 
   it('computes the order once per revision of the data or the query', () => {
@@ -139,7 +143,7 @@ describe('record view', () => {
     const orders: readonly ViewOrder[] = [
       { kind: 'time', isDescending: true },
       { kind: 'time', isDescending: false },
-      { kind: 'field', isDescending: true, read: fieldReader('level') },
+      { kind: 'field', isDescending: true, read: byRow(view, fieldReader('level')) },
       { kind: 'level', isDescending: false },
       { kind: 'arrival', isDescending: true }
     ]
@@ -157,8 +161,8 @@ describe('record view', () => {
           return minute === 0 ? { ...(level !== undefined && { level }), message: 'no time' } : timed(minute, `m${String(next(1000))}`, level)
         })
         append(store, next(2), records)
-        const incremental = view.order(query(order, isNoDebug, revision))
-        const fresh = viewOf(store).order(query(order, isNoDebug, revision))
+        const incremental = view.order(query(order, byRow(view, isNoDebug), revision))
+        const fresh = viewOf(store).order(query(order, byRow(view, isNoDebug), revision))
         assert.deepEqual(incremental, fresh, `order ${String(revision)}, round ${String(round)}`)
         assert.ok(incremental.every(sequence => store.has(sequence)))
       }

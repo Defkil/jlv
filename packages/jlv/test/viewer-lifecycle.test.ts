@@ -165,7 +165,7 @@ describe('main panel lifecycle', () => {
     assert.equal(viewer.panel.orderComputations, computations + 2)
     await press(viewer, keys.down, keys.down, keys.up)
     assert.equal(viewer.panel.orderComputations, computations + 2)
-    await press(viewer, 'f')
+    await press(viewer, 'f', 'c')
     assert.equal(viewer.panel.orderComputations, computations + 3)
     viewer.append('{"timestamp":"2026-10-11T12:00:00.000Z","level":"info","message":"late"}\n')
     assert.equal(viewer.panel.orderComputations, computations + 4)

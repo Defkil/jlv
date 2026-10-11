@@ -77,24 +77,24 @@ class Picker extends BaseWidget {
   }
 
   handleSelected (_item: Widgets.BoxElement, index: number): void {
-    this.selected(this.items[index])
+    this.selected(index)
   }
 
-  // Closes the picker for good, with its list, and reports the choice.
-  selected (value: string | undefined): void {
+  // Closes the picker for good, with its list, and reports the chosen item and its position, or undefined for none.
+  selected (index: number | undefined): void {
     destroyElement(this)
     this.screen.render()
-    this.emit('select', undefined, value)
+    this.emit('select', undefined, index === undefined ? undefined : this.items[index], index)
   }
 
   // blessed passes no character for keys such as the arrows. Like upstream, the check then sees the text
   // "undefined", which no item starts with.
   handleKeyPressed (character: string | undefined, key: Widgets.Events.IKeyEventArg): void {
     if (this.keySelect && /[a-z]/.test(String(character))) {
-      const item = this.items.find(candidate => candidate.startsWith(String(character)))
-      if (item) {
-        this.log('item', item)
-        this.selected(item)
+      const index = this.items.findIndex(candidate => candidate.startsWith(String(character)))
+      if (index !== -1) {
+        this.log('item', this.items[index])
+        this.selected(index)
       }
     }
 

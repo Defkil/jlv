@@ -7,15 +7,16 @@ import type { TestContext } from 'node:test'
 import { setImmediate as nextTurn } from 'node:timers/promises'
 import { homedir } from 'node:os'
 import type { Widgets } from 'blessed'
-import type { LogLevel, ParseEvent, SourceInformation } from '../../src/api.js'
+import type { FilterGroup, LogLevel, ParseEvent, SourceInformation } from '../../src/api.js'
 import { loadConfiguration } from '../../src/configuration.js'
+import { emptyFilter, type NamedPredicate, type RecordFilter } from '../../src/filters.js'
 import { jsonLineEvent } from '../../src/formats/json-lines.js'
 import { builtInFormats, jsonLinesFormat } from '../../src/formats/registry.js'
 import { Ingestion, SourceState, chooseFormat, recordAt, type IngestionSettings } from '../../src/ingestion.js'
 import { LineSplitter, defaultMaximumLineBytes, type LineEvent } from '../../src/input/lines.js'
 import { RecordStore } from '../../src/store.js'
 import { createScreen } from '../../src/tui/blessed-boundary.js'
-import { rowOf, type LogRow } from '../../src/tui/log-row.js'
+import type { LogRow } from '../../src/tui/log-row.js'
 import { MainPanel } from '../../src/tui/main-panel.js'
 import { RecordView } from '../../src/tui/record-view.js'
 import { StatusLine } from '../../src/tui/status-line.js'
@@ -65,6 +66,11 @@ export interface ViewerOptions {
   readonly columns?: number
   readonly rows?: number
   readonly level?: LogLevel
+  // The filter of the command line; level adds its level.
+  readonly filter?: RecordFilter
+  // The profiles and predicates that the filter manager offers.
+  readonly profiles?: Readonly<Record<string, FilterGroup>>
+  readonly predicates?: readonly NamedPredicate[]
   readonly sort?: string
   readonly maximumRecords?: number
   readonly maximumBytes?: number
@@ -133,9 +139,18 @@ export const openViewer = (context: TestContext, file: string, options: ViewerOp
   const fileLines = new LineSplitter()
   ingestion.accept({ source, events: jsonEvents([...fileLines.push(contents), ...fileLines.end()]) })
   ingestion.activity = 'done'
-  const view = new RecordView(store, sequence => rowOf(recordAt(store, [source], sequence), { legacyExtras: configuration.legacyExtras }))
+  const view = new RecordView(store, sequence => recordAt(store, [source], sequence), { legacyExtras: configuration.legacyExtras })
+  const filter = { ...options.filter ?? emptyFilter, ...options.level !== undefined && { level: options.level } }
   const panel = new MainPanel({
-    screen, view, label: file, progress: ingestion, configuration: options.configuration, level: options.level, sort: options.sort
+    screen,
+    view,
+    label: file,
+    progress: ingestion,
+    configuration: options.configuration,
+    filter,
+    profiles: options.profiles,
+    predicates: options.predicates,
+    sort: options.sort
   })
   const status = new StatusLine({ screen, mainPanel: panel })
   screen.append(status)

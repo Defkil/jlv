@@ -7,24 +7,27 @@
 // - arrival: the order in which the records arrived; follow and live input show it by default.
 // - time: the store's normalized time of each record, epoch milliseconds or NaN; finite files show it descending.
 // - level: the store's severity of each record, trace to fatal, with unknown levels last (plan section 5).
-// - field: a value of the row, such as its message, compared as lodash.sortBy did.
+// - field: a value of the record, such as its message, compared as lodash.sortBy did.
 // Records without a value for the order (a missing or invalid time, an unknown level, an undefined or null field) come
 // after all others in both directions, and records with equal values keep their arrival order in both directions.
+import type { LogRecord } from '../api.js'
+import type { NormalizedRecord } from '../ingestion.js'
 import { levelCode } from '../record.js'
 import type { RecordStore } from '../store.js'
-import type { LogRow } from './log-row.js'
+import { rowOf, type LogRow, type RowOptions } from './log-row.js'
 import { compareAscending } from './row-order.js'
 
 type ViewOrder =
   | { readonly kind: 'arrival' | 'time' | 'level', readonly isDescending: boolean }
-  | { readonly kind: 'field', readonly isDescending: boolean, readonly read: (entry: LogRow) => unknown }
+  | { readonly kind: 'field', readonly isDescending: boolean, readonly read: (sequence: number) => unknown }
 
 interface ViewQuery {
   // Changes whenever the order or the filter changes.
   readonly revision: number
   readonly order: ViewOrder
-  // Keeps a record in the view; undefined keeps all records.
-  readonly isKept: ((entry: LogRow) => boolean) | undefined
+  // Keeps a record in the view by its sequence, so that it can look at the store's level and time before it reads the
+  // record; undefined keeps all records.
+  readonly isKept: ((sequence: number) => boolean) | undefined
 }
 
 const unknownLevel = levelCode('unknown')
@@ -56,7 +59,8 @@ const compareNumbers = (left: number, right: number, isDescending: boolean, isMi
 const isUnknownLevel = (code: number): boolean => code === unknownLevel
 
 class RecordView {
-  readonly #rowAt: (sequence: number) => LogRow
+  readonly #recordAt: (sequence: number) => NormalizedRecord
+  readonly #rowOptions: RowOptions
   #order: readonly number[] = []
   // The field values of the records in the order, for a field order.
   #values = new Map<number, unknown>()
@@ -68,9 +72,10 @@ class RecordView {
   // How often the order was computed, once per pair of revisions.
   computations = 0
 
-  constructor (store: RecordStore, rowAt: (sequence: number) => LogRow) {
+  constructor (store: RecordStore, recordAt: (sequence: number) => NormalizedRecord, rowOptions: RowOptions = {}) {
     this.store = store
-    this.#rowAt = rowAt
+    this.#recordAt = recordAt
+    this.#rowOptions = rowOptions
   }
 
   #compare (order: ViewOrder, left: number, right: number): number {
@@ -122,7 +127,12 @@ class RecordView {
 
   // The row of a retained record, normalized again from its text.
   entry (sequence: number): LogRow {
-    return this.#rowAt(sequence)
+    return rowOf(this.#recordAt(sequence), this.#rowOptions)
+  }
+
+  // A retained record, normalized again from its text.
+  record (sequence: number): LogRecord {
+    return this.#recordAt(sequence).record
   }
 
   // The sequences of the records to show, in order.
@@ -149,12 +159,11 @@ class RecordView {
     const added: number[] = []
     const { order, isKept } = query
     for (let sequence = Math.max(this.#evaluatedEnd, firstSequence); sequence < store.endSequence; sequence += 1) {
-      const entry = isKept !== undefined || order.kind === 'field' ? this.entry(sequence) : undefined
-      if (entry !== undefined && isKept !== undefined && !isKept(entry)) {
+      if (isKept !== undefined && !isKept(sequence)) {
         continue
       }
-      if (entry !== undefined && order.kind === 'field') {
-        this.#values.set(sequence, order.read(entry))
+      if (order.kind === 'field') {
+        this.#values.set(sequence, order.read(sequence))
       }
       added.push(sequence)
     }

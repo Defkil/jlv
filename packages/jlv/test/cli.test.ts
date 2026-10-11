@@ -269,7 +269,7 @@ describe('viewer on a pretended terminal', () => {
 
   it('applies -l and --sort from the command line', async () => {
     const level = await run(['-l', 'error', 'characterization.log'], { keys: 'q', preload: pretendedTerminal })
-    assert.match(stripVTControlCharacters(level.output), /NORMAL {2}1\/0 \| 20 \| sort: -timestamp \| filters: level:error/u)
+    assert.match(stripVTControlCharacters(level.output), /NORMAL {2}1\/0 \| 20 \| sort: -timestamp \| filters: level=error/u)
     assert.match(compact(level.output), /delta27/u)
     assert.doesNotMatch(compact(level.output), /foxtrot29/u)
     const sort = await run(['--sort=-level', 'characterization.log'], { keys: 'q', preload: pretendedTerminal })

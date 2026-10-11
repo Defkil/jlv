@@ -363,7 +363,7 @@ describe('saving records', () => {
       inputs: ['characterization.log'], level: 'warn', maximumRecords: 3, save: saved
     }), environment)
     // None of the three records that the viewer keeps is a warning, so the screen shows no row to wait for.
-    await waitFor(() => hasShown(stdout, 'level:warn'), 'the viewer')
+    await waitFor(() => hasShown(stdout, 'level=warn'), 'the viewer')
     await delay(300)
     keyboard.write('q')
     assert.equal(await running, 0)

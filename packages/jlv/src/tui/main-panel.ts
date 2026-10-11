@@ -1,11 +1,20 @@
 // Successor of upstream src/widgets/MainPanel.js: the records with the cursor, paging, search, sorting, filters and
 // the dialogs that change them. The records come from the bounded store through a record view, which orders them
-// once per revision; the panel normalizes only the rows it shows. It keeps upstream's behavior, including the defects
-// that the characterization records for later phases, but filters and sorts levels by their normalized severity.
+// once per revision; the panel normalizes only the rows it shows. It keeps upstream's keys and sorts levels by their
+// normalized severity.
+//
+// The filters add up (plan section 6.3, upstream issue #19): the level of l, the clauses that f adds, a profile of the
+// configuration and the predicates of plugins all apply together, starting with those of the command line. f opens a
+// manager that adds and removes them and chooses profiles and predicates.
+import { isDeepStrictEqual } from 'node:util'
 import type { Widgets } from 'blessed'
-import type { LogLevel } from '../api.js'
-import { fieldReader, valueAtField } from '../field-path.js'
-import { isLogLevel, logLevels } from '../record.js'
+import type { FieldPath, FilterClause, FilterGroup, LogLevel } from '../api.js'
+import { fieldReader, parsePath } from '../field-path.js'
+import {
+  describeClause, describeFilter, emptyFilter, isFilterEmpty, recordTest, type NamedPredicate, type PredicateFailure,
+  type RecordFilter
+} from '../filters.js'
+import { isLogLevel, levelCode, logLevels } from '../record.js'
 import { BaseWidget } from './base-widget.js'
 import {
   ask, createElement, createPrompt, createQuestion, destroyElement, readInput, setContentWrapping, toCells
@@ -20,13 +29,14 @@ import type { RecordView, ViewOrder, ViewQuery } from './record-view.js'
 
 type PanelMode = 'normal' | 'sort' | 'filter' | 'search' | 'GOTO'
 
-// The level filter keeps records of one normalized level, whatever case or alias their raw level had (upstream issue
-// #14); a filter with the contains method looks for text, ignoring case.
-type Filter =
-  | { readonly key: 'level', readonly value: LogLevel, readonly method?: undefined }
-  | { readonly key: string, readonly value: string, readonly method: 'contains' }
+// The item that a picker reports, and its position; both are undefined when the picker closed without a choice.
+type PickerCallback = (error: unknown, value: string | undefined, index: number | undefined) => void
 
-type PickerCallback = (error: unknown, value: string | undefined) => void
+// An item of the filter manager and what choosing it does.
+interface FilterChoice {
+  readonly label: string
+  readonly choose: () => void
+}
 
 // How far the input has come: whether records still arrive, the records skipped and the warnings so far, the inputs
 // that could not be read to their end, and the formats of the inputs.
@@ -46,8 +56,14 @@ interface MainPanelOptions {
   readonly progress?: InputProgress
   // The configuration file that the run read, for the status line.
   readonly configuration?: string | undefined
-  // The initial level filter.
-  readonly level?: LogLevel | undefined
+  // The filter of the command line: the level, clauses, a profile and predicates.
+  readonly filter?: RecordFilter | undefined
+  // The profiles of the configuration, which the filter manager offers.
+  readonly profiles?: Readonly<Record<string, FilterGroup>> | undefined
+  // The predicates of the loaded plugins, which the filter manager offers.
+  readonly predicates?: readonly NamedPredicate[] | undefined
+  // Called when a predicate throws; the panel leaves the record out.
+  readonly onPredicateFailure?: PredicateFailure | undefined
   // The initial order; -timestamp without one.
   readonly sort?: string | undefined
   readonly currentPage?: number
@@ -86,35 +102,31 @@ const rowCells = (row: LogRow): Cell[] => [
   { text: row.message }
 ]
 
-const isKeptByFilter = (line: LogRow, filter: Filter): boolean => {
-  if (filter.method === undefined) {
-    return line.record.level === filter.value
-  }
-  const key = entryFields.has(filter.key) ? filter.key : `data.${filter.key}`
-  const value = valueAtField(line, key)
-  // Like upstream, an object field is searched as [object Object].
-  return Boolean(value) && String(value).toLowerCase().includes(filter.value.toLowerCase())
-}
+// The parts of a record that the Filter by picker offers, and the fields they filter; other takes the path of an
+// original field.
+const filterFields: ReadonlyMap<string, FieldPath> = new Map([
+  ['timestamp', ['timestamp']],
+  ['message', ['message']],
+  ['correlation identifier', ['correlationIdentifier']]
+])
 
-// Upstream reduces over the filters but ignores the accumulator: every filter runs, and only the last one decides
-// (upstream issue #19).
-const isKeptByLastFilter = (line: LogRow, filters: readonly Filter[]): boolean => {
-  let isKept = true
-  for (const filter of filters) {
-    isKept = isKeptByFilter(line, filter)
-  }
-  return isKept
-}
+// Without a listener, a predicate that throws only leaves its record out.
+const ignorePredicateFailure: PredicateFailure = () => {}
 
 class MainPanel extends BaseWidget {
+  // The query of the current query revision, with its compiled filter.
+  #query: ViewQuery | undefined
   currentPage: number
   initialRow: number
   colSpacing: number
   row: number
   rows: LogRow[]
   lastSearchTerm: string | undefined
-  levelFilter: LogLevel | undefined
-  filters: Filter[]
+  // The filter that applies: the level, the clauses, a profile and predicates.
+  filter: RecordFilter
+  readonly profiles: Readonly<Record<string, FilterGroup>>
+  readonly predicates: readonly NamedPredicate[]
+  readonly onPredicateFailure: PredicateFailure
   sort: string
   mode: PanelMode
   readonly view: RecordView
@@ -141,8 +153,10 @@ class MainPanel extends BaseWidget {
     this.row = 0
     this.rows = []
     this.lastSearchTerm = undefined
-    this.levelFilter = options.level
-    this.filters = []
+    this.filter = options.filter ?? emptyFilter
+    this.profiles = options.profiles ?? {}
+    this.predicates = options.predicates ?? []
+    this.onPredicateFailure = options.onPredicateFailure ?? ignorePredicateFailure
     this.sort = options.sort || '-timestamp'
     this.mode = 'normal'
     this.view = options.view
@@ -182,8 +196,13 @@ class MainPanel extends BaseWidget {
     return this.view.computations
   }
 
-  // The order in which the view shows the records, and its filter.
+  // The order in which the view shows the records, and its filter, computed once per query revision. The filter looks
+  // at the store's level of a record first and reads the record only for the other parts.
   get query (): ViewQuery {
+    if (this.#query?.revision === this.queryRevision) {
+      return this.#query
+    }
+    const { view } = this
     const isDescending = this.sort.startsWith('-')
     const key = this.sortKey
     let order: ViewOrder
@@ -201,17 +220,22 @@ class MainPanel extends BaseWidget {
         break
       }
       default: {
-        order = { kind: 'field', isDescending, read: fieldReader(key) }
+        const read = fieldReader(key)
+        order = { kind: 'field', isDescending, read: sequence => read(view.record(sequence)) }
       }
     }
-    const filters: readonly Filter[] = this.levelFilter === undefined
-      ? this.filters
-      : [...this.filters, { key: 'level', value: this.levelFilter }]
-    return {
-      revision: this.queryRevision,
-      order,
-      isKept: filters.length === 0 ? undefined : entry => isKeptByLastFilter(entry, filters)
-    }
+    const level = this.filter.level === undefined ? undefined : levelCode(this.filter.level)
+    const test = recordTest(this.filter, this.onPredicateFailure)
+    const isKept = level === undefined && test === undefined
+      ? undefined
+      : (sequence: number) => (level === undefined || view.store.levelAt(sequence) === level) && (test?.(view.record(sequence)) ?? true)
+    this.#query = { revision: this.queryRevision, order, isKept }
+    return this.#query
+  }
+
+  // The active filters as the status line shows them.
+  get filterDescriptions (): readonly string[] {
+    return describeFilter(this.filter)
   }
 
   // The records arrive at one end of the order: the end for arrival and time in ascending order, the start
@@ -378,11 +402,7 @@ class MainPanel extends BaseWidget {
       return
     }
     if (character === 'f') {
-      if (this.filters.length > 0 || this.levelFilter !== undefined) {
-        this.clearFilters()
-        return
-      }
-      this.openFilter()
+      this.openFilterManager()
       return
     }
     if (character === 'q') {
@@ -410,12 +430,13 @@ class MainPanel extends BaseWidget {
       }
 
       this.log('selected', level)
+      // all clears the level only; the other filters stay.
       if (level === 'all') {
-        this.clearFilters()
+        this.setFilter({ ...this.filter, level: undefined })
         return
       }
       if (isLogLevel(level)) {
-        this.setLevelFilter(level)
+        this.setFilter({ ...this.filter, level })
       }
     })
   }
@@ -466,9 +487,60 @@ class MainPanel extends BaseWidget {
     this.setMode('normal')
   }
 
+  // The filter manager: add a filter, remove one of the active ones, choose a profile or a predicate, or clear all.
+  openFilterManager (): void {
+    this.setMode('filter')
+    const choices = this.filterChoices
+    this.openPicker('Filters', choices.map(choice => choice.label), (_error, _label, index) => {
+      const choice = index === undefined ? undefined : choices[index]
+      if (choice === undefined) {
+        this.resetMode()
+        return
+      }
+      choice.choose()
+    })
+  }
+
+  // The items of the filter manager.
+  get filterChoices (): FilterChoice[] {
+    const { filter } = this
+    const choices: FilterChoice[] = [{ label: 'add a filter', choose: () => { this.openFilter() } }]
+    if (filter.level !== undefined) {
+      choices.push({ label: `remove level=${filter.level}`, choose: () => { this.setFilter({ ...filter, level: undefined }) } })
+    }
+    for (const [index, clause] of filter.clauses.entries()) {
+      choices.push({
+        label: `remove ${describeClause(clause)}`,
+        choose: () => { this.setFilter({ ...filter, clauses: filter.clauses.toSpliced(index, 1) }) }
+      })
+    }
+    for (const [name, group] of Object.entries(this.profiles)) {
+      const isActive = filter.profile?.name === name
+      choices.push({
+        label: isActive ? `remove profile ${name}` : `profile ${name}`,
+        choose: () => { this.setFilter({ ...filter, profile: isActive ? undefined : { name, group } }) }
+      })
+    }
+    for (const predicate of this.predicates) {
+      const isActive = filter.predicates.some(active => active.name === predicate.name)
+      choices.push({
+        label: isActive ? `remove predicate ${predicate.name}` : `predicate ${predicate.name}`,
+        choose: () => {
+          const predicates = isActive ? filter.predicates.filter(active => active.name !== predicate.name) : [...filter.predicates, predicate]
+          this.setFilter({ ...filter, predicates })
+        }
+      })
+    }
+    if (!isFilterEmpty(filter)) {
+      choices.push({ label: 'clear all filters', choose: () => { this.clearFilters() } })
+    }
+    return choices
+  }
+
+  // Adds a filter on a part of the record, the level, or an original field.
   openFilter (): void {
     this.setMode('filter')
-    const fields = ['timestamp', 'level', 'message', 'other']
+    const fields = ['timestamp', 'level', 'message', 'correlation identifier', 'other']
     this.openPicker('Filter by', fields, (error, field) => {
       if (error || !field) {
         this.resetMode()
@@ -478,37 +550,31 @@ class MainPanel extends BaseWidget {
         this.openLevelFilter()
         return
       }
-      if (field === 'other') {
+      const path = filterFields.get(field)
+      if (path === undefined) {
         this.openCustomFilter()
         return
       }
-      this.openFilterTerm(field)
+      this.openFilterTerm(field, path)
     })
   }
 
+  // Asks for an original field in lodash's path grammar, as upstream did, with the text after a colon: user.name:ann.
   openCustomFilter (): void {
     this.prompt('Field to filter:', '', field => {
-      if (!field) {
-        this.resetMode()
-        return
-      }
       if (field.includes(':')) {
         // Like upstream, text after a second colon is dropped.
         const [key = '', value = ''] = field.split(':', 2)
-        this.setFilter(key, value, 'contains')
+        this.addClause({ field: ['fields', ...parsePath(key)], operator: 'contains', value })
         return
       }
-      this.openFilterTerm(field)
+      this.openFilterTerm(field, ['fields', ...parsePath(field)])
     })
   }
 
-  openFilterTerm (field: string): void {
-    this.prompt(`Filter ${field} by:`, '', value => {
-      if (!value) {
-        this.resetMode()
-        return
-      }
-      this.setFilter(field, value, 'contains')
+  openFilterTerm (name: string, field: FieldPath): void {
+    this.prompt(`Filter ${name} by:`, '', value => {
+      this.addClause({ field, operator: 'contains', value })
     })
   }
 
@@ -518,33 +584,29 @@ class MainPanel extends BaseWidget {
     this.renderLines()
   }
 
-  setLevelFilter (level: LogLevel): void {
-    this.levelFilter = level
-    this.filterChanged()
-  }
-
-  filterChanged (): void {
+  // Applies another filter and shows the records that it keeps from the first one on.
+  setFilter (filter: RecordFilter): void {
+    this.filter = filter
     this.row = 0
     this.initialRow = 0
     this.setQueryChanged()
     this.renderLines()
   }
 
-  setFilter (key: string, value: string, method: 'contains'): void {
-    this.filters = [{ key, value, method }]
-    this.filterChanged()
+  // Adds a clause to the others, unless the same clause applies already.
+  addClause (clause: FilterClause): void {
+    const { clauses } = this.filter
+    this.setFilter({ ...this.filter, clauses: clauses.some(active => isDeepStrictEqual(active, clause)) ? clauses : [...clauses, clause] })
   }
 
   clearFilters (): void {
-    this.levelFilter = undefined
-    this.filters = []
-    this.filterChanged()
+    this.setFilter(emptyFilter)
   }
 
   openPicker (label: string, items: readonly string[], callback: PickerCallback): void {
     const picker = new Picker(this, { label, items, keySelect: true })
-    picker.on('select', (_error: unknown, value: string | undefined) => {
-      callback(undefined, value)
+    picker.on('select', (_error: unknown, value: string | undefined, index: number | undefined) => {
+      callback(undefined, value, index)
     })
     picker.setCurrent()
   }

@@ -8,6 +8,7 @@ import type { Widgets } from 'blessed'
 import type { ScreenOptions } from 'neo-blessed'
 import type { LogFormat, LogLevel, ParseDiagnostic, SourceInformation, TimestampUnit } from './api.js'
 import { ConfigurationError, loadConfiguration, type Configuration } from './configuration.js'
+import { emptyFilter, type NamedPredicate, type PredicateFailure } from './filters.js'
 import { builtInFormatIdentifiers, builtInFormats, jsonLinesFormat } from './formats/registry.js'
 import {
   Ingestion, SourceState, StrictModeError, recordAt, sourceBatches, type IngestionSettings, type NormalizedRecord,
@@ -21,7 +22,7 @@ import { PluginError, loadPlugins, type LoadedPlugin } from './plugins.js'
 import { RecordStore } from './store.js'
 import type { Keyboard, KeyboardOptions } from './terminal.js'
 import { createScreen } from './tui/blessed-boundary.js'
-import { rowOf, type RowOptions } from './tui/log-row.js'
+import type { RowOptions } from './tui/log-row.js'
 import { MainPanel } from './tui/main-panel.js'
 import { RecordView } from './tui/record-view.js'
 import { visibleText } from './terminal-text.js'
@@ -204,6 +205,8 @@ interface Run {
   readonly configuration: Configuration
   readonly settings: IngestionSettings
   readonly rowOptions: RowOptions
+  // The predicates of the loaded plugins.
+  readonly predicates: readonly NamedPredicate[]
   readonly isLive: boolean
   readonly saveFile: Writable | undefined
 }
@@ -401,7 +404,18 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
   const ingestion = new Ingestion({ store, isCollecting: run.saveFile !== undefined, isStrict: options.isStrict })
   ingestion.activity = run.isLive ? 'live' : 'loading'
   const states = sourceStates(run, controller.signal)
-  const view = new RecordView(store, sequence => rowOf(recordAt(store, states, sequence), run.rowOptions))
+  const view = new RecordView(store, sequence => recordAt(store, states, sequence), run.rowOptions)
+  const failures: string[] = []
+  // A predicate that throws leaves its record out; the first failure of each predicate is reported after the viewer
+  // closed, and the run ends with 1.
+  const failedPredicates = new Set<string>()
+  const onPredicateFailure: PredicateFailure = (predicate, error) => {
+    if (failedPredicates.has(predicate.name)) {
+      return
+    }
+    failedPredicates.add(predicate.name)
+    failures.push(errorLine(`the predicate ${predicate.name} of the plugin ${predicate.owner} failed: ${errorMessage(error)}; it left out the records it failed on`))
+  }
   let screen: Widgets.Screen | undefined
   let panel: MainPanel
   try {
@@ -420,7 +434,10 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
       label: inputsLabel(run.sources),
       progress: ingestion,
       configuration: run.configuration.file,
-      level: options.level,
+      filter: { ...emptyFilter, level: options.level },
+      profiles: run.configuration.profiles,
+      predicates: run.predicates,
+      onPredicateFailure,
       sort
     })
     const statusLine = new StatusLine({ screen, mainPanel: panel })
@@ -435,7 +452,6 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
   }
   const viewerScreen = screen
 
-  const failures: string[] = []
   // Set once the viewer has closed; reading may still deliver a last batch then.
   const state: { isFinished: boolean, finish?: (code: number) => void } = { isFinished: false }
   const refresh = throttle(() => {
@@ -506,7 +522,8 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
   for (const failure of failures) {
     environment.stderr.write(failure)
   }
-  return exitCode === exitCodes.success && ingestion.failed > 0 ? exitCodes.failure : exitCode
+  const isFailed = ingestion.failed > 0 || failedPredicates.size > 0
+  return isFailed && exitCode === exitCodes.success ? exitCodes.failure : exitCode
 }
 
 // The keyboard for the viewer, undefined for plain output, or the reason why --output tui cannot have a viewer.
@@ -632,7 +649,9 @@ const runApplication = async (options: ApplicationOptions, environment: Applicat
   }
   const isLive = options.isFollowing || sources.some(source => source.kind !== 'file')
   const rowOptions: RowOptions = { legacyExtras: configuration.legacyExtras }
-  const run: Run = { options, environment, sources, configuration, settings, rowOptions, isLive, saveFile }
+  const predicates = plugins.flatMap(plugin =>
+    Object.entries(plugin.predicates).map(([name, test]): NamedPredicate => ({ name, owner: plugin.specifier, test })))
+  const run: Run = { options, environment, sources, configuration, settings, rowOptions, predicates, isLive, saveFile }
   if (keyboard !== undefined) {
     return runViewer(run, keyboard)
   }
