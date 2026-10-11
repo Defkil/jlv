@@ -8,6 +8,44 @@ the tests run every one of them.
 
 jlv 2 needs Node 22.9 or later.
 
+## Installing
+
+```sh
+npm install --global jlv        # the command jlv
+npm install --save-dev jlv      # in a project, where npx jlv runs it
+npm uninstall --global jlv-pino json-log-viewer
+```
+
+jlv 1 installed json-log-viewer from its GitHub repository, and its pino support came from jlv-pino; jlv 2 needs
+neither, so the last line removes them if nothing else uses them. `jv` stays json-log-viewer's command.
+
+## Reading logs
+
+jlv 2 reads files, quoted glob patterns and standard input itself; it merges nothing into a temporary file. Each input
+keeps its own format, and the matches of a pattern are read in the order of their names:
+
+```console
+$ jlv --output plain '[pw]*.log' orders.csv
+2026-10-11T10:00:00.000Z info server listening {"pid":4120,"hostname":"api-1","port":8080}
+2026-10-11T10:00:01.250Z warn slow request {"pid":4120,"hostname":"api-1","reqId":"req-7","responseTime":1840}
+2026-10-11T10:00:02.500Z error upstream failed {"pid":4120,"hostname":"api-1","reqId":"req-8","err":{"type":"Error","message":"connection refused"}}
+2026-10-11T10:00:03.000Z fatal shutting down {"pid":4120,"hostname":"api-1"}
+2026-10-11T10:00:00.000Z info worker started {"queue":"mail"}
+2026-10-11T10:00:02.000Z warn retrying job {"job":"17","attempt":"2"}
+2026-10-11T10:00:00.000Z info order placed {"order":"A-17"}
+2026-10-11T10:00:05.000Z error payment declined\ncard expired {"order":"A-17"}
+```
+
+Quote patterns in every shell, so that jlv expands them the same way everywhere. On Windows, patterns may also use
+backslashes, as in `jlv 'logs\*.log'` in PowerShell or `jlv "logs\*.log"` in cmd. Pipes and growing files need no
+merge step either:
+
+```sh
+node app.js | jlv                 # records as they arrive; the keys come from the terminal
+node app.js | jlv app.log -       # a file and the pipe together
+jlv --follow 'logs/*.log'         # files that grow, are truncated or rotated
+```
+
 ## Options of jlv 1
 
 | jlv 1 | jlv 2 |
@@ -72,7 +110,19 @@ $ jlv --output plain -l INFO pino.log
 - json-log-viewer showed JSON values that are no objects, such as arrays and numbers, as rows, and dropped `null`,
   `false`, `0` and `""` without a word. jlv 2 skips all of them and reports each line, as described in
   [Diagnostics](formats.md#diagnostics).
-- Pretty-printed JSON and files that hold one JSON array are still no input; convert them into JSON lines.
+- Pretty-printed JSON and files that hold one JSON array are still no input; convert them into JSON lines. XML and
+  syslog are no input either.
+- `--output jsonl` and `--save` write each record as one JSON object with its identifier, source, position,
+  normalized timestamp, level, message and correlation identifier, and the complete original record in `fields`; see
+  [The record](formats.md#the-record). jlv 1 saved the merged lines as they were.
+
+## Memory
+
+json-log-viewer read a whole file into memory before it showed anything, and could not open files beyond about
+512 MiB. jlv 2 shows records while it reads and keeps the newest 50,000 records and at most 64 MiB of them; the status
+line shows `kept <retained> of <seen>` once it drops older ones, and sorting and searching work on the records it
+keeps. `--max-records` and `--max-bytes`, or `maxRecords` and `maxBytes` in the configuration, change the limits.
+`--output plain`, `--output jsonl` and `--save` write every record, whatever the viewer keeps.
 
 ## The viewer
 
@@ -96,4 +146,5 @@ $ jlv --output plain -l INFO pino.log
 jlv 1's CommonJS functions are gone. jlv 2's package exports ECMAScript modules: the types of records and formats
 from `jlv`, and the built-in formats and readers from `jlv/formats`. CommonJS code loads them with
 `await import('jlv/formats')`. Transformers become formats of a plugin, which [Formats from
-plugins](formats.md#formats-from-plugins) describes.
+plugins](formats.md#formats-from-plugins) describes; the [README](../packages/jlv/README.md#plugins) shows one in
+TypeScript, which the package check compiles strictly against the published declarations and runs.

@@ -87,9 +87,10 @@ time that jlv cannot read, its original text; and `-` for what a record lacks.
 The viewer, `--output plain` and the messages on standard error show the text of records as text, so that a log can
 neither color nor move nor clear the terminal, set its title or write its clipboard: escape sequences are removed, and
 line breaks, tabs and other control characters show as JSON escapes such as `\n`, `\t` or `\u001b`. In the viewer,
-blessed tags such as `{red-fg}` show as they are written. `--output jsonl` and `--save` keep the original values; they
-also write DEL and the other control characters that JSON leaves as they are as escapes, which read back as the same
-values.
+blessed tags such as `{red-fg}` show as they are written, CJK and other wide characters take two cells, combining marks
+combine with the character before them, and emoji show as `?`, since terminals draw them in two cells and the
+terminal library measures them in one. `--output jsonl` and `--save` keep the original values; they also write DEL and
+the other control characters that JSON leaves as they are as escapes, which read back as the same values.
 
 ## Timestamps
 
