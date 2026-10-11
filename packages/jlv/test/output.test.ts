@@ -122,13 +122,39 @@ describe('line writer', () => {
   it('stops waiting for a destination that does not drain when the signal aborts', async () => {
     // The write callback never runs, so the destination never drains.
     const sink = new Writable({ highWaterMark: 1, write: () => { /* never done */ } })
-    const writer = new LineWriter(sink, () => assert.fail('closed'))
+    const writer = new LineWriter(sink, () => { /* closed during cleanup */ })
     const controller = new AbortController()
     const waiting = writer.write('never drained\n', controller.signal)
     setTimeout(() => { controller.abort() }, 10)
     await waiting
     await writer.write('after the abort\n', controller.signal)
-    assert.equal(sink.writableLength, 'never drained\nafter the abort\n'.length)
+    assert.equal(sink.writableLength, 'never drained\n'.length)
+    await writer.flush(controller.signal)
+    writer.dispose()
+    sink.destroy()
+  })
+
+  it('ends when a destination closes without an error and drops later writes', async () => {
+    const closes: (Error | undefined)[] = []
+    const sink = new Writable({ write: (_chunk, _encoding, callback) => { callback() } })
+    const writer = new LineWriter(sink, error => { closes.push(error) })
+    sink.destroy()
+    await delay(1)
+    assert.deepEqual(closes, [undefined])
+    assert.equal(writer.isClosed, true)
+    await writer.write('dropped\n')
+  })
+
+  it('cancels a final drain when the signal arrives after accepted writes', async () => {
+    const sink = new Writable({ write: () => { /* never done */ } })
+    const writer = new LineWriter(sink, () => { /* destination may close during cleanup */ })
+    const controller = new AbortController()
+    await writer.write('accepted\n')
+    const flushing = writer.flush(controller.signal)
+    controller.abort()
+    await flushing
+    assert.equal(sink.listenerCount('close'), 1)
+    sink.destroy()
   })
 
   it('ends the output normally when the reader goes away and drops later writes', async () => {

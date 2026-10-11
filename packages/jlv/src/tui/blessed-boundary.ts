@@ -5,6 +5,7 @@
 import terminalLibrary from 'neo-blessed'
 import type { ScreenOptions } from 'neo-blessed'
 import type { Widgets } from 'blessed'
+import type { Writable } from 'node:stream'
 
 const { Box, unicode } = terminalLibrary
 
@@ -12,7 +13,15 @@ const { Box, unicode } = terminalLibrary
 // before them (fullUnicode). blessed turns that off by itself when the terminal does not take Unicode; then it draws a
 // wide character as ??, drops zero-width characters and draws other characters outside the Basic Multilingual Plane
 // as ?. Text that drawableText prepared takes the same cells either way.
-const createScreen = (options: ScreenOptions): Widgets.Screen => terminalLibrary.screen({ fullUnicode: true, ...options })
+const createScreen = (options: ScreenOptions, debugOutput?: Writable): Widgets.Screen => {
+  // The backend opens log paths with truncating access and never closes its logger. The application instead owns
+  // a checked destination; _logger is neo-blessed's private write-only stream slot used by Program#log.
+  const screen = terminalLibrary.screen({ fullUnicode: true, ...options, log: undefined, dump: undefined })
+  if (debugOutput !== undefined) {
+    Reflect.set(screen.program, '_logger', debugOutput)
+  }
+  return screen
+}
 
 // Characters that take one cell in blessed and in every terminal: printable ASCII and the Latin letters and signs
 // before the combining marks.

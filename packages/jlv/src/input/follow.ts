@@ -12,7 +12,7 @@
 // Where the data of a file ends, the format's reader ends too and parses the unfinished last record; the next file
 // gets a new reader. Record numbers go on across these changes; line numbers start at 1 in each file. Truncation that
 // is followed by more writes than the file held before the next poll cannot be seen by size; polling has that limit.
-import type { BigIntStats } from 'node:fs'
+import { constants, type BigIntStats } from 'node:fs'
 import { open, stat, type FileHandle } from 'node:fs/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 
@@ -52,12 +52,13 @@ class FileFollower {
   }
 
   // Reads the open file from the offset to its current end, chunk by chunk.
-  async * #readToEnd (): AsyncGenerator<FollowEvent> {
+  async * #readToEnd (signal?: AbortSignal): AsyncGenerator<FollowEvent> {
     const handle = this.#handle
     if (handle === undefined) {
       return
     }
     for (;;) {
+      signal?.throwIfAborted()
       const buffer = Buffer.allocUnsafe(chunkBytes)
       const { bytesRead } = await handle.read(buffer, 0, chunkBytes, this.#offset)
       if (bytesRead === 0) {
@@ -68,24 +69,40 @@ class FileFollower {
     }
   }
 
-  async #openCurrent (): Promise<boolean> {
+  async #openCurrent (): Promise<BigIntStats | undefined> {
     let handle: FileHandle
     try {
-      handle = await open(this.path, 'r')
+      // A regular file can be replaced by a FIFO between stat and open on POSIX. Nonblocking access prevents an
+      // open from waiting for a writer before the handle can be checked below; it has no effect on regular files.
+      handle = await open(this.path, constants.O_RDONLY | constants.O_NONBLOCK)
     } catch (error) {
       if (isAbsent(error)) {
-        return false
+        return undefined
       }
       throw error
     }
+    let status: BigIntStats
+    try {
+      status = await handle.stat({ bigint: true })
+    } catch (error) {
+      await handle.close()
+      throw error
+    }
+    // The name may have been replaced after poll's stat. Never read a newly opened directory or device, and use
+    // the opened file's size below instead of a size from a different generation at this name.
+    if (!status.isFile()) {
+      await handle.close()
+      return undefined
+    }
     this.#handle = handle
-    this.#identity = identityOf(await handle.stat({ bigint: true }))
+    this.#identity = identityOf(status)
     this.#offset = 0
-    return true
+    return status
   }
 
   // Reads what changed since the last poll.
-  async * poll (): AsyncGenerator<FollowEvent> {
+  async * poll (signal?: AbortSignal): AsyncGenerator<FollowEvent> {
+    signal?.throwIfAborted()
     let status: BigIntStats | undefined
     try {
       status = await stat(this.path, { bigint: true })
@@ -99,21 +116,24 @@ class FileFollower {
     }
     if (this.#handle !== undefined && (status === undefined || identityOf(status) !== this.#identity)) {
       // Rotated or removed: the rest of the old file first.
-      yield * this.#readToEnd()
+      yield * this.#readToEnd(signal)
       yield fileEnd
       await this.close()
     }
     if (status === undefined) {
       return
     }
-    if (this.#handle === undefined && !await this.#openCurrent()) {
-      return
+    if (this.#handle === undefined) {
+      status = await this.#openCurrent()
+      if (status === undefined) {
+        return
+      }
     }
     if (status.size < BigInt(this.#offset)) {
       yield fileEnd
       this.#offset = 0
     }
-    yield * this.#readToEnd()
+    yield * this.#readToEnd(signal)
   }
 
   async close (): Promise<void> {
@@ -131,7 +151,7 @@ async function * followFile (path: string, signal: AbortSignal, options: FollowO
   try {
     for (;;) {
       signal.throwIfAborted()
-      yield * follower.poll()
+      yield * follower.poll(signal)
       await delay(options.interval ?? defaultFollowInterval, undefined, { signal })
     }
   } finally {

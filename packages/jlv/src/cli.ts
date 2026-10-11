@@ -43,7 +43,7 @@ options:
   -s, --save <file>      also write every record that -l, --where, --profile and --predicate keep to a new file,
                          as JSON lines
   --overwrite            let --save replace an existing file
-  --log <file>           write the terminal library's debug log
+  --log <file>           write the terminal debug log to a new file (TUI only)
   -h, --help             show this help
   --version              show the version
 

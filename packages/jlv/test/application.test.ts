@@ -14,7 +14,7 @@ import { after, describe, it } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { stripVTControlCharacters } from 'node:util'
 import { fixturePath, legacyViewerFixtures } from '../../format-fixtures/src/catalog.js'
-import { runApplication, type ApplicationEnvironment, type ApplicationOptions } from '../src/application.js'
+import { merge, runApplication, type ApplicationEnvironment, type ApplicationOptions } from '../src/application.js'
 import { loadConfiguration } from '../src/configuration.js'
 import { hasControls } from '../src/terminal-text.js'
 import { TerminalOutput } from './support/terminal.js'
@@ -121,6 +121,36 @@ const waitFor = async (isReady: () => boolean, what: string): Promise<void> => {
 
 const signalListeners = (signals: EventEmitter): number =>
   ['SIGINT', 'SIGTERM', 'SIGHUP'].reduce((sum, signal) => sum + signals.listenerCount(signal), 0)
+
+describe('merging sources', () => {
+  it('cancels pending reads and returns every unfinished source when the consumer stops early', async () => {
+    const closed: string[] = []
+    const waiting = Promise.withResolvers<undefined>()
+    async function * first (): AsyncGenerator<number> {
+      try {
+        await Promise.resolve()
+        yield 1
+        yield 2
+      } finally {
+        closed.push('first')
+      }
+    }
+    async function * second (): AsyncGenerator<number> {
+      try {
+        await waiting.promise
+        yield 3
+      } finally {
+        closed.push('second')
+      }
+    }
+    const merged = merge([first(), second()], () => { waiting.resolve(undefined) })
+    assert.deepEqual(await merged.next(), { value: 1, done: false })
+    await merged.return(undefined)
+    assert.equal(closed.includes('first'), true)
+    assert.equal(closed.includes('second'), true)
+    assert.equal(closed.length, 2)
+  })
+})
 
 describe('viewer with live standard input', () => {
   it('shows records before standard input ends, reads keys from the keyboard and quits with q', async () => {
@@ -305,6 +335,16 @@ describe('ending the viewer with a dialog open', () => {
 })
 
 describe('output without a viewer', () => {
+  it('releases output listeners after completed runs that borrow the same stream', async () => {
+    const stdout = new TextOutput()
+    for (let index = 0; index < 3; index += 1) {
+      const { environment } = harness({ stdout })
+      assert.equal(await runApplication(applicationOptions({ inputs: ['characterization.log'], output: 'jsonl' }), environment), 0)
+      assert.equal(stdout.listenerCount('error'), 0)
+      assert.equal(stdout.listenerCount('close'), 0)
+    }
+  })
+
   it('writes plain text when no keyboard can be found and says that --sort applies to the viewer only', async () => {
     const stdout = new TextOutput()
     const { stdin, stderr, environment } = harness({ hasKeyboard: false, stdout: Object.assign(stdout, { isTTY: true }) })
@@ -408,6 +448,36 @@ describe('output without a viewer', () => {
     assert.ok(pushedBeforeStop < 2 * 1024 * 1024, `the input took ${String(pushedBeforeStop)} bytes`)
     assert.equal(stdin.destroyed, true)
   })
+
+  for (const highWaterMark of [1, 1024 * 1024]) {
+    it(`stops on SIGINT even when the output never completes, with a ${String(highWaterMark)}-byte buffer`, { timeout: 2000 }, async () => {
+      const sink = new Writable({ highWaterMark, write: () => { /* never done */ } })
+      const { stdin, signals, environment } = harness({ stdout: sink })
+      const running = runApplication(applicationOptions({ output: 'jsonl' }), environment)
+      try {
+        stdin.end(record(1, 'stalled output'))
+        await waitFor(() => sink.writableLength > 0, 'the queued output')
+        // The larger buffer accepts the write immediately, so the finite input ends and the final flush waits.
+        await delay(10)
+        signals.emit('SIGINT')
+        assert.equal(await running, 130)
+        assert.equal(signalListeners(signals), 0)
+      } finally {
+        sink.destroy()
+      }
+    })
+  }
+
+  it('stops normally when the output closes without EPIPE while the input is still live', { timeout: 2000 }, async () => {
+    const sink = new TextOutput()
+    const { stdin, environment } = harness({ stdout: sink })
+    const running = runApplication(applicationOptions({ output: 'jsonl' }), environment)
+    stdin.write(record(1, 'before close'))
+    await waitFor(() => sink.text.includes('before close'), 'the first record')
+    sink.destroy()
+    assert.equal(await running, 0)
+    assert.equal(stdin.destroyed, true)
+  })
 })
 
 describe('following files', () => {
@@ -450,6 +520,12 @@ const savedMessages = (file: string): unknown[] => readFileSync(file, 'utf8').tr
   .map(line => Reflect.get(JSON.parse(line) as object, 'message') as unknown)
 
 describe('saving records', () => {
+  it('refuses a directory as a save destination even with --overwrite', async () => {
+    const { stderr, environment } = harness({ stdout: new TextOutput() })
+    assert.equal(await runApplication(applicationOptions({ inputs: ['characterization.log'], save: directory, isOverwriting: true }), environment), 1)
+    assert.equal(stderr.text, `jlv: cannot save to '${directory}': it is not a regular file\n`)
+  })
+
   it('saves every matching record while the viewer keeps only the last ones', async () => {
     const saved = path.join(directory, 'viewer-save.jsonl')
     const { stdout, keyboard, environment } = harness()
@@ -522,6 +598,68 @@ describe('saving records', () => {
       assert.equal(shown(stdout), '')
     }
     assert.equal(readFileSync(input, 'utf8'), record(1, 'kept'))
+  })
+})
+
+describe('terminal debug logs', () => {
+  it('refuses an input as the debug log before a viewer can truncate it', async () => {
+    const file = path.join(directory, 'debug-input.log')
+    const contents = record(1, 'must survive')
+    writeFileSync(file, contents)
+    const { state, stdout, stderr, environment } = harness()
+    assert.equal(await runApplication(applicationOptions({ inputs: [file], debugLog: file }), environment), 2)
+    assert.equal(readFileSync(file, 'utf8'), contents)
+    assert.equal(shown(stdout), '')
+    assert.equal(state.isKeyboardClosed, true)
+    assert.equal(stderr.text, `jlv: cannot write the debug log to '${file}': it is one of the inputs\n`)
+  })
+
+  it('writes a new debug file, closes it at quit and refuses to replace it', async () => {
+    const file = path.join(directory, 'terminal-debug.log')
+    const { state, stdout, keyboard, environment } = harness()
+    const running = runApplication(applicationOptions({ inputs: ['characterization.log'], debugLog: file }), environment)
+    await waitFor(() => hasShown(stdout, 'foxtrot 29'), 'the viewer with debug logging')
+    keyboard.write('q')
+    assert.equal(await running, 0)
+    assert.equal(state.isKeyboardClosed, true)
+    const contents = readFileSync(file, 'utf8')
+    assert.match(contents, /key q/u)
+    const refused = harness()
+    assert.equal(await runApplication(applicationOptions({ inputs: ['characterization.log'], debugLog: file, isOverwriting: true }), refused.environment), 2)
+    assert.equal(refused.stderr.text, `jlv: cannot write the debug log to '${file}': the file exists; choose a new file\n`)
+    assert.equal(readFileSync(file, 'utf8'), contents)
+  })
+
+  it('refuses a debug destination that cannot be created before opening the viewer', async () => {
+    const file = path.join(directory, 'missing-debug-directory', 'terminal.log')
+    const { state, stdout, stderr, environment } = harness()
+    assert.equal(await runApplication(applicationOptions({ inputs: ['characterization.log'], debugLog: file }), environment), 1)
+    assert.match(stderr.text, /^jlv: cannot write the debug log to /u)
+    assert.equal(shown(stdout), '')
+    assert.equal(state.isKeyboardClosed, true)
+  })
+
+  it('refuses a save destination that names the debug file before --overwrite can truncate it', async () => {
+    const file = path.join(directory, 'conflicting-debug.log')
+    const { state, stdout, stderr, environment } = harness()
+    assert.equal(await runApplication(applicationOptions({
+      inputs: ['characterization.log'], debugLog: file, save: file, isOverwriting: true
+    }), environment), 2)
+    assert.equal(stderr.text, `jlv: cannot save to '${file}': it is one of the inputs\n`)
+    assert.equal(shown(stdout), '')
+    assert.equal(state.isKeyboardClosed, true)
+  })
+
+  it('creates no debug file for machine output or an empty --log value', async () => {
+    const file = path.join(directory, 'unused-debug.log')
+    const machine = harness({ stdout: new TextOutput() })
+    assert.equal(await runApplication(applicationOptions({ inputs: ['characterization.log'], debugLog: file }), machine.environment), 0)
+    assert.equal(existsSync(file), false)
+    const empty = harness()
+    const running = runApplication(applicationOptions({ inputs: ['characterization.log'], debugLog: '' }), empty.environment)
+    await waitFor(() => hasShown(empty.stdout, 'foxtrot 29'), 'the viewer without debug logging')
+    empty.keyboard.write('q')
+    assert.equal(await running, 0)
   })
 })
 

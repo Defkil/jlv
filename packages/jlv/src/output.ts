@@ -1,7 +1,7 @@
 // Writes records as text lines (plan section 6.1): plain text or JSON lines on standard output for the machine output
 // modes, and JSON lines into the file of --save. Writes wait for the destination to drain, so a slow reader slows the
 // input down instead of filling the memory, and a reader that goes away early (EPIPE) ends the output normally.
-import type { BigIntStats } from 'node:fs'
+import { constants, type BigIntStats } from 'node:fs'
 import { open, realpath, stat } from 'node:fs/promises'
 import type { Writable } from 'node:stream'
 import type { LogRecord } from './api.js'
@@ -63,10 +63,19 @@ class LineWriter {
     this.#onClose(this.#error)
   }
 
+  readonly #handleClose = (): void => {
+    if (this.#isClosed) {
+      return
+    }
+    this.#isClosed = true
+    this.#onClose(undefined)
+  }
+
   constructor (stream: Writable, onClose: (error: Error | undefined) => void) {
     this.#stream = stream
     this.#onClose = onClose
     stream.on('error', this.#handleError)
+    stream.on('close', this.#handleClose)
   }
 
   // Whether the destination went away.
@@ -82,7 +91,7 @@ class LineWriter {
   // Writes the text and waits until the destination can take more, or until the signal aborts the waiting, so that
   // Ctrl-C does not wait for a slow reader.
   async write (text: string, signal?: AbortSignal): Promise<void> {
-    if (text === '' || this.#isClosed || this.#stream.write(text) || signal?.aborted === true) {
+    if (text === '' || this.#isClosed || signal?.aborted === true || this.#stream.write(text)) {
       return
     }
     await new Promise<void>(resolve => {
@@ -102,10 +111,21 @@ class LineWriter {
 
   // Waits until everything written so far has left the stream's buffer. The writer keeps listening for errors, so
   // that a reader that goes away after the last write cannot end the process with an unhandled error.
-  async flush (): Promise<void> {
+  async flush (signal?: AbortSignal): Promise<void> {
     if (!this.#isClosed && this.#stream.writableLength > 0) {
       await new Promise<void>(resolve => {
-        this.#stream.write('', () => { resolve() })
+        const done = (): void => {
+          signal?.removeEventListener('abort', done)
+          this.#stream.off('close', done)
+          resolve()
+        }
+        if (signal?.aborted === true) {
+          done()
+          return
+        }
+        signal?.addEventListener('abort', done, { once: true })
+        this.#stream.once('close', done)
+        this.#stream.write('', done)
       })
     }
   }
@@ -116,9 +136,28 @@ class LineWriter {
       return
     }
     await new Promise<void>(resolve => {
+      // Closing an owned stream deliberately is not a failure of its destination.
+      this.#stream.off('close', this.#handleClose)
       this.#stream.once('close', resolve)
       this.#stream.end()
     })
+  }
+
+  // A completed run must not leave listeners on a borrowed stdout. Pending writes after cancellation retain the
+  // error listener until they finish or close, so a late EPIPE still has a handler.
+  dispose (): void {
+    this.#stream.off('close', this.#handleClose)
+    const release = (): void => {
+      this.#stream.off('error', this.#handleError)
+      this.#stream.off('close', release)
+      this.#stream.off('drain', release)
+    }
+    if (this.#stream.writableLength === 0 || this.#stream.closed) {
+      release()
+    } else {
+      this.#stream.once('close', release)
+      this.#stream.once('drain', release)
+    }
   }
 }
 
@@ -141,6 +180,8 @@ interface SaveFileOptions {
   readonly isOverwriting: boolean
   // The input files, which the save file must not be.
   readonly inputs: readonly string[]
+  // A terminal debug destination follows the same file protections, with a message that names its purpose.
+  readonly isDebugLog?: boolean
 }
 
 const statOrUndefined = async (file: string): Promise<BigIntStats | undefined> => {
@@ -166,22 +207,50 @@ const isSameFile = async (file: string, status: BigIntStats, other: string): Pro
 // it is to be overwritten, and an input is refused always, also through another spelling, a link or a hard link.
 // The file is created exclusively, so that a file created in the meantime is not replaced either.
 const openSaveFile = async (file: string, options: SaveFileOptions): Promise<Writable> => {
+  const action = options.isDebugLog === true ? 'write the debug log' : 'save'
   const status = await statOrUndefined(file)
   if (status !== undefined) {
     for (const input of options.inputs) {
       if (await isSameFile(file, status, input)) {
-        throw new SaveFileError(`cannot save to '${options.label}': it is one of the inputs`, 2)
+        throw new SaveFileError(`cannot ${action} to '${options.label}': it is one of the inputs`, 2)
       }
     }
+    if (!status.isFile()) {
+      throw new SaveFileError(`cannot ${action} to '${options.label}': it is not a regular file`, 1)
+    }
     if (!options.isOverwriting) {
-      throw new SaveFileError(`cannot save to '${options.label}': the file exists; --overwrite replaces it`, 2)
+      const remedy = options.isDebugLog === true ? 'choose a new file' : '--overwrite replaces it'
+      throw new SaveFileError(`cannot ${action} to '${options.label}': the file exists; ${remedy}`, 2)
     }
   }
   try {
-    const handle = await open(file, options.isOverwriting ? 'w' : 'wx')
-    return handle.createWriteStream()
+    // Write access without O_TRUNC opens an existing file without truncating it. Validate the handle first:
+    // the destination may have changed to a link to an input since the path was checked above.
+    const flags = constants.O_WRONLY | constants.O_CREAT | constants.O_NONBLOCK | (options.isOverwriting ? 0 : constants.O_EXCL)
+    const handle = await open(file, flags)
+    try {
+      const openedStatus = await handle.stat({ bigint: true })
+      for (const input of options.inputs) {
+        if (await isSameFile(file, openedStatus, input)) {
+          throw new SaveFileError(`cannot ${action} to '${options.label}': it is one of the inputs`, 2)
+        }
+      }
+      if (!openedStatus.isFile()) {
+        throw new SaveFileError(`cannot ${action} to '${options.label}': it is not a regular file`, 1)
+      }
+      if (options.isOverwriting) {
+        await handle.truncate(0)
+      }
+      return handle.createWriteStream()
+    } catch (error) {
+      await handle.close()
+      throw error
+    }
   } catch (error) {
-    throw new SaveFileError(`cannot save to '${options.label}': ${error instanceof Error ? error.message : String(error)}`, 1)
+    if (error instanceof SaveFileError) {
+      throw error
+    }
+    throw new SaveFileError(`cannot ${action} to '${options.label}': ${error instanceof Error ? error.message : String(error)}`, 1)
   }
 }
 

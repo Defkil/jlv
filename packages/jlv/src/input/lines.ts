@@ -38,8 +38,9 @@ const toBuffer = (chunk: Uint8Array): Buffer =>
   Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength)
 
 class LineSplitter {
-  // The start of an unfinished line, copied out of earlier chunks.
-  #pieces: Buffer[] = []
+  // The start of an unfinished line, copied into a geometrically growing buffer. Tiny chunks must not create one
+  // retained Buffer object per byte: the byte limit also bounds the bookkeeping memory.
+  #pending = Buffer.alloc(0)
   #pendingLength = 0
   // The bytes dropped so far of an oversized line, undefined while no line is dropped.
   #droppedLength: number | undefined
@@ -84,34 +85,41 @@ class LineSplitter {
       this.#droppedLength += bytes.length
       return
     }
-    this.#pendingLength += bytes.length
+    const totalLength = this.#pendingLength + bytes.length
     // One byte more than the maximum may still be the carriage return of a CRLF ending.
-    if (this.#pendingLength > this.maximumLineBytes + 1) {
-      this.#droppedLength = this.#pendingLength
-      this.#pieces = []
+    if (totalLength > this.maximumLineBytes + 1) {
+      this.#droppedLength = totalLength
+      this.#pending = Buffer.alloc(0)
       this.#pendingLength = 0
       return
     }
-    this.#pieces.push(Buffer.from(bytes))
+    if (totalLength > this.#pending.length) {
+      const capacity = Math.min(this.maximumLineBytes + 1, Math.max(totalLength, this.#pending.length * 2, 8192))
+      const pending = Buffer.allocUnsafe(capacity)
+      this.#pending.copy(pending, 0, 0, this.#pendingLength)
+      this.#pending = pending
+    }
+    bytes.copy(this.#pending, this.#pendingLength)
+    this.#pendingLength = totalLength
   }
 
   // Ends the line with the segment before its line feed.
   #complete (segment: Buffer, events: LineEvent[]): void {
     this.#lineNumber += 1
     const lineNumber = this.#lineNumber
-    const pieces = this.#pieces
+    const pending = this.#pending.subarray(0, this.#pendingLength)
     const droppedLength = this.#droppedLength
     const totalLength = (droppedLength ?? this.#pendingLength) + segment.length
-    this.#pieces = []
+    this.#pending = Buffer.alloc(0)
     this.#pendingLength = 0
     this.#droppedLength = undefined
-    const lastByte = segment.length > 0 ? segment.at(-1) : pieces.at(-1)?.at(-1)
+    const lastByte = segment.length > 0 ? segment.at(-1) : pending.at(-1)
     const contentLength = lastByte === carriageReturn ? totalLength - 1 : totalLength
     if (droppedLength !== undefined || contentLength > this.maximumLineBytes) {
       events.push({ kind: 'oversized', lineNumber, byteLength: totalLength })
       return
     }
-    const line = pieces.length === 0 ? segment : Buffer.concat([...pieces, segment], totalLength)
+    const line = pending.length === 0 ? segment : Buffer.concat([pending, segment], totalLength)
     events.push({ kind: 'line', bytes: line.subarray(0, contentLength), lineNumber })
   }
 
@@ -158,7 +166,7 @@ class LineSplitter {
   // Forgets the unfinished line and starts a new file: line numbers start at 1 again, and a byte order mark at its
   // start is dropped.
   reset (): void {
-    this.#pieces = []
+    this.#pending = Buffer.alloc(0)
     this.#pendingLength = 0
     this.#droppedLength = undefined
     this.#lineNumber = 0

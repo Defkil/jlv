@@ -139,6 +139,20 @@ describe('oversized lines', () => {
     assert.ok(largestPending <= 9, `held ${String(largestPending)} bytes`)
   })
 
+  it('accepts a maximum-size line arriving one byte at a time and releases it before the next line', () => {
+    const splitter = new LineSplitter({ maximumLineBytes: 1024 * 1024 })
+    const byte = Uint8Array.of(0x78)
+    for (let index = 0; index < splitter.maximumLineBytes; index += 1) {
+      assert.equal(splitter.push(byte).length, 0)
+    }
+    const [line] = splitter.push(bytesOf('\nnext\n'))
+    assert.ok(line?.kind === 'line')
+    assert.equal(line.bytes.length, splitter.maximumLineBytes)
+    assert.equal(line.bytes.equals(Buffer.alloc(splitter.maximumLineBytes, 'x')), true)
+    assert.equal(splitter.pendingByteLength, 0)
+    assert.deepEqual(splitter.end(), [])
+  })
+
   it('reports an oversized last line at the end of the source', () => {
     assert.deepEqual(frame([bytesOf('ok\n0123456789')], options), [{ line: 'ok', number: 1 }, { oversized: 10, number: 2 }])
   })

@@ -191,6 +191,22 @@ const waitUntil = async (isReady: () => boolean): Promise<void> => {
 }
 
 describe('following a file', () => {
+  it('checks cancellation between chunks while reading an existing file', async () => {
+    const file = path.join(newDirectory(), 'large.log')
+    writeFileSync(file, Buffer.alloc(1024 * 1024, 'x'))
+    const controller = new AbortController()
+    const following = followFile(file, controller.signal)
+    let chunks = 0
+    await assert.rejects(async () => {
+      for await (const event of following) {
+        assert.equal(event.kind, 'bytes')
+        chunks += 1
+        controller.abort()
+      }
+    }, { name: 'AbortError' })
+    assert.equal(chunks, 1)
+  })
+
   it('numbers the records of a followed source on across rotations, with a reader per file', async () => {
     const directory = newDirectory()
     const file = path.join(directory, 'app.log')

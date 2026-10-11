@@ -152,23 +152,35 @@ const nextOf = async <T>(iterator: AsyncIterator<T>): Promise<Pending<T>> => {
 
 // Interleaves several sources of batches in the order they arrive. Each source has at most one batch waiting, so a
 // source is only read on while its last batch has been taken: the merge keeps every source's backpressure.
-async function * merge<T> (sources: readonly AsyncIterable<T>[]): AsyncGenerator<T> {
+async function * merge<T> (sources: readonly AsyncIterable<T>[], stop?: () => void): AsyncGenerator<T> {
   const pending = new Map<AsyncIterator<T>, Promise<Pending<T>>>()
-  for (const source of sources) {
-    const iterator = source[Symbol.asyncIterator]()
-    pending.set(iterator, nextOf(iterator))
-  }
-  while (pending.size > 0) {
-    const next = await Promise.race(pending.values())
-    pending.delete(next.iterator)
-    if ('error' in next) {
-      throw next.error
+  const active = new Set<AsyncIterator<T>>()
+  try {
+    for (const source of sources) {
+      const iterator = source[Symbol.asyncIterator]()
+      active.add(iterator)
+      pending.set(iterator, nextOf(iterator))
     }
-    if (next.result.done === true) {
-      continue
+    while (pending.size > 0) {
+      const next = await Promise.race(pending.values())
+      pending.delete(next.iterator)
+      if ('error' in next) {
+        throw next.error
+      }
+      if (next.result.done === true) {
+        active.delete(next.iterator)
+        continue
+      }
+      yield next.result.value
+      pending.set(next.iterator, nextOf(next.iterator))
     }
-    yield next.result.value
-    pending.set(next.iterator, nextOf(next.iterator))
+  } finally {
+    // A strict failure or a closed output can leave readers paused on a yielded batch or on their next read.
+    // Abort their inputs first, then return every iterator so its reader and file handle can finish cleanup.
+    if (active.size > 0) {
+      stop?.()
+      await Promise.allSettled([...active].map(async iterator => iterator.return?.()))
+    }
   }
 }
 
@@ -215,6 +227,7 @@ interface Run {
   readonly filter: RecordFilter
   readonly isLive: boolean
   readonly saveFile: Writable | undefined
+  readonly debugFile: Writable | undefined
 }
 
 // The state of each source for a run, in the order of the sources.
@@ -223,8 +236,9 @@ const sourceStates = (run: Run, signal: AbortSignal): SourceState[] => run.sourc
 
 // The sources' batches: finite files one after the other or, with --follow, every file by itself, and every live
 // stream at the same time.
-const readSources = (run: Run, states: readonly SourceState[], signal: AbortSignal, onFailure: FailureListener): AsyncIterable<SourceBatch> => {
+const readSources = (run: Run, states: readonly SourceState[], controller: AbortController, onFailure: FailureListener): AsyncIterable<SourceBatch> => {
   const { settings } = run
+  const { signal } = controller
   const lanes: AsyncIterable<SourceBatch>[] = []
   const finiteFiles: { readonly state: SourceState, readonly path: string }[] = []
   for (const [index, source] of run.sources.entries()) {
@@ -251,7 +265,7 @@ const readSources = (run: Run, states: readonly SourceState[], signal: AbortSign
       }
     })())
   }
-  return merge(lanes)
+  return merge(lanes, () => { controller.abort() })
 }
 
 // Whether a record matches the filter of the command line.
@@ -357,6 +371,9 @@ const runMachineOutput = async (run: Run, format: MachineFormat): Promise<number
   const { environment, options } = run
   const { stderr } = environment
   const controller = new AbortController()
+  // Closing readers after a strict failure still lets preceding output drain. Signals and failed destinations can
+  // cancel that final drain independently, so a slow or stalled pipe cannot trap Ctrl-C.
+  const outputController = new AbortController()
   let exitCode: number = exitCodes.success
   const report = new DiagnosticReport(text => { stderr.write(text) })
   const ingestion = new Ingestion({
@@ -369,10 +386,12 @@ const runMachineOutput = async (run: Run, format: MachineFormat): Promise<number
       stderr.write(errorLine(`cannot write the output: ${error.message}`))
       exitCode = exitCodes.failure
     }
+    outputController.abort()
     controller.abort()
   })
   const stopListening = onSignals(environment.signals, signalCode => {
     exitCode = signalCode
+    outputController.abort()
     controller.abort()
   })
   const saveWriter = run.saveFile === undefined
@@ -380,6 +399,7 @@ const runMachineOutput = async (run: Run, format: MachineFormat): Promise<number
     : new LineWriter(run.saveFile, error => {
       stderr.write(errorLine(`cannot save the records: ${error?.message ?? 'the file was closed'}`))
       exitCode = exitCodes.failure
+      outputController.abort()
       controller.abort()
     })
   const predicateFailures = new PredicateFailures(line => { stderr.write(line) })
@@ -390,36 +410,40 @@ const runMachineOutput = async (run: Run, format: MachineFormat): Promise<number
   }
   const states = sourceStates(run, controller.signal)
   try {
-    for await (const batch of readSources(run, states, controller.signal, onFailure)) {
-      const records = ingestion.accept(batch).filter(normalized => isMatch(normalized))
-      let text = ''
-      for (const normalized of records) {
-        text += formatLine(format, normalized, run.rowOptions)
+    try {
+      for await (const batch of readSources(run, states, controller, onFailure)) {
+        const records = ingestion.accept(batch).filter(normalized => isMatch(normalized))
+        let text = ''
+        for (const normalized of records) {
+          text += formatLine(format, normalized, run.rowOptions)
+        }
+        await Promise.all([writer.write(text, controller.signal), saveWriter?.write(saveText(records), controller.signal)])
+        if (ingestion.strictFailure !== undefined) {
+          throw ingestion.strictFailure
+        }
       }
-      await Promise.all([writer.write(text, controller.signal), saveWriter?.write(saveText(records), controller.signal)])
-      if (ingestion.strictFailure !== undefined) {
-        throw ingestion.strictFailure
+    } catch (error) {
+      if (error instanceof StrictModeError) {
+        stderr.write(errorLine('--strict stops at the first record that cannot be read'))
+        exitCode = exitCodes.failure
+      } else if (!isAbortError(error) && !outputController.signal.aborted) {
+        throw error
       }
     }
-  } catch (error) {
-    if (error instanceof StrictModeError) {
-      stderr.write(errorLine('--strict stops at the first record that cannot be read'))
+    await Promise.all([writer.flush(outputController.signal), saveWriter?.end()])
+    report.end()
+    if (exitCode === exitCodes.success && ingestion.records === 0 && ingestion.skipped > 0) {
+      stderr.write(errorLine(`the input holds no records, only ${String(ingestion.skipped)} skipped lines`))
       exitCode = exitCodes.failure
-    } else if (!isAbortError(error) && !controller.signal.aborted) {
-      throw error
     }
+    const isFailed = ingestion.failed > 0 || predicateFailures.isFailed
+    return isFailed && exitCode === exitCodes.success ? exitCodes.failure : exitCode
   } finally {
     stopListening()
     controller.abort()
+    writer.dispose()
+    saveWriter?.dispose()
   }
-  await Promise.all([writer.flush(), saveWriter?.end()])
-  report.end()
-  if (exitCode === exitCodes.success && ingestion.records === 0 && ingestion.skipped > 0) {
-    stderr.write(errorLine(`the input holds no records, only ${String(ingestion.skipped)} skipped lines`))
-    exitCode = exitCodes.failure
-  }
-  const isFailed = ingestion.failed > 0 || predicateFailures.isFailed
-  return isFailed && exitCode === exitCodes.success ? exitCodes.failure : exitCode
 }
 
 // Shows the records in the terminal viewer, reading keys from the keyboard, until q, Ctrl-C or a signal. The input
@@ -438,6 +462,12 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
   // Failures are reported after the viewer closed.
   const failures: string[] = []
   const predicateFailures = new PredicateFailures(line => { failures.push(line) })
+  const debugWriter = run.debugFile === undefined
+    ? undefined
+    : new LineWriter(run.debugFile, error => {
+      ingestion.failed += 1
+      failures.push(errorLine(`cannot write the debug log: ${error?.message ?? 'the file was closed'}`))
+    })
   let screen: Widgets.Screen | undefined
   let panel: MainPanel
   try {
@@ -447,10 +477,8 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
       smartCSR: true,
       // A prompt that reads text grabs every key; Ctrl-C still ends the viewer then.
       ignoreLocked: ['C-c'],
-      // An empty file name, as from --log=, writes no log, as before.
-      log: options.debugLog || undefined,
       ...environment.screenOptions
-    })
+    }, run.debugFile)
     const sort = options.sort ?? (run.isLive ? 'arrival' : '-timestamp')
     panel = new MainPanel({
       screen,
@@ -472,6 +500,7 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
     // The terminal is given back before the error is reported.
     screen?.destroy()
     keyboard.close()
+    debugWriter?.dispose()
     throw error
   }
   const viewerScreen = screen
@@ -500,7 +529,7 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
   const isMatch = recordMatcher(run.filter, predicateFailures.onFailure)
   const reading = (async () => {
     try {
-      for await (const batch of readSources(run, states, controller.signal, onFailure)) {
+      for await (const batch of readSources(run, states, controller, onFailure)) {
         const records = ingestion.accept(batch)
         refresh.schedule()
         await saveWriter?.write(saveText(records.filter(normalized => isMatch(normalized))), controller.signal)
@@ -516,7 +545,7 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
       if (error instanceof StrictModeError) {
         failures.push(errorLine(error.message) + errorLine('--strict stops at the first record that cannot be read'))
         state.finish?.(exitCodes.failure)
-      } else if (!isAbortError(error) && !controller.signal.aborted) {
+      } else if (!isAbortError(error) && !state.isFinished) {
         failures.push(errorLine(`cannot read the input: ${errorMessage(error)}`))
         ingestion.failed += 1
       }
@@ -543,7 +572,9 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
     keyboard.stream.on('error', () => { finish(exitCodes.failure) })
   })
   await reading
-  await saveWriter?.end()
+  await Promise.all([saveWriter?.end(), debugWriter?.end()])
+  saveWriter?.dispose()
+  debugWriter?.dispose()
   for (const failure of failures) {
     environment.stderr.write(failure)
   }
@@ -692,15 +723,45 @@ const runApplication = async (options: ApplicationOptions, environment: Applicat
     return fail(exitCodes.failure, keyboard.failure)
   }
   let saveFile: Writable | undefined
+  let debugFile: Writable | undefined
+  const closeOutput = async (file: Writable | undefined): Promise<void> => {
+    if (file !== undefined && !file.closed) {
+      await new Promise<void>(resolve => {
+        file.once('close', resolve)
+        file.destroy()
+      })
+    }
+  }
+  const inputPaths = sources.flatMap(source => source.kind === 'stdin' ? [] : source.path)
+  // Empty --log= and machine output create no terminal debug destination.
+  if (keyboard !== undefined && options.debugLog) {
+    try {
+      debugFile = await openSaveFile(path.resolve(environment.workingDirectory, options.debugLog), {
+        label: options.debugLog,
+        isOverwriting: false,
+        inputs: inputPaths,
+        isDebugLog: true
+      })
+    } catch (error) {
+      keyboard.close()
+      if (error instanceof SaveFileError) {
+        return fail(error.exitCode, error.message)
+      }
+      throw error
+    }
+  }
   if (options.save !== undefined) {
     try {
       saveFile = await openSaveFile(path.resolve(environment.workingDirectory, options.save), {
         label: options.save,
         isOverwriting: options.isOverwriting,
-        inputs: sources.flatMap(source => source.kind === 'stdin' ? [] : source.path)
+        inputs: [...inputPaths, ...(debugFile === undefined || options.debugLog === undefined
+          ? []
+          : [path.resolve(environment.workingDirectory, options.debugLog)])]
       })
     } catch (error) {
       keyboard?.close()
+      await closeOutput(debugFile)
       if (error instanceof SaveFileError) {
         return fail(error.exitCode, error.message)
       }
@@ -709,17 +770,34 @@ const runApplication = async (options: ApplicationOptions, environment: Applicat
   }
   const isLive = options.isFollowing || sources.some(source => source.kind !== 'file')
   const rowOptions: RowOptions = { legacyExtras: configuration.legacyExtras }
-  const run: Run = { options, environment, sources, configuration, settings, rowOptions, predicates: predicatesOf(plugins), filter, isLive, saveFile }
-  if (keyboard !== undefined) {
-    return runViewer(run, keyboard)
+  const run: Run = {
+    options,
+    environment,
+    sources,
+    configuration,
+    settings,
+    rowOptions,
+    predicates: predicatesOf(plugins),
+    filter,
+    isLive,
+    saveFile,
+    debugFile
   }
-  if (options.output === 'jsonl') {
-    return runMachineOutput(run, 'jsonl')
+  try {
+    if (keyboard !== undefined) {
+      return await runViewer(run, keyboard)
+    }
+    if (options.output === 'jsonl') {
+      return await runMachineOutput(run, 'jsonl')
+    }
+    if (options.output === 'auto' && options.sort !== undefined && options.sort !== 'arrival') {
+      stderr.write(errorLine(`plain output keeps the arrival order; --sort ${options.sort} applies to the viewer only`))
+    }
+    return await runMachineOutput(run, 'plain')
+  } finally {
+    // A failed screen constructor or an unexpected reader error must also give back every owned destination.
+    await Promise.all([closeOutput(saveFile), closeOutput(debugFile)])
   }
-  if (options.output === 'auto' && options.sort !== undefined && options.sort !== 'arrival') {
-    stderr.write(errorLine(`plain output keeps the arrival order; --sort ${options.sort} applies to the viewer only`))
-  }
-  return runMachineOutput(run, 'plain')
 }
 
 export { merge, refreshInterval, runApplication, throttle }
