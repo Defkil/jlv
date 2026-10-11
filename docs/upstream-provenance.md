@@ -30,6 +30,7 @@ The v1 wrapper history of this repository (`Defkil/jlv`, last v1 commit
 | [farolanf/json-log-viewer](https://github.com/farolanf/json-log-viewer) "fix page up" | `80eade9fef2b910ae82280de341bfa5473ccd935`, Farolan Faisal, 2021-03-28; relocated likewise | PageUp no longer does nothing while the cursor is less than a page from the first record. | `62181ba` fix(tui): let PageUp reach the first record from a partial page |
 | [farolanf/json-log-viewer](https://github.com/farolanf/json-log-viewer) "add log details page scroll", with the PageUp step of "fix scroll offset" | `7758d957fbc02c7a252536b94d0fe6b0576222af` and `9d478af70b88ba6745f9dc1f739bff909f9fbe4d`, Farolan Faisal, 2021-03-28; relocated with the author and author date of 7758d95. The fork's later q, left, right and Ctrl keys stay out. | Home, End, PageUp and PageDown scroll the details dialog; Shift pages five times. | `f53fc17` feat(tui): scroll the details by page and to both ends |
 | [danielannan17/json-log-viewer](https://github.com/danielannan17/json-log-viewer) "Fixed performance + memory leak" | `8a1aef16c77ab91b731fdb32b03a73d25ffa3f0a`, Daniel (danielannan17), 2023-04-23; the idea is reimplemented, no code is copied | The main panel keeps one row element and replaces its content on every render. | `385427b` fix(tui): keep one row element and compute the order once per revision |
+| [MokkeMeguru/json-log-viewer](https://github.com/MokkeMeguru/json-log-viewer) "Update index.js" | `a999d1b5fa3da68e719de5ca71407ebce6c9f46b`, Mokke Meguru, 2021-12-23; the idea is reimplemented, no code is copied | The screen runs with blessed's `fullUnicode`, so wide characters take two cells and combining marks combine; jlv adds the measure and the replacement of emoji that keep the rows aligned. | `2e15474` feat(viewer): draw wide characters and combining marks |
 
 ## Upstream issues and pull requests
 
@@ -50,7 +51,7 @@ Local dispositions of plan §7; they do not close the upstream tickets.
 
 Plan §3.5 lists further fork commits. They are not part of the code until a row above
 names a local commit; among them are farolanf's sorting by other fields (`f03300b`),
-danielannan17's periodic reload, the stdin, async loading, watching, Unicode, array and
+danielannan17's periodic reload, the stdin, async loading, watching, array and
 process-column changes of other forks.
 
 ## License notices
@@ -61,8 +62,9 @@ process-column changes of other forks.
   none.
 - Gistia is credited as the upstream project, not as a copyright holder.
 - `packages/jlv/NOTICE.md` repeats the attribution inside the published package.
-- The farolanf and danielannan17 forks have no LICENSE file; their manifests keep
-  upstream's MIT declaration (checked at their heads `45bc52fea9344303e6481852e9b41e992956a773`
-  and `d864f839b4df0394bc186caa92ebbd7af4304d28`). They carry no notice of their own to copy.
+- The farolanf, danielannan17 and MokkeMeguru forks have no LICENSE file; their manifests
+  keep upstream's MIT declaration (checked at their heads `45bc52fea9344303e6481852e9b41e992956a773`,
+  `d864f839b4df0394bc186caa92ebbd7af4304d28` and `27bf050c1c815921420c91cf875008cd5f4ed67c`).
+  They carry no notice of their own to copy.
   Before adopting a further fork patch, check its license notice and copy any notice into
   this file and into `packages/jlv/NOTICE.md`.
