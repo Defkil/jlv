@@ -282,6 +282,25 @@ describe('parsed JSON', () => {
     assert.equal(reads, 0)
   })
 
+  it('rejects serialization hooks on objects and arrays, including non-enumerable hooks and getters', () => {
+    let calls = 0
+    const hook = (): object => { calls += 1; return { changed: true } }
+    for (const value of [{ message: 'original' }, ['original']]) {
+      Object.defineProperty(value, 'toJSON', { value: hook })
+      assert.equal(jsonProblem(value), 'not-json')
+    }
+    for (const value of [{ message: 'original' }, ['original']]) {
+      Object.defineProperty(value, 'toJSON', { get: () => { calls += 1; return hook } })
+      assert.equal(jsonProblem(value), 'not-json')
+    }
+    const inheritedHook: unknown = Object.setPrototypeOf(['original'], { toJSON: hook })
+    assert.equal(jsonProblem(inheritedHook), 'not-json')
+    assert.equal(jsonProblem({ toJSON: 'a JSON field' }), undefined)
+    const nullArray: unknown = Object.setPrototypeOf(['original'], null)
+    assert.equal(jsonProblem(nullArray), undefined)
+    assert.equal(calls, 0)
+  })
+
   it('rejects numbers beyond the range of doubles', () => {
     assert.equal(jsonProblem(JSON.parse('{"a":[1,{"b":1e400}]}')), 'number-out-of-range')
     assert.equal(jsonProblem(JSON.parse('{"a":-1e400}')), 'number-out-of-range')

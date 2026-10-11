@@ -433,7 +433,16 @@ const jsonProblem = (value: unknown, depth: number = maximumJsonDepth): JsonProb
   if (depth <= 0) {
     return 'too-deep'
   }
+  // JSON.stringify calls toJSON even when it is non-enumerable. Neither a hook nor its getter is JSON data.
+  const serialization = Object.getOwnPropertyDescriptor(value, 'toJSON')
+  if (serialization !== undefined && (!Object.hasOwn(serialization, 'value') || typeof serialization.value === 'function')) {
+    return 'not-json'
+  }
+  const prototype: unknown = Object.getPrototypeOf(value)
   if (Array.isArray(value)) {
+    if (prototype !== null && prototype !== Array.prototype) {
+      return 'not-json'
+    }
     for (let index = 0; index < value.length; index += 1) {
       const descriptor = Object.getOwnPropertyDescriptor(value, index)
       if (descriptor === undefined || !Object.hasOwn(descriptor, 'value')) {
@@ -446,11 +455,11 @@ const jsonProblem = (value: unknown, depth: number = maximumJsonDepth): JsonProb
     }
     return undefined
   }
-  const prototype: unknown = Object.getPrototypeOf(value)
   if (prototype !== null && prototype !== Object.prototype) {
     return 'not-json'
   }
-  // JSON.parse gives objects with own enumerable properties only, which for...in visits without a copy.
+  // JSON.parse gives objects with own enumerable properties only, which for...in visits without a copy. Other
+  // non-enumerable properties are metadata outside the serialized JSON fields and are ignored.
   for (const key in value) {
     const descriptor = Object.getOwnPropertyDescriptor(value, key)
     if (descriptor === undefined || !Object.hasOwn(descriptor, 'value')) {
