@@ -24,6 +24,14 @@ Research completed: 2026-10-11. Registry/GitHub checks and scratch experiments a
    - write `docs/manual-terminal-checklist.md`;
    - make sure the automatic plain-output fallback is safe, so nothing blocks on a human.
 8. **npm and GitHub settings stay with the coordinator.** Implementers never publish, deprecate, archive, close PRs, or change npm or GitHub settings.
+9. **Phase 0 results (measured 2026-10-11).** Details are in [v2-phase-0-results.md](v2-phase-0-results.md). They amend §3 and §4:
+   - The TypeScript `lib` for the Node 22 floor is `["ES2024", "ES2025.Collection", "ES2025.Iterator", "ESNext.Array"]`; `target` stays `ES2022`.
+   - The declaration shim corrects both stream directions of `IScreenOptions` (`input: Readable`, `output: Writable`) and declares the runtime `Box` constructor and `element()` factory that @types/blessed omits. The faithful port on blessed 0.1.81 uses a module augmentation of `'blessed'` with the same three declarations.
+   - Test files allow the `node:test` registration calls in `@typescript-eslint/no-floating-promises` through `allowForKnownSafeCalls`, with a one-line justification.
+   - Phase 3 decides how blessed markup such as `{bold}` passes `unicorn/no-incorrect-template-string-interpolation`: a scoped, justified exception or a tagged-template helper for trusted markup.
+   - Tests keep one live blessed screen per process; ported widgets pass `screen` or `parent` explicitly.
+   - Phase 5 builds the bounded store as an off-heap byte arena unless an alternative meets the 256 MiB target on the same fixture. Retaining parsed records peaked at 274 to 277 MiB on Node 26.10.0 (238 MiB on 22.9.0); the arena peaked at 127 to 131 MiB.
+   - Node 22.9.0 needs the ConDrv console fallback; the latest 22 release opens `\\.\CONIN$` directly.
 
 ## 1. Scope and verified starting point
 
@@ -502,6 +510,8 @@ Each phase ends with small Conventional Commits and its listed proof. No pull re
 **Acceptance:** compatibility boundary compiles without unsafe local type escapes; full-widget rendering passes; the console workaround either passes manual verification or the Windows old-runtime pipe mode explicitly falls back to plain output. Record an actual memory/latency result, not an estimate. The defaults remain bounded while owner questions are pending. These spikes are limited to unknown boundaries; do not repeat the already-passed registry/lint/library smoke research.
 
 **Proof:** strict compiler + ESLint; headless widget/resize/key tests; one manual ARM64 checklist; recorded Node/version/backend/benchmark results. If a maintained backend is required as a hard owner condition, stop this choice for reconsideration rather than quietly claim neo-blessed is maintained.
+
+**Results:** steps 1, 3 and 4 are recorded in [v2-phase-0-results.md](v2-phase-0-results.md). Step 2 is the coordinator's [manual terminal checklist](manual-terminal-checklist.md).
 
 ### Phase 1 — preserve both upstream histories, unchanged
 
