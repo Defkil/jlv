@@ -55,7 +55,7 @@ const linesOf = (text: string): string[] => text === '' ? [] : text.replace(/\n$
 const pipedFile = /^cat (\S+) \| /u
 
 // Runs a command line of the documentation, which may quote an argument in single quotes, and gives its output lines.
-const run = async (command: string): Promise<{ readonly output: readonly string[], readonly errors: readonly string[] }> => {
+const run = async (command: string): Promise<{ readonly code: number | null, readonly output: readonly string[], readonly errors: readonly string[] }> => {
   const isExitCodeShown = command.endsWith(exitCodeSuffix)
   const pipe = pipedFile.exec(command)
   const line = command.slice(pipe?.[0].length ?? 0, isExitCodeShown ? -exitCodeSuffix.length : undefined)
@@ -70,7 +70,7 @@ const run = async (command: string): Promise<{ readonly output: readonly string[
   const code = await new Promise<number | null>(resolve => {
     child.on('close', exitCode => { resolve(exitCode) })
   })
-  return { output: isExitCodeShown ? [...linesOf(output), String(code)] : linesOf(output), errors: linesOf(errors) }
+  return { code, output: isExitCodeShown ? [...linesOf(output), String(code)] : linesOf(output), errors: linesOf(errors) }
 }
 
 // Whether the shown lines are the output and the errors, interleaved in an order that keeps the order of each. Error
@@ -116,9 +116,12 @@ describe('documentation examples', () => {
     const documentExamples = examplesOf(readDocument(name))
     for (const example of documentExamples) {
       it(`${name}: ${example.command}`, async () => {
-        const { output, errors } = await run(example.command)
+        const { code, output, errors } = await run(example.command)
         const printed = [...output, ...errors].join('\n')
         assert.ok(isInterleaving(example.output, output, errors), `${example.command} printed:\n${printed}`)
+        if (!example.command.endsWith(exitCodeSuffix)) {
+          assert.equal(code, 0, `${example.command} exited with ${String(code)}:\n${printed}`)
+        }
       })
     }
   }

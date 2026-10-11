@@ -36,8 +36,9 @@ Conduct issues are not security reports; see [CODE_OF_CONDUCT.md](CODE_OF_CONDUC
 - **Configuration is data.** `jlv.config.json` and the legacy `.json-log-viewer` cannot load or run code, and names in
   them such as `__proto__` stay plain keys. jlv reads one configuration file per run and never writes one.
 - **Files.** `--save` creates a new file and refuses to replace an existing one without `--overwrite` or to write
-  into one of its inputs. Apart from that and the debug log that `--log` names, jlv writes no files, and nothing into
-  the home directory.
+  into one of its inputs. `--log` creates a new terminal debug log only when the viewer runs, and refuses existing
+  files, input aliases and save-file conflicts. Apart from these explicit outputs, jlv writes no files, and nothing
+  into the home directory.
 - **Bounded resources.** The viewer keeps at most 50,000 records and 64 MiB of them by default, a line or CSV record
   holds at most 1 MiB, and nesting, entries and value lengths in the details are bounded.
 - **The package.** Its runtime dependencies have no install scripts and no native code, and it is published from CI

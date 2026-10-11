@@ -87,9 +87,11 @@ time that jlv cannot read, its original text; and `-` for what a record lacks.
 The viewer, `--output plain` and the messages on standard error show the text of records as text, so that a log can
 neither color nor move nor clear the terminal, set its title or write its clipboard: escape sequences are removed, and
 line breaks, tabs and other control characters show as JSON escapes such as `\n`, `\t` or `\u001b`. In the viewer,
-blessed tags such as `{red-fg}` show as they are written, CJK and other wide characters take two cells, combining marks
-combine with the character before them, and emoji show as `?`, since terminals draw them in two cells and the
-terminal library measures them in one. `--output jsonl` and `--save` keep the original values; they also write DEL and
+blessed tags such as `{red-fg}` show as they are written, CJK and other wide characters take two cells, and supported
+combining marks combine with the character before them. Characters whose widths disagree with the terminal library,
+including most emoji, show as `?`; a flag such as `🇩🇪` becomes `??`, and joined emoji lose their glyph composition.
+The viewer removes emoji presentation selectors and combining marks the library does not recognize.
+`--output jsonl` and `--save` keep the original values; they also write DEL and
 the other control characters that JSON leaves as they are as escapes, which read back as the same values.
 
 ## Timestamps
@@ -295,7 +297,9 @@ runs it, so load only plugins that you would also run yourself.
 A plugin is an ECMAScript or CommonJS module whose default export has `apiVersion: 1` and a list of `formats`. A
 format has a unique `identifier`, a `probe` that scores a sample from 0 to 100 without input or output, a `read` that
 turns the input's bytes into entries and diagnostics with their line numbers, and a `normalize` that turns an entry
-into a record. jlv checks what a plugin returns and reports a mistake as a diagnostic of the plugin's format; a plugin
+into a record. Entry values and record fields must be JSON data: plain or null-prototype objects, dense arrays,
+strings, finite numbers, booleans and null, without getters, custom prototypes, cycles or values such as `Date` and `Map`.
+jlv checks what a plugin returns and reports a mistake as a diagnostic of the plugin's format; a plugin
 that cannot be loaded, has another `apiVersion` or reuses an identifier ends the run with exit code 1. The format
 becomes a choice of `--format` and takes part in the automatic choice.
 
@@ -308,6 +312,8 @@ $ jlv --output plain --plugin ./text-plugin.mjs notes.txt
 ```
 
 A plugin may also export `predicates`: functions that take a record, of any format, and say whether to keep it.
+They must return a boolean synchronously. A promise or any other return value is a predicate failure: jlv skips
+the record, reports the failure and ends with exit code 1.
 `--predicate <name>` applies one, and the viewer's filter manager offers them all; see
 [Filters](configuration.md#filters). The predicate `finished` of the same plugin keeps the records that say so:
 

@@ -79,7 +79,7 @@ jlv recognizes pino's records by itself, so jlv-pino is no longer needed.
   and `--follow` by `arrival` unless `--sort` says otherwise. `--output plain` and `--output jsonl` write in arrival
   order only.
 - `-l` and `--level` take a level name in any case: `trace`, `debug`, `info`, `warn`, `error`, `fatal` or `unknown`,
-  and the aliases of [Levels](formats.md#levels). Since jlv reads pino's numbers as names, `-l 30` is `-l info`:
+  and the aliases of [Levels](formats.md#levels). Since jlv reads pino's numbers as names, replace `-l 30` with `-l info`:
 
 ```console
 $ jlv --output plain -l 30 pino.log; echo $?

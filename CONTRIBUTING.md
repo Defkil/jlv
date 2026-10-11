@@ -108,7 +108,7 @@ own. Mark breaking changes with `!` and a `BREAKING CHANGE:` footer.
 
 Fork the repository, create a branch and open a pull request against `master`. Describe what changes and why, how you
 checked it, and what users will notice. Run `pnpm run typecheck`, `pnpm run lint` and `pnpm test` before you open it;
-the maintainer runs the CI workflow before merging.
+pull request CI runs the same checks on Linux and the runtime matrix before merging. Its read-only jobs cannot publish.
 
 ## Releases
 

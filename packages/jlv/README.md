@@ -63,8 +63,13 @@ Files of different formats can be read together, each in its own format.
 | `jsonl` | one JSON object per record with its normalized parts and all its original fields |
 
 `--save <file>` also writes the records to a new file as JSON lines; `--overwrite` lets it replace a file. Plain text,
-JSON lines and the save file get every record that the filters keep, in the order in which they arrive, while the
-viewer keeps only the newest ones (see [Limits](#limits)).
+JSON lines and the save file get every record that the command-line filters keep, in the order in which they arrive,
+while the viewer keeps only the newest ones (see [Limits](#limits)).
+Changing a filter in the viewer changes its visible records; it does not change the save file's filters or rewrite
+records that were saved earlier.
+
+`--log <file>` writes the terminal library's debug log when the viewer runs. The file must be new, separate from
+the inputs and the save file; `--overwrite` applies only to `--save`. Plain and JSON output do not create a debug log.
 
 ```console
 $ jlv --output jsonl --level fatal pino.log
@@ -88,8 +93,8 @@ The viewer sorts files by time, newest first, and pipes and `--follow` by arriva
 
 jlv chooses a format for each input from its first 64 KiB, and `--format` chooses one for all inputs. Levels are
 normalized to `trace`, `debug`, `info`, `warn`, `error`, `fatal` or `unknown`, in any case and with pino's and bunyan's
-numbers; timestamps are numbers in milliseconds, unless `--timestamp-unit` names another unit, or text in RFC 3339 with
-a zone. Lines that jlv cannot read are skipped with their input and line on standard error, or counted in the
+numbers; timestamps are numbers in milliseconds, unless `--timestamp-unit` or the configuration names another unit,
+or text in RFC 3339 with a zone. Lines that jlv cannot read are skipped with their input and line on standard error, or counted in the
 viewer's status line.
 
 ```console
@@ -193,8 +198,11 @@ record.
 ### Characters
 
 CJK and other wide characters take two cells, and combining marks combine with the character before them, as in a
-decomposed `ü`. Emoji show as `?`: terminals draw them in two cells, and the terminal library that jlv uses measures
-them in one, which would shift the rest of the row. `--output plain` and `--output jsonl` keep every character.
+decomposed `ü`. Characters whose widths disagree between the terminal library and modern terminals show as `?`,
+including most emoji. Flag and skin-tone sequences become one `?` per replaced component (`🇩🇪` becomes `??`);
+joined emoji are not preserved as a single glyph. Emoji presentation selectors and combining marks that the library
+does not recognize are removed in the viewer. Width still depends on the terminal's Unicode support and font.
+`--output plain` and `--output jsonl` preserve these characters.
 
 ## Configuration
 
@@ -202,6 +210,7 @@ jlv needs no configuration. A configuration file tells it where to find the part
 timestamps and levels, which format to use, how many records the viewer keeps and which filter profiles exist. jlv
 reads the first of `jlv.config.json` and `.json-log-viewer` in the working directory, then in the home directory;
 `--config <file>` names a file, `--no-config` reads none. It reads one file per run and never writes one.
+Command-line options override the settings in that file.
 
 ```json
 {
@@ -272,7 +281,8 @@ contract.
 - The viewer keeps the newest 50,000 records and at most 64 MiB of them; `--max-records` and `--max-bytes`, or
   `maxRecords` and `maxBytes` in the configuration, change that. The status line shows `kept <retained> of <seen>`
   once it drops older records, and sorting and searching work on the records it keeps. `--output plain`,
-  `--output jsonl` and `--save` write every record.
+  `--output jsonl` and `--save` write every record that the command-line filters keep. The byte limit covers stored
+  record data; it is not a limit on the process's total memory.
 - A line or a CSV record holds at most 1 MiB; longer ones are skipped with a diagnostic.
 - Pretty-printed JSON, files that hold one JSON array, XML and syslog are no input. Convert JSON to JSON lines first,
   for example with `jq -c '.[]' records.json > records.jsonl`.
@@ -292,7 +302,7 @@ output instead of the viewer.
 | --- | --- |
 | 0 | done, or quit with `q` |
 | 1 | an input, the output or a plugin failed, an input held no records, `--strict` stopped at a broken record, a predicate failed, or `--output tui` found no terminal |
-| 2 | a usage error: an unknown option, an unusable configuration, an unknown profile or predicate, or a save file that exists |
+| 2 | a usage error: an unknown option, an unusable configuration, an unknown profile or predicate, an existing save/debug file, or an output path that aliases an input |
 | 130, 143, 129 | ended by Ctrl-C, SIGTERM or SIGHUP |
 
 ## Migrating

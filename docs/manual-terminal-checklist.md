@@ -208,22 +208,28 @@ once the store evicts, and the numbers of skipped lines and failed inputs.
     ```
 
     Then `<viewer> wide.log`: the CJK, fullwidth and Hangul characters show as
-    themselves, the emoji and the flag as `?`, the heart as a plain `❤`, and `Grüße und
+    themselves, the emoji as `?` and the flag as `??`, the heart as a plain `❤`, and `Grüße und
     Mäuse` with its umlauts. In every row the level column starts in the same column
     and the panel's right border stays in the last column, also after resizing the
     window to a narrow width and back; nothing smears when the cursor moves over the
     rows. Enter on a record and `j` show the same text in the details. On Linux, repeat
     with `LANG=C`: the CJK characters show as `??` and the rows still line up.
+15. **Debug output.** `<viewer> pino.log --log debug.log`, with no existing `debug.log`:
+    the viewer works and `q` closes it with exit code 0; the new file contains the terminal
+    debug log. Run it again: exit code 2 and the existing debug file stays unchanged.
+    `<viewer> pino.log --log pino.log` refuses to write into the input with exit code 2,
+    also with `--overwrite`. `<viewer> pino.log --output plain --log unused-debug.log`
+    prints the records, ends with 0 and creates no `unused-debug.log`.
 
 ### Record, Part B
 
-| Runtime | Console path | Keys (1) | Follow newest (2) | Ctrl-C and q (3) | Input ends (4) | Eviction (5) | Follow (6) | Save (7) | Plain (8) | No console (9) | Typed (10) | Formats (12) | Filters (13) | Wide (14) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 22.9.0 | | | | | | | | | | | | | | |
-| 22.x latest: | | | | | | | | | | | | | | |
-| 24.x latest: | | | | | | | | | | | | | | |
-| 26.x latest: | | | | | | | | | | | | | | |
-| Linux, Node: | | | | | | | | | | | | | | |
+| Runtime | Console path | Keys (1) | Follow newest (2) | Ctrl-C and q (3) | Input ends (4) | Eviction (5) | Follow (6) | Save (7) | Plain (8) | No console (9) | Typed (10) | Formats (12) | Filters (13) | Wide (14) | Debug (15) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 22.9.0 | | | | | | | | | | | | | | | |
+| 22.x latest: | | | | | | | | | | | | | | | |
+| 24.x latest: | | | | | | | | | | | | | | | |
+| 26.x latest: | | | | | | | | | | | | | | | |
+| Linux, Node: | | | | | | | | | | | | | | | |
 
 ## Probe
 

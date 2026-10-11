@@ -81,17 +81,25 @@ and contributors, whose history it imports, and replaces the jlv 1 wrapper and j
   change of the data, the sort or the filters, and never reads a whole file at once, so files beyond V8's maximum
   string length open.
 - The order is refreshed at once when the sort changes, PageUp reaches the first record from a partial page, and
-  empty logs and tiny terminals no longer produce negative widths.
+  `C` reaches the middle of the visible page after scrolling. Empty logs and tiny terminals no longer produce negative
+  widths, and a shortened label does not detach a combining mark from its character.
+- A custom text filter preserves colons in its value, such as the time in `message:at 10:30`.
+- JSON configuration accepts a UTF-8 byte order mark, CSV enforces its record limit in bytes, and a plugin's
+  invalid values or non-boolean predicate results become diagnostics. `--strict` keeps only records before a
+  normalization error.
 - Reading from a pipe, case-insensitive level filters, correlation identifiers, epoch timestamps, colors and slashes
   in log text, and filters that add up (json-log-viewer issues #12, #14, #15, #16, #18 and #19).
 
 ### Security
 
 - Log text cannot act on the terminal: no escape sequence of a log reaches it, and blessed tags in log text stay text.
+  Sanitizing repeated unterminated escape strings avoids quadratic work.
 - The runtime dependencies are neo-blessed, ini 6, tinyglobby and csv-parse, without install scripts, native code or
   known advisories. They replace blessed, blessed-contrib, lodash, minimist and ini 1.3, whose graph had 23
   advisories, among them prototype pollution through minimist, ini and lodash.
 - A configuration file cannot load code; plugins load only from the command line.
+- `--save --overwrite` checks the opened file's identity and type before truncating it. `--log` creates only a new
+  debug file for the viewer and refuses inputs and save-file conflicts.
 
 ## [1.0.1] - 2020-08-12
 

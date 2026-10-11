@@ -7,7 +7,7 @@ release bot and no npm token: npm trusts the workflow through OpenID Connect. On
 
 ## How the workflow protects a release
 
-Every push to `master` and every manual run starts three jobs:
+Every push to `master`, pull request against `master` and manual run starts the checks:
 
 1. **Quality** (Ubuntu 24.04, Node 24, npm 12.2.0) installs from the lockfile, runs `typecheck`, `lint`, `build` and
    the test build, packs `packages/jlv` with npm and runs [`scripts/check-package.ts`](../scripts/check-package.ts) on
@@ -19,29 +19,43 @@ Every push to `master` and every manual run starts three jobs:
 2. **Runtime** runs on Node 22.9.0 (the `engines` floor), the latest 22, 24 and 26: it compiles the tests with Node 24,
    verifies the downloaded tarball against the SHA-256 of the quality job, and runs the whole test suite and the
    package check of that tarball with the Node and npm under test.
-3. **Publish** runs only on `master`, after both, with `id-token: write` as its only extra permission and one
-   publication at a time. It downloads the tarball and runs `scripts/publish-package.ts`, which:
+3. **Publish** runs only after a push or manual run on `Defkil/jlv`'s `master`, after both checks, with `id-token: write`
+   as its only extra permission and one publication at a time. It downloads the tarball and runs
+   `scripts/publish-package.ts`, which:
    - verifies the SHA-256 against the quality job's output, so that the tested file is published, never a new pack;
    - requires the manifest to name `jlv` with a stable version and `CHANGELOG.md` to have `## [X.Y.Z] - YYYY-MM-DD`;
    - requires npm 11.5.1 or later, the first release with trusted publishing (the job installs 12.2.0);
-   - reads the published versions with `npm view jlv versions --json`. A failed or malformed answer stops the job:
+   - reads the published versions with `npm view jlv versions --json --registry https://registry.npmjs.org/`.
+     A failed or malformed answer stops the job:
      it never counts as a missing version. A version that is on npm already is skipped with a notice, so every later
      push without a version change, and every rerun, ends green without publishing;
-   - otherwise runs `npm publish <tarball> --access public --provenance --tag latest` and waits until the registry
-     lists the version.
+   - otherwise runs `npm publish <tarball> --access public --provenance --tag latest --registry https://registry.npmjs.org/`
+     and waits until the registry lists the version.
 
 A manual run (`gh workflow run publish.yml --ref <branch>`) checks a branch; the publish job is skipped there, and
-the script refuses to publish outside the publish job on `refs/heads/master` as well. A manual run on `master` is the
+the script requires the same repository, branch and event as well. Pull requests use `pull_request`, with read-only
+repository access and no OIDC permission; they never publish. A manual run on `master` is the
 way to repeat a publication that failed.
 
 ## Setting up trusted publishing
 
-This is done once, by a maintainer with publish rights on npm and two-factor authentication:
+This is done once, by a maintainer with publish rights on npm and two-factor authentication, using npm 11.15.0 or
+later (the publication itself needs 11.5.1 or later):
 
 ```sh
 npm trust github jlv --file publish.yml --repo Defkil/jlv --allow-publish
 npm trust list jlv
 ```
+
+Alternatively, add a GitHub Actions trusted publisher in the package's npm settings: organization/user `Defkil`,
+repository `jlv`, workflow filename `publish.yml`, no environment, and permission to publish directly with
+`npm publish`. New configurations default to staged publishing; this workflow needs direct publishing enabled.
+See npm's [trusted-publishing guide](https://docs.npmjs.com/trusted-publishers/) and
+[`npm trust` reference](https://docs.npmjs.com/cli/v12/commands/npm-trust/).
+
+Register it close to the release: npm requires its first successful publication within two days, or the new
+configuration expires and must be recreated. Finish the gates and the manual terminal checks first, then have the
+owner register the publisher with 2FA before pushing the release to `master`.
 
 The trusted publisher names the repository `Defkil/jlv` and the workflow file `publish.yml`, without an environment.
 Renaming the workflow file or adding a GitHub environment requires changing the trusted publisher first. npm checks
@@ -88,7 +102,8 @@ publishes, so that it can attach the provenance statement.
 - **Node.js**: the runtime matrix is the `engines` floor, 22.9.0, and the latest 22, 24 and 26. Raising the floor is a
   breaking change for the changelog.
 - **npm**: the quality and publish jobs pin the npm that packs and publishes; `scripts/publish-package.ts` checks the
-  minimum for trusted publishing.
+  minimum for trusted publishing. Registry lookups and publication explicitly use `https://registry.npmjs.org/`,
+  regardless of a machine's npm configuration.
 - **Dependencies** are exact pins in `pnpm-lock.yaml`, updated deliberately in small commits with their release notes
   read; there is no update bot. A new runtime dependency needs the inventory of `docs/v2-phase-4-results.md`: license,
   install scripts, native code and advisories.
