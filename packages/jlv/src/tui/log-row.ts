@@ -6,14 +6,15 @@
 //   is no time, else nothing.
 // - level: the normalized level; an unknown level shows its raw value when the record has one.
 // - message: always text.
-// - data, which the details show: the record's fields without the top-level keys that the columns show. A legacy
-//   [transform] mapping instead shows its extra keys, as upstream did: $ for the whole record, without a copy, and
-//   any other key for the value at its path.
-import type { JsonValue, LogRecord } from '../api.js'
+// - data, which the details and the plain output show: the record's fields without the fields that the columns show,
+//   also inside objects, such as the text of a Docker envelope that is the message. A legacy [transform] mapping
+//   instead shows its extra keys, as upstream did: $ for the whole record, without a copy, and any other key for the
+//   value at its path.
+import type { FieldPath, JsonValue, LogRecord } from '../api.js'
 import { valueAtField, valueAtPath } from '../field-path.js'
-import { consumedKeysOf } from '../formats/metadata.js'
+import { consumedPathsOf } from '../formats/metadata.js'
 import type { NormalizedRecord } from '../ingestion.js'
-import { boundedJson } from '../record.js'
+import { boundedJson, isPlainObject } from '../record.js'
 
 type LogRow = {
   readonly timestamp?: string
@@ -52,8 +53,42 @@ const displayLevel = (stored: NormalizedRecord): string | undefined => {
   return raw === undefined || raw === null ? undefined : rawText(raw)
 }
 
-const withoutKeys = (fields: LogRecord['fields'], keys: readonly string[]): Record<string, unknown> =>
-  keys.length === 0 ? { ...fields } : Object.fromEntries(Object.entries(fields).filter(([key]) => !keys.includes(key)))
+type Fields = Readonly<Record<string, unknown>>
+
+// The object without the value at a path below it. The objects along the path are copied, never changed, and an object
+// that loses its last key goes too. A path through an array leaves the array as it is, since removing an element would
+// move the others.
+const withoutPath = (object: Fields, path: FieldPath): Fields => {
+  const [segment, ...rest] = path
+  const key = String(segment)
+  if (segment === undefined || !Object.hasOwn(object, key)) {
+    return object
+  }
+  const child = object[key]
+  const reduced = rest.length > 0 && isPlainObject(child) ? withoutPath(child as Fields, rest) : child
+  if (reduced === child && rest.length > 0) {
+    return object
+  }
+  const isGone = rest.length === 0 || (typeof reduced === 'object' && reduced !== null && Object.keys(reduced).length === 0)
+  return Object.fromEntries(Object.entries(object).flatMap(([name, value]): [string, unknown][] => {
+    if (name !== key) {
+      return [[name, value]]
+    }
+    return isGone ? [] : [[name, reduced]]
+  }))
+}
+
+// The fields without those that the columns show. Top-level keys, the usual case, go in one pass.
+const withoutPaths = (fields: LogRecord['fields'], paths: readonly FieldPath[]): Fields => {
+  const keys = new Set(paths.filter(path => path.length === 1).map(([key]) => String(key)))
+  let data: Fields = keys.size === 0 ? { ...fields } : Object.fromEntries(Object.entries(fields).filter(([key]) => !keys.has(key)))
+  for (const path of paths) {
+    if (path.length > 1) {
+      data = withoutPath(data, path)
+    }
+  }
+  return data
+}
 
 const legacyData = (fields: LogRecord['fields'], extras: ReadonlyMap<string, LegacyExtra>): Record<string, unknown> =>
   Object.fromEntries([...extras].map(([key, extra]) => {
@@ -67,7 +102,7 @@ const rowOf = (stored: NormalizedRecord, options: RowOptions = {}): LogRow => {
   const { record, paths } = stored
   const row: MutableRow = {
     message: record.message,
-    data: options.legacyExtras === undefined ? withoutKeys(record.fields, consumedKeysOf(paths)) : legacyData(record.fields, options.legacyExtras),
+    data: options.legacyExtras === undefined ? withoutPaths(record.fields, consumedPathsOf(paths)) : legacyData(record.fields, options.legacyExtras),
     record
   }
   const timestamp = displayTimestamp(record)

@@ -5,8 +5,8 @@ import type { FieldPath, JsonObject, LinePosition, NormalizationResult, ParsedEn
 // The JSON text of an entry as it was read, which the store keeps instead of serializing the value again.
 const encodedJson: unique symbol = Symbol('jlv.encodedJson')
 
-// The paths that normalization read the timestamp, the level and the message from. The viewer's details leave their
-// top-level keys out, since its columns show them, and an unknown level shows its raw value.
+// The paths that normalization read the timestamp, the level and the message from. The viewer's details leave these
+// fields out, since its columns show them, and an unknown level shows its raw value.
 const normalizedPaths: unique symbol = Symbol('jlv.normalizedPaths')
 
 interface EncodedEntry extends ParsedEntry {
@@ -40,17 +40,9 @@ const normalizedPathsOf = (result: NormalizationResult): NormalizedPaths => {
   return typeof paths === 'object' && paths !== null ? paths : noPaths
 }
 
-// The top-level keys of the paths: a path of one segment names a key that a column shows.
-const consumedKeysOf = (paths: NormalizedPaths): string[] => {
-  const keys: string[] = []
-  for (const path of [paths.timestamp, paths.level, paths.message]) {
-    const [key] = path ?? []
-    if (key !== undefined && path?.length === 1) {
-      keys.push(String(key))
-    }
-  }
-  return keys
-}
+// The paths of the fields that the columns show.
+const consumedPathsOf = (paths: NormalizedPaths): FieldPath[] =>
+  [paths.timestamp, paths.level, paths.message].filter((path): path is FieldPath => path !== undefined && path.length > 0)
 
-export { consumedKeysOf, encodedEntry, encodedJson, entryJson, normalizedPaths, normalizedPathsOf }
+export { consumedPathsOf, encodedEntry, encodedJson, entryJson, normalizedPaths, normalizedPathsOf }
 export type { AnnotatedNormalization, EncodedEntry, NormalizedPaths }

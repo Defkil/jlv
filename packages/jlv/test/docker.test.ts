@@ -31,6 +31,8 @@ describe('Docker envelopes', () => {
     assert.ok(row)
     assert.deepEqual(row.record.fields, { docker: { log: 'plain text', stream: 'stdout', time: '2026-10-11T10:00:00.250Z' } })
     assert.deepEqual([row.timestamp, row.record.level, row.message], ['2026-10-11T10:00:00.250Z', 'unknown', 'plain text'])
+    // The columns show the text and the time, so the details and the plain output show only the stream.
+    assert.deepEqual(row.data, { docker: { stream: 'stdout' } })
   })
 
   // Copying the envelope key by key set the prototype of the copy for a key __proto__ and lost the key.

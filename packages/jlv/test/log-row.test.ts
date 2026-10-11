@@ -54,10 +54,22 @@ describe('rows of records', () => {
     assert.deepEqual(row.record.source, { identifier: '1', label: 'test.log', order: 0 })
   })
 
-  it('keep the top-level key of a nested mapped field in the details', async () => {
-    const mapping = { timestamp: ['datetime', 'date'], message: ['text'] }
-    const { records } = await readRecords('{"datetime":{"date":"2026-10-11T10:00:00Z"},"text":"t","level":"debug"}\n', { mapping })
-    assert.deepEqual(rowsOf(records)[0]?.data, { datetime: { date: '2026-10-11T10:00:00Z' } })
+  // Phase 6 left nested fields in, so that the text of a Docker envelope showed twice: as the message and in the
+  // details.
+  it('leave a nested mapped field out of the details, and an object that it empties, without changing the record', async () => {
+    const mapping = { timestamp: ['datetime', 'date'], message: ['log', 'text'] }
+    const line = '{"datetime":{"date":"2026-10-11T10:00:00Z","zone":"UTC"},"log":{"text":"t"},"tags":["a"],"level":"debug"}\n'
+    const { records } = await readRecords(line, { mapping })
+    const [row] = rowsOf(records)
+    assert.ok(row)
+    assert.deepEqual(row.data, { datetime: { zone: 'UTC' }, tags: ['a'] })
+    assert.deepEqual(row.record.fields, JSON.parse(line))
+  })
+
+  it('leave arrays as they are when a mapped field is inside one', async () => {
+    const { records } = await readRecords('{"messages":[{"text":"first"},{"text":"second"}],"other":1}\n', { mapping: { message: ['messages', 0, 'text'] } })
+    assert.equal(rowsOf(records)[0]?.message, 'first')
+    assert.deepEqual(rowsOf(records)[0]?.data, { messages: [{ text: 'first' }, { text: 'second' }], other: 1 })
   })
 
   it('show only the extra keys of a legacy mapping, with $ as the record itself', async () => {

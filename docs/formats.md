@@ -258,12 +258,13 @@ The json-file logging driver writes each line of a container's output into an en
 stream in `stream` and Docker's time in `time`; these are the files below `/var/lib/docker/containers`. When the text
 is one JSON object, jlv reads it as a bunyan, pino or JSON record, by its own fields, and its time wins over Docker's.
 Any other text is the message, and Docker's time is the timestamp. The record's fields keep the envelope below
-`docker`, or below `_docker` when the inner record has a field `docker`:
+`docker`, or below `_docker` when the inner record has a field `docker`; the viewer's details and `--output plain`
+leave out the fields that the timestamp, level and message columns show, so the text appears once:
 
 ```console
 $ jv --output plain container.log
 2026-10-11T10:00:00.000Z info server listening {"docker":{"stream":"stdout","time":"2026-10-11T10:00:00.000000001Z"}}
-2026-10-11T10:00:00.500Z - npm warn config production Use --omit=dev instead. {"docker":{"log":"npm warn config production Use --omit=dev instead.","stream":"stderr","time":"2026-10-11T10:00:00.5Z"}}
+2026-10-11T10:00:00.500Z - npm warn config production Use --omit=dev instead. {"docker":{"stream":"stderr"}}
 ```
 
 The output of `docker logs` has no envelopes; it is the container's own lines, which jlv reads in their own format.
