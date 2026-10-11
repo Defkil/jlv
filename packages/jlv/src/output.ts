@@ -66,8 +66,10 @@ class LineWriter {
     return this.#error
   }
 
-  async write (text: string): Promise<void> {
-    if (text === '' || this.#isClosed || this.#stream.write(text)) {
+  // Writes the text and waits until the destination can take more, or until the signal aborts the waiting, so that
+  // Ctrl-C does not wait for a slow reader.
+  async write (text: string, signal?: AbortSignal): Promise<void> {
+    if (text === '' || this.#isClosed || this.#stream.write(text) || signal?.aborted === true) {
       return
     }
     await new Promise<void>(resolve => {
@@ -75,11 +77,13 @@ class LineWriter {
         this.#stream.off('drain', done)
         this.#stream.off('close', done)
         this.#stream.off('error', done)
+        signal?.removeEventListener('abort', done)
         resolve()
       }
       this.#stream.on('drain', done)
       this.#stream.on('close', done)
       this.#stream.on('error', done)
+      signal?.addEventListener('abort', done)
     })
   }
 

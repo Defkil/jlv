@@ -385,7 +385,7 @@ const runMachineOutput = async (run: Run, format: MachineFormat): Promise<number
           text += formatLine(format, record)
         }
       }
-      await Promise.all([writer.write(text), saveWriter?.write(saveText(records, isMatch))])
+      await Promise.all([writer.write(text, controller.signal), saveWriter?.write(saveText(records, isMatch), controller.signal)])
     }
   } catch (error) {
     if (!isAbortError(error) && !controller.signal.aborted) {
@@ -467,7 +467,7 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
       for await (const batch of readSources(run, controller.signal, onFailure)) {
         const records = ingestion.accept(batch.source, batch.events)
         refresh.schedule()
-        await saveWriter?.write(saveText(records, isMatch))
+        await saveWriter?.write(saveText(records, isMatch), controller.signal)
       }
       ingestion.activity = 'done'
       if (!state.isFinished) {
