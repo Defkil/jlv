@@ -7,7 +7,7 @@
 // an object or array shows its first 1000 entries, and below 16 levels a value shows as JSON on one line.
 import type { Widgets } from 'blessed'
 import { escapeControls } from '../terminal-text.js'
-import { toCells } from './blessed-boundary.js'
+import { drawableText, toCells } from './blessed-boundary.js'
 import { boundText, cutToWidth, displayText, displayWidth, escapeMarkup, markup, padToWidth } from './formatting.js'
 import type { LogRow } from './log-row.js'
 import { TextDialog } from './text-dialog.js'
@@ -70,6 +70,12 @@ const formatObject = (object: object, depth = 0): string => {
 const jsonText = (data: unknown): string =>
   JSON.stringify(data, undefined, 2).split('\n').map(line => escapeControls(line)).join('\n')
 
+// The JSON view: pretty-printed JSON, bounded, in characters whose cells blessed and the terminal agree on.
+const jsonView = (data: unknown): string => {
+  const json = boundText(jsonText(data), maximumJsonText)
+  return escapeMarkup(drawableText(json))
+}
+
 // A part of the title, or a dash for a part that the record lacks.
 const titlePart = (text: string | undefined): string => text === undefined || text === '' ? '-' : text
 
@@ -105,7 +111,7 @@ class LogDetails extends TextDialog {
   }
 
   update (): void {
-    const content = this.json ? escapeMarkup(boundText(jsonText(this.entryData), maximumJsonText)) : formatObject(this.entryData)
+    const content = this.json ? jsonView(this.entryData) : formatObject(this.entryData)
     this.showContent(content)
   }
 }

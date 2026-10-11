@@ -8,12 +8,71 @@ import type { Widgets } from 'blessed'
 
 const { Box, unicode } = terminalLibrary
 
-const createScreen = (options: ScreenOptions): Widgets.Screen => terminalLibrary.screen(options)
+// The viewer's screen draws wide characters such as CJK in two cells and combines combining marks with the character
+// before them (fullUnicode). blessed turns that off by itself when the terminal does not take Unicode; then it draws a
+// wide character as ??, drops zero-width characters and draws other characters outside the Basic Multilingual Plane
+// as ?. Text that drawableText prepared takes the same cells either way.
+const createScreen = (options: ScreenOptions): Widgets.Screen => terminalLibrary.screen({ fullUnicode: true, ...options })
 
-// The cells that blessed gives text on a screen without fullUnicode, as the viewer's screen is: it replaces a wide
-// character with two question marks, drops combining and other zero-width characters, and replaces any other
-// character outside the Basic Multilingual Plane with one question mark. Measured with blessed's own patterns, the
-// viewer's columns line up with what blessed draws.
+// Characters that take one cell in blessed and in every terminal: printable ASCII and the Latin letters and signs
+// before the combining marks.
+const singleCellText = /^[\u{20}-\u{7E}\u{A0}-\u{2FF}]*$/u
+
+// blessed lays a character out in two cells when its pattern of wide characters matches it, and draws it as wide when
+// its width table says 2; the two disagree on a few characters. Its patterns match UTF-16 code units, so they take no
+// u flag; the copies are anchored and not global, so that testing one character keeps no state.
+const laidOutWidePattern = new RegExp(`^(?:${unicode.chars.all.source})$`)
+// Emoji that terminals draw in two cells, which blessed's tables, older than Unicode 9, give one.
+const emojiPresentationPattern = /^\p{Emoji_Presentation}$/u
+// Marks and format characters that terminals draw in no cell of their own and blessed's tables do not know.
+const invisiblePattern = /^[\p{Mn}\p{Me}\p{Cf}]$/u
+// The text and emoji presentation selectors, after which terminals disagree on the width of the character before.
+const variationSelectors: ReadonlySet<string> = new Set(['\u{FE0E}', '\u{FE0F}'])
+
+// One character as the viewer gives it to blessed: itself when blessed and terminals agree on its cells, ? when they
+// do not, or nothing for an invisible character that only one of them would give a cell.
+const drawableCharacter = (character: string): string => {
+  if (character === '\n' || singleCellText.test(character)) {
+    return character
+  }
+  if (variationSelectors.has(character)) {
+    return ''
+  }
+  if (emojiPresentationPattern.test(character)) {
+    return '?'
+  }
+  const point = character.codePointAt(0) ?? 0
+  const width = unicode.charWidth(point)
+  const isWide = laidOutWidePattern.test(character)
+  if (isWide || width === 2) {
+    return isWide && width === 2 ? character : '?'
+  }
+  if (width === 0) {
+    return character
+  }
+  if (point > 0xFF_FF) {
+    return '?'
+  }
+  return invisiblePattern.test(character) ? '' : character
+}
+
+// Visible text in the form whose cells blessed and the terminal agree on, whether blessed draws it with fullUnicode or
+// without: composed (NFC, so that a decomposed ä is one character), with wide characters that both know as wide,
+// combining marks that both know as such, and ? for emoji and every other character whose width they disagree on.
+// Line breaks stay.
+const drawableText = (text: string): string => {
+  if (singleCellText.test(text)) {
+    return text
+  }
+  let drawable = ''
+  for (const character of text.normalize('NFC')) {
+    drawable += drawableCharacter(character)
+  }
+  return drawable
+}
+
+// The cells that blessed gives text that drawableText prepared: two for a wide character, none for a combining mark,
+// one for anything else. blessed's own patterns measure it, so the viewer's columns line up with what blessed draws.
 const cellCount = (text: string): number => text
   .replaceAll(unicode.chars.all, '??')
   .replaceAll(unicode.chars.combining, '')
@@ -78,6 +137,6 @@ const destroyElement = (element: Widgets.Node): void => {
 }
 
 export {
-  Box, ask, cellCount, createElement, createList, createPrompt, createQuestion, createScreen, destroyElement, readInput,
-  setContentWrapping, toCells
+  Box, ask, cellCount, createElement, createList, createPrompt, createQuestion, createScreen, destroyElement, drawableText,
+  readInput, setContentWrapping, singleCellText, toCells
 }

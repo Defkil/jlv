@@ -110,13 +110,18 @@ into plan §0 and the release notes.
 
 ## Part B: release gate
 
-Run once per runtime. Build the repository with `pnpm run build` and start
-`packages\jlv\dist\cli.js`, the `jlv` command, with the runtime under test. Once the
-package can be packed, use the packed `jlv` tarball installed in a scratch project
-instead.
+Run once per runtime, against the packed package as users install it. In the repository,
+pack the tarball and keep the scratch project that the package check installs it into:
 
 ```powershell
-$jlv = "C:\path\to\jlv\packages\jlv\dist\cli.js"
+pnpm run check:package -- --keep
+```
+
+The last line names the kept directory; `jlv` is installed in its `project` folder. Set the
+variables once:
+
+```powershell
+$jlv = "$env:TEMP\jlv-package-check-<suffix>\project\node_modules\jlv\dist\cli.js"
 $ticks = "let n = 0; setInterval(() => console.log(JSON.stringify({ timestamp: new Date().toISOString(), level: 'info', message: 'tick ' + n++ })), 500)"
 $burst = "for (let n = 0; n < 200000; n++) console.log(JSON.stringify({ timestamp: new Date().toISOString(), level: 'info', message: 'record ' + n }))"
 ```
@@ -193,16 +198,32 @@ once the store evicts, and the numbers of skipped lines and failed inputs.
     Ctrl-C: the viewer ends with exit code 130 and the prompt is restored. Finally
     `& $node -e "console.log(JSON.stringify({ level: 'info', message: '\u001b]0;pwned\u0007\u001b[31mred {bold}x' }))" | <viewer>`:
     the window title stays as it was, and the message shows `red {bold}x` without color.
+14. **Wide characters.** The viewer draws CJK in two cells per character, combines
+    combining marks with the character before them and shows emoji as `?`; headless
+    tests prove that blessed and jlv agree on the cells, and this step proves that the
+    terminal agrees too. Write a log with CJK, emoji, decomposed umlauts and a flag:
+
+    ```powershell
+    & $node -e "for (const m of ['漢字のログ ok', 'deployed 🚀 ✅ done', 'Grüße und Mäuse', 'flag 🇩🇪 heart ❤️', 'ＡＢＣ 한국어']) console.log(JSON.stringify({ timestamp: new Date().toISOString(), level: 'info', message: m, note: m }))" > wide.log
+    ```
+
+    Then `<viewer> wide.log`: the CJK, fullwidth and Hangul characters show as
+    themselves, the emoji and the flag as `?`, the heart as a plain `❤`, and `Grüße und
+    Mäuse` with its umlauts. In every row the level column starts in the same column
+    and the panel's right border stays in the last column, also after resizing the
+    window to a narrow width and back; nothing smears when the cursor moves over the
+    rows. Enter on a record and `j` show the same text in the details. On Linux, repeat
+    with `LANG=C`: the CJK characters show as `??` and the rows still line up.
 
 ### Record, Part B
 
-| Runtime | Console path | Keys (1) | Follow newest (2) | Ctrl-C and q (3) | Input ends (4) | Eviction (5) | Follow (6) | Save (7) | Plain (8) | No console (9) | Typed (10) | Formats (12) | Filters (13) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 22.9.0 | | | | | | | | | | | | | |
-| 22.x latest: | | | | | | | | | | | | | |
-| 24.x latest: | | | | | | | | | | | | | |
-| 26.x latest: | | | | | | | | | | | | | |
-| Linux, Node: | | | | | | | | | | | | | |
+| Runtime | Console path | Keys (1) | Follow newest (2) | Ctrl-C and q (3) | Input ends (4) | Eviction (5) | Follow (6) | Save (7) | Plain (8) | No console (9) | Typed (10) | Formats (12) | Filters (13) | Wide (14) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 22.9.0 | | | | | | | | | | | | | | |
+| 22.x latest: | | | | | | | | | | | | | | |
+| 24.x latest: | | | | | | | | | | | | | | |
+| 26.x latest: | | | | | | | | | | | | | | |
+| Linux, Node: | | | | | | | | | | | | | | |
 
 ## Probe
 

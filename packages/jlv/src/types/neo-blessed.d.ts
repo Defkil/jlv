@@ -18,8 +18,11 @@ declare module 'neo-blessed' {
     // Creates a plain element; @types/blessed omits this factory.
     element (options?: blessed.Widgets.BoxOptions): blessed.Widgets.BoxElement
     screen (options: ScreenOptions): blessed.Widgets.Screen
-    // The patterns of lib/unicode.js with which blessed lays out text, all global; @types/blessed omits the module.
+    // The patterns and the width table of lib/unicode.js with which blessed lays out and draws text, the patterns all
+    // global; @types/blessed omits the module.
     readonly unicode: {
+      // The cells of a code point: 0 for combining and control characters, 2 for wide ones, else 1.
+      charWidth (point: number): number
       readonly chars: {
         // Characters that take two cells.
         readonly all: RegExp

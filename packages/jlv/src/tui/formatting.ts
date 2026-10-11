@@ -6,7 +6,7 @@
 // Successor of upstream src/utils.js, whose column layout measured text by its length, read tags inside values as
 // markup and let blessed act on their escape sequences.
 import { visibleText } from '../terminal-text.js'
-import { cellCount } from './blessed-boundary.js'
+import { cellCount, drawableText, singleCellText } from './blessed-boundary.js'
 
 // The longest text that the viewer prepares for one cell, label or value; longer text is cut before it is sanitized
 // and measured, so that showing a record of a megabyte costs no more than showing a short one.
@@ -29,8 +29,8 @@ const boundText = (text: string, limit = maximumDisplayText): string => {
 }
 
 // Text from a record, a file, the configuration or the user as the viewer shows it: bounded, without escape sequences,
-// and with control characters as JSON escapes.
-const displayText = (text: string): string => visibleText(boundText(text))
+// with control characters as JSON escapes, and with only characters whose cells blessed and the terminal agree on.
+const displayText = (text: string): string => drawableText(visibleText(boundText(text)))
 
 // Trusted blessed markup: the literal parts may hold tags such as {bold}, and every interpolated value is text, which
 // shows as it is. Markup is combined with composeMarkup or by concatenation, never by interpolating it here, where its
@@ -41,9 +41,6 @@ const markup = (literals: TemplateStringsArray, ...values: readonly string[]): s
 // Combines markup that is trusted already, such as the result of markup or an escaped row, with trusted tags.
 const composeMarkup = (literals: TemplateStringsArray, ...values: readonly string[]): string =>
   String.raw({ raw: literals }, ...values)
-
-// Characters that take one cell each: printable ASCII and the Latin letters and signs before the combining marks.
-const singleCellText = /^[\u{20}-\u{7E}\u{A0}-\u{2FF}]*$/u
 
 // The cells that visible text takes on the screen.
 const displayWidth = (text: string): number => singleCellText.test(text) ? text.length : cellCount(text)

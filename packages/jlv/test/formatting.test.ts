@@ -38,8 +38,9 @@ describe('display text', () => {
 })
 
 describe('widths', () => {
-  // Without fullUnicode, blessed draws a wide character as ??, drops combining marks and draws other characters outside
-  // the Basic Multilingual Plane as ?.
+  // A wide character takes two cells and a combining mark none, with fullUnicode or without; displayText replaces other
+  // characters outside the Basic Multilingual Plane with ?, which counts the cell that blessed gives such a character.
+  // wide-characters.test.ts lays the samples out and draws them.
   it('count the cells that blessed draws', () => {
     assert.equal(displayWidth('plain text'), 10)
     assert.equal(displayWidth('café'), 4)
