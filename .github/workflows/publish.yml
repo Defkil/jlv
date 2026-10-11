@@ -6,8 +6,7 @@ name: CI and publish
 # checks any branch and publishes only on master. docs/release.md describes the release.
 on:
   push:
-    # The jlv 2 branch until it is merged: GitHub dispatches a workflow only once it is on the default branch.
-    branches: [master, feat/claude-d8f0/jlv-v2]
+    branches: [master]
   workflow_dispatch:
 
 permissions: {}
