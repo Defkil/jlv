@@ -54,7 +54,7 @@ publishes, so that it can attach the provenance statement.
    - Set the new version in `packages/jlv/package.json`. Versions follow [Semantic Versioning](https://semver.org/);
      the workflow publishes stable versions only.
    - Move the entries of `## [Unreleased]` in `CHANGELOG.md` into `## [X.Y.Z] - YYYY-MM-DD` with the release date,
-     and update the compare links at the end of the file.
+     and add the version's link to its npm page at the end of the file. The quality job checks the dated section.
    - Commit both as `chore(release): jlv X.Y.Z`.
    - Run `pnpm run typecheck`, `pnpm run lint`, `pnpm test` and `pnpm run check:package` locally.
 2. **Push** `master` (or merge the branch into it and push). The workflow takes a few minutes.
