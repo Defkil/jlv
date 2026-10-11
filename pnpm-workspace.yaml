@@ -1,7 +1,5 @@
 packages:
   - packages/*
-  # Temporary history import: its fixtures move to packages/format-fixtures and its runtime is retired.
-  - '!packages/jlv-pino'
 overrides:
   # One Node type set for every package, including @types/blessed's wildcard dependency.
   '@types/node': 22.20.5
