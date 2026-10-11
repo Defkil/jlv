@@ -19,8 +19,8 @@ or JSON lines when there is no terminal.
 options:
   -f, --files <glob>     read the files that a pattern matches; repeatable
   --follow               keep reading files that grow, are truncated or replaced
-  --sort <order>         timestamp, level, message, arrival or another field; a leading - sorts descending
-                         (default: -timestamp for files, arrival for pipes and --follow)
+  --sort <order>         timestamp, level, message, arrival or another field; a leading - sorts descending,
+                         as in --sort=-level (default: -timestamp for files, arrival for pipes and --follow)
   -l, --level <level>    show only records of this level
   --output <mode>        auto, tui, plain or jsonl (default: auto, the viewer when the terminal allows it)
   --max-records <n>      records the viewer keeps (default: 50000)
