@@ -16,7 +16,7 @@ const isTimestampUnit = (text: string): text is TimestampUnit => new Set<string>
 // The read options of a fixture's settings.
 const optionsOf = (fixture: FormatFixture): ReadOptions => {
   const settings = 'settings' in fixture ? fixture.settings : undefined
-  const formats = builtInFormats()
+  const formats = builtInFormats({ csvDelimiter: settings?.csvDelimiter })
   const format = formats.find(candidate => candidate.identifier === settings?.format)
   const unit = settings?.timestampUnit
   const levels: Record<string, LogLevel> = {}

@@ -1,2 +1,4 @@
 # Identical LF bytes on Windows and Linux for lint, snapshots and package tarballs.
 * text=auto eol=lf
+# The shared fixtures keep their exact bytes, CRLF line endings and byte order marks included.
+packages/format-fixtures/fixtures/** -text

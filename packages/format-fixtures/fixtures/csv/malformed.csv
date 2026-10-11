@@ -1,0 +1,7 @@
+time,level,msg
+2026-10-11T10:00:00Z,info,fine
+2026-10-11T10:00:01Z,info,bad"quote
+2026-10-11T10:00:02Z,info,"closed"x
+still inside the quoted field",
+2026-10-11T10:00:04Z,info,after the errors
+2026-10-11T10:00:05Z,info,"never closed

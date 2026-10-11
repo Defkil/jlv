@@ -228,6 +228,53 @@ export const formatFixtures = {
       { level: 'warn', message: 'with a fraction', timestamp: '1791712801.5' }
     ],
     diagnostics: ['1:timestamp-unit', '2:timestamp-unit']
+  },
+  csv: {
+    path: 'csv/app.csv',
+    description: 'CSV with a byte order mark and CRLF line endings: a quoted comma, a quoted CRLF line break, escaped ' +
+      'quotes, a row with too many fields, an empty message, an empty line and a last row without a line ending.',
+    format: 'csv',
+    records: [
+      { level: 'info', message: 'server started', timestamp: at(0) },
+      { level: 'warn', message: 'a message, with a comma', timestamp: at(1) },
+      { level: 'error', message: 'a message\r\nover two lines', timestamp: at(2) },
+      { level: 'debug', message: 'escaped "quotes"', timestamp: at(3) },
+      { level: 'info', message: '', timestamp: at(5) },
+      { level: 'fatal', message: 'last, without a line ending', timestamp: at(7) }
+    ],
+    diagnostics: ['7:csv-row-width']
+  },
+  csvHeaderOnly: {
+    path: 'csv/header-only.csv',
+    description: 'A CSV header without rows.',
+    format: 'csv',
+    records: [],
+    diagnostics: []
+  },
+  csvMalformed: {
+    path: 'csv/malformed.csv',
+    description: 'Malformed quotes as csv-parse reports them: a quote inside an unquoted field, text after a closing ' +
+      'quote, which keeps the field quoted into the next line, and a quote that the end of the file leaves open.',
+    format: 'csv',
+    records: [
+      { level: 'info', message: 'fine', timestamp: at(0) },
+      { level: 'info', message: 'after the errors', timestamp: at(4) }
+    ],
+    diagnostics: ['3:csv-syntax', '4:csv-syntax', '7:csv-syntax']
+  },
+  csvSemicolon: {
+    path: 'csv/semicolon.csv',
+    description: 'A semicolon as the configured delimiter, a quoted semicolon, and columns that a mapping names.',
+    format: 'csv',
+    settings: {
+      csvDelimiter: ';',
+      mapping: { timestamp: ['zeit'], level: ['stufe'], message: ['nachricht'] }
+    },
+    records: [
+      { level: 'info', message: 'Bestellung angelegt', timestamp: at(0) },
+      { level: 'error', message: 'Zahlung abgelehnt', timestamp: at(1) }
+    ],
+    diagnostics: []
   }
 } as const satisfies Readonly<Record<string, FormatFixture>>
 

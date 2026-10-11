@@ -1,0 +1,3 @@
+zeit;stufe;nachricht;kunde
+2026-10-11T10:00:00Z;Info;Bestellung angelegt;"Müller; Söhne"
+2026-10-11T10:00:01Z;Error;Zahlung abgelehnt;Schulz

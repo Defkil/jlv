@@ -13,6 +13,7 @@
     "jv": "./dist/cli.js"
   },
   "dependencies": {
+    "csv-parse": "7.0.3",
     "ini": "6.0.0",
     "neo-blessed": "0.2.0",
     "tinyglobby": "0.2.17"

@@ -1,0 +1,10 @@
+﻿timestamp,level,message,user
+2026-10-11T10:00:00Z,info,server started,alice
+2026-10-11T10:00:01Z,WARN,"a message, with a comma",bob
+2026-10-11T10:00:02Z,error,"a message
+over two lines",carol
+2026-10-11T10:00:03Z,debug,"escaped ""quotes""",dave
+2026-10-11T10:00:04Z,info,too,many,fields
+2026-10-11T10:00:05Z,info,,erin
+
+2026-10-11T10:00:07Z,fatal,"last, without a line ending",frank
