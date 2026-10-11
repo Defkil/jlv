@@ -1,0 +1,8 @@
+{
+  "name": "jlv-format-fixtures",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared log fixtures and their typed catalogue for jlv tests. Never published.",
+  "type": "module",
+  "license": "MIT"
+}

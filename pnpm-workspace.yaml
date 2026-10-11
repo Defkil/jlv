@@ -1,0 +1,4 @@
+packages:
+  - packages/*
+  # Temporary history import: its fixtures move to packages/format-fixtures and its runtime is retired.
+  - '!packages/jlv-pino'
