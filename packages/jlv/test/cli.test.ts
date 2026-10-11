@@ -277,7 +277,7 @@ describe('viewer on a pretended terminal', () => {
     assert.doesNotMatch(compact(level.output), /foxtrot29/u)
     const sort = await run(['--sort=-level', 'characterization.log'], { keys: 'q', preload: pretendedTerminal })
     assert.match(stripVTControlCharacters(sort.output), /sort: -level/u)
-    assert.match(compact(sort.output), /2026-10-11T10:14:00\.000Zwarn\*charlie14/u)
+    assert.match(compact(sort.output), /2026-10-11T10:14:00\.000Zwarnreq-14\*charlie14/u)
   })
 
   it('renders into a single cell when standard output pretends to be a terminal without a size', async () => {

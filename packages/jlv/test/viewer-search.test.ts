@@ -18,7 +18,7 @@ describe('search', () => {
     assert.equal(viewer.panel.row, 3)
     assert.equal(viewer.panel.initialRow, 3)
     assert.equal(viewer.panel.mode, 'normal')
-    assert.equal(screenText(viewer.screen)[1], '│ 2026-10-11T10:26:00.000Z  warn   *  charlie 26                               │')
+    assert.equal(screenText(viewer.screen)[1], '│ 2026-10-11T10:26:00.000Z  warn   req-26  *  charlie 26                       │')
   })
 
   it('repeats the search with n from the row after the cursor', async t => {

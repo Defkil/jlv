@@ -390,6 +390,8 @@ class Ingestion {
   activity: InputActivity = 'loading'
   // The formats of the sources so far.
   readonly formats = new Set<string>()
+  // Whether a record so far had a correlation identifier, which the viewer then shows in a column.
+  hasCorrelation = false
   // In strict mode, the first error diagnostic. The batch ends there; the run ends once the records before it are
   // written.
   strictFailure: StrictModeError | undefined
@@ -453,6 +455,9 @@ class Ingestion {
       source.recordNumber += 1
       this.records += 1
       const { record } = result
+      if (record.correlationIdentifier !== undefined) {
+        this.hasCorrelation = true
+      }
       const { position } = event
       this.store?.append({
         source: source.information.order,

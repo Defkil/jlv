@@ -7,6 +7,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, it, type TestContext } from 'node:test'
+import { correlationColor } from '../src/tui/correlation-colors.js'
 import { cellStyle, keys, openFileViewer, press, screenText, type Viewer } from './support/terminal.js'
 
 const escape = '\u{1B}'
@@ -127,12 +128,16 @@ describe('log text in the details', () => {
     assert.ok(text.includes('"empty": {}'), text)
   })
 
-  it('shows a value with the 8-bit CSI and an identifier with tags as text', async t => {
+  // The identifier's tags neither color the details nor change the color that the correlation column gives it.
+  it('shows an identifier with tags as text, in the details and in the correlation column', async t => {
     const viewer = openFileViewer(t, hostileLog(t), { columns: 100, rows: 30 })
-    await press(viewer, keys.down, keys.enter)
+    await press(viewer, keys.down)
+    assert.deepEqual(new Set(stylesOf(viewer, '{red-fg}id').map(style => style.split('/', 1)[0])), new Set([correlationColor('{red-fg}id')]))
+    await press(viewer, keys.enter)
     const text = screenText(viewer.screen).join('\n')
     assert.ok(text.includes('requestId: {red-fg}id'), text)
-    assert.deepEqual(new Set(stylesOf(viewer, '{red-fg}id').map(style => style.split('/', 1)[0])), new Set([String(defaultColor)]))
+    const value = stylesOf(viewer, 'requestId: {red-fg}id').slice('requestId: '.length)
+    assert.deepEqual(new Set(value.map(style => style.split('/', 1)[0])), new Set([String(defaultColor)]))
   })
 })
 

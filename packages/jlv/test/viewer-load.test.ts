@@ -25,27 +25,27 @@ describe('initial load', () => {
     const viewer = openFileViewer(t, characterization)
     assert.deepEqual(screenText(viewer.screen), [
       topBorder('characterization.log', '1/31'),
-      '│ 2026-10-11T10:29:00.000Z  info   *  foxtrot 29                               │',
-      '│ 2026-10-11T10:28:00.000Z  debug  *  echo 28                                  │',
-      '│ 2026-10-11T10:27:00.000Z  error     delta 27                                 │',
-      '│ 2026-10-11T10:26:00.000Z  warn   *  charlie 26                               │',
-      '│ 2026-10-11T10:25:00.000Z  info   *  bravo 25                                 │',
-      '│ 2026-10-11T10:24:00.000Z  debug     alpha 24                                 │',
-      '│ 2026-10-11T10:23:00.000Z  error  *  foxtrot 23                               │',
-      '│ 2026-10-11T10:22:00.000Z  trace  *  echo 22                                  │',
-      '│ 2026-10-11T10:21:00.000Z  info      delta 21                                 │',
-      '│ 2026-10-11T10:20:00.000Z  debug  *  charlie 20                               │',
-      '│ 2026-10-11T10:19:00.000Z  error  *  bravo 19                                 │',
-      '│ 2026-10-11T10:18:00.000Z  warn      alpha 18                                 │',
-      '│ 2026-10-11T10:17:00.000Z  info   *  lima 17 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…  │',
-      '│ 2026-10-11T10:16:00.000Z  debug  *  echo 16                                  │',
-      '│ 2026-10-11T10:15:00.000Z  error     delta 15                                 │',
-      '│ 2026-10-11T10:14:00.000Z  warn   *  charlie 14                               │',
-      '│ 2026-10-11T10:13:00.000Z  fatal  *  bravo 13                                 │',
-      '│ 2026-10-11T10:12:00.000Z  debug     alpha 12                                 │',
-      '│ 2026-10-11T10:11:00.000Z  error  *  foxtrot 11                               │',
-      String.raw`│ 2026-10-11T10:10:00.000Z  warn   *  kilo 10\nsecond line                     │`,
-      '│ 2026-10-11T10:09:00.000Z  info      delta 09                                 │',
+      '│ 2026-10-11T10:29:00.000Z  info   req-29  *  foxtrot 29                       │',
+      '│ 2026-10-11T10:28:00.000Z  debug  req-28  *  echo 28                          │',
+      '│ 2026-10-11T10:27:00.000Z  error             delta 27                         │',
+      '│ 2026-10-11T10:26:00.000Z  warn   req-26  *  charlie 26                       │',
+      '│ 2026-10-11T10:25:00.000Z  info   req-25  *  bravo 25                         │',
+      '│ 2026-10-11T10:24:00.000Z  debug             alpha 24                         │',
+      '│ 2026-10-11T10:23:00.000Z  error  req-23  *  foxtrot 23                       │',
+      '│ 2026-10-11T10:22:00.000Z  trace  req-22  *  echo 22                          │',
+      '│ 2026-10-11T10:21:00.000Z  info              delta 21                         │',
+      '│ 2026-10-11T10:20:00.000Z  debug  req-20  *  charlie 20                       │',
+      '│ 2026-10-11T10:19:00.000Z  error  req-19  *  bravo 19                         │',
+      '│ 2026-10-11T10:18:00.000Z  warn              alpha 18                         │',
+      '│ 2026-10-11T10:17:00.000Z  info   req-17  *  lima 17 xxxxxxxxxxxxxxxxxxxxxx…  │',
+      '│ 2026-10-11T10:16:00.000Z  debug  req-16  *  echo 16                          │',
+      '│ 2026-10-11T10:15:00.000Z  error             delta 15                         │',
+      '│ 2026-10-11T10:14:00.000Z  warn   req-14  *  charlie 14                       │',
+      '│ 2026-10-11T10:13:00.000Z  fatal  req-13  *  bravo 13                         │',
+      '│ 2026-10-11T10:12:00.000Z  debug             alpha 12                         │',
+      '│ 2026-10-11T10:11:00.000Z  error  req-11  *  foxtrot 11                       │',
+      String.raw`│ 2026-10-11T10:10:00.000Z  warn   req-10  *  kilo 10\nsecond line             │`,
+      '│ 2026-10-11T10:09:00.000Z  info              delta 09                         │',
       '└──────────────────────────────────────────────────────────────────────────────┘',
       '  NORMAL  1/31 | 20 | sort: -timestamp | 4 skipped'
     ])
@@ -66,8 +66,8 @@ describe('initial load', () => {
     ])
     await press(viewer, '$')
     assert.deepEqual(screenText(viewer.screen).slice(20, 23), [
-      '│ 2026-10-11T10:00:00.000Z  debug     alpha 00                                 │',
-      '│                           warn      no timestamp                             │',
+      '│ 2026-10-11T10:00:00.000Z  debug             alpha 00                         │',
+      '│                           warn              no timestamp                     │',
       '└──────────────────────────────────────────────────────────────────────────────┘'
     ])
   })
@@ -90,8 +90,8 @@ describe('initial load', () => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, 'g', '19', keys.enter)
     const rows = screenText(viewer.screen)
-    assert.equal(rows[2], String.raw`│ 2026-10-11T10:10:00.000Z  warn   *  kilo 10\nsecond line                     │`)
-    assert.equal(rows[7], '│ 2026-10-11T10:05:00.000Z  info   *  foxtrot 05                               │')
+    assert.equal(rows[2], String.raw`│ 2026-10-11T10:10:00.000Z  warn   req-10  *  kilo 10\nsecond line             │`)
+    assert.equal(rows[7], '│ 2026-10-11T10:05:00.000Z  info   req-05  *  foxtrot 05                       │')
     assert.equal(visibleEntries(viewer.panel).find(entry => entry.message === 'foxtrot 05')?.record.fields['level'], 'INFO')
   })
 })

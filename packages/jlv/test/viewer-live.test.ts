@@ -26,7 +26,7 @@ describe('arriving records', () => {
     viewer.append(record(1, 'newer one') + record(2, 'newer two'))
     assert.equal(selected(viewer), identifier)
     assert.deepEqual([viewer.panel.row, viewer.panel.initialRow], [5, 2])
-    assert.equal(screenText(viewer.screen)[4], '│ 2026-10-11T10:26:00.000Z  warn   *  charlie 26                               │')
+    assert.equal(screenText(viewer.screen)[4], '│ 2026-10-11T10:26:00.000Z  warn   req-26  *  charlie 26                       │')
   })
 
   it('follows the newest record while the cursor is at the start of a descending order', t => {

@@ -94,7 +94,7 @@ describe('long names', () => {
     const viewer = openFileViewer(t, path.join(directory, name))
     const rows = screenText(viewer.screen)
     assert.equal(rows[0], `┌──[ …${name.slice(-61)} ] [ 1/31 ]─┐`)
-    assert.equal(rows[1], '│ 2026-10-11T10:29:00.000Z  info   *  foxtrot 29                               │')
+    assert.equal(rows[1], '│ 2026-10-11T10:29:00.000Z  info   req-29  *  foxtrot 29                       │')
   })
 
   it('cuts the label to the width of a narrow terminal', t => {

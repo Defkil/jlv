@@ -41,12 +41,12 @@ describe('sort', () => {
     await press(viewer, 's', 'l')
     assert.equal(viewer.panel.sort, 'level')
     assert.equal(screenText(viewer.screen)[23], '  NORMAL  14/31 | 20 | sort: level | 4 skipped')
-    assert.equal(screenText(viewer.screen)[1], '│ 2026-10-11T10:29:00.000Z  info   *  foxtrot 29                               │')
+    assert.equal(screenText(viewer.screen)[1], '│ 2026-10-11T10:29:00.000Z  info   req-29  *  foxtrot 29                       │')
     await press(viewer, '0')
     assert.deepEqual(screenText(viewer.screen).slice(1, 4), [
-      '│ 2026-10-11T10:22:00.000Z  trace  *  echo 22                                  │',
-      '│ 2026-10-11T10:00:00.000Z  debug     alpha 00                                 │',
-      '│ 2026-10-11T10:28:00.000Z  debug  *  echo 28                                  │'
+      '│ 2026-10-11T10:22:00.000Z  trace  req-22  *  echo 22                          │',
+      '│ 2026-10-11T10:00:00.000Z  debug             alpha 00                         │',
+      '│ 2026-10-11T10:28:00.000Z  debug  req-28  *  echo 28                          │'
     ])
     // Upstream reversed the ascending order, so the record without a level came first and equal levels appeared
     // in reverse file order. Records without a value come last in both directions now, and equal values keep

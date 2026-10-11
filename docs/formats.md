@@ -133,6 +133,13 @@ A record's correlation identifier is the mapped field, or else the first of `cor
 `requestId`, `req.id` (the field `id` inside `req`), `trace_id` and `traceId` that the record has. Text and numbers
 count, a number as its text, so `0` is an identifier; empty text is none.
 
+Once a record of the input has an identifier, the viewer shows them in a column between the level and the message.
+Each identifier has a color that its text alone decides, so the same identifier has the same color in every order
+and every run; different identifiers may share a color, and the text tells them apart. `c` shows only the records
+with the identifier of the record under the cursor, and a second `c` shows all records again; the cursor stays on its
+record. The filter is the clause `{"field":["correlationIdentifier"],"operator":"equals","value":"<identifier>"}`,
+which `--where` takes too.
+
 ## Diagnostics
 
 jlv skips what it cannot read and says where: the input, the line and the reason. With `--output plain` or

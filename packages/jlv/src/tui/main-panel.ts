@@ -16,6 +16,7 @@ import {
 } from '../filters.js'
 import { isLogLevel, levelCode, logLevels } from '../record.js'
 import { BaseWidget } from './base-widget.js'
+import { correlationColor } from './correlation-colors.js'
 import {
   ask, createElement, createPrompt, createQuestion, destroyElement, readInput, setContentWrapping, toCells
 } from './blessed-boundary.js'
@@ -39,13 +40,14 @@ interface FilterChoice {
 }
 
 // How far the input has come: whether records still arrive, the records skipped and the warnings so far, the inputs
-// that could not be read to their end, and the formats of the inputs.
+// that could not be read to their end, the formats of the inputs, and whether a record had a correlation identifier.
 interface InputProgress {
   readonly activity: 'loading' | 'live' | 'done'
   readonly skipped: number
   readonly warnings: number
   readonly failed: number
   readonly formats: ReadonlySet<string>
+  readonly hasCorrelation: boolean
 }
 
 interface MainPanelOptions {
@@ -87,17 +89,23 @@ const levelStyles: ReadonlyMap<LogLevel, Omit<Cell, 'text'>> = new Map([
   ['error', { color: 'red' }]
 ])
 
-// The columns of a row: the timestamp, the level, a mark for a record with details, and the message, which takes the
-// rest of the width.
+// The columns of a row: the timestamp, the level, the correlation identifier when the input has them, a mark for a
+// record with details, and the message, which takes the rest of the width.
 const rowColumns: readonly Column[] = [{ maximumWidth: 32 }, { maximumWidth: 12 }, { maximumWidth: 1 }, { maximumWidth: 0 }]
+const correlatedColumns: readonly Column[] = [{ maximumWidth: 32 }, { maximumWidth: 12 }, { maximumWidth: 16 }, { maximumWidth: 1 }, { maximumWidth: 0 }]
 
 // A record without data counts as empty, as lodash.isEmpty did for the objects that readLog creates.
 const hasData = (data: unknown): boolean => typeof data === 'object' && data !== null && Object.keys(data).length > 0
 
+// The cell of a correlation identifier, in the identifier's color.
+const correlationCell = (identifier: string | undefined): Cell =>
+  identifier === undefined ? { text: '' } : { text: identifier, color: correlationColor(identifier) }
+
 // The cells of a row in the order of the columns.
-const rowCells = (row: LogRow): Cell[] => [
+const rowCells = (row: LogRow, isCorrelated: boolean): Cell[] => [
   { text: row.timestamp ?? '' },
   { text: row.level ?? '', ...levelStyles.get(row.record.level) },
+  ...isCorrelated ? [correlationCell(row.record.correlationIdentifier)] : [],
   { text: hasData(row.data) ? '*' : ' ' },
   { text: row.message }
 ]
@@ -407,6 +415,10 @@ class MainPanel extends BaseWidget {
       this.openFilterManager()
       return
     }
+    if (character === 'c') {
+      this.filterByCorrelation()
+      return
+    }
     if (character === 'q') {
       // The application ends the process; upstream called process.exit here.
       this.emit('quit')
@@ -591,6 +603,20 @@ class MainPanel extends BaseWidget {
     this.filter = filter
     this.setQueryChanged()
     this.renderLines()
+  }
+
+  // Shows only the records with the correlation identifier of the selected record, upstream issue #15; for a record
+  // with that filter active, shows all records again. The cursor stays on the record.
+  filterByCorrelation (): void {
+    const identifier = this.entryAt(this.row)?.record.correlationIdentifier
+    if (identifier === undefined) {
+      this.message('The record has no correlation identifier to filter by')
+      return
+    }
+    const clause: FilterClause = { field: ['correlationIdentifier'], operator: 'equals', value: identifier }
+    const { clauses } = this.filter
+    const others = clauses.filter(active => !isDeepStrictEqual(active, clause))
+    this.setFilter({ ...this.filter, clauses: others.length === clauses.length ? [...clauses, clause] : others })
   }
 
   // Adds a clause to the others, unless the same clause applies already.
@@ -823,8 +849,11 @@ class MainPanel extends BaseWidget {
   update (shouldNotify = true): void {
     this.setLabel(this.borderLabel)
 
-    // The cursor row is black on white; the level keeps its color there.
-    const content = layoutRows(this.rows.map(row => rowCells(row)), rowColumns, this.colSpacing, this.pageWidth - 1)
+    // The correlation column shows once a record of the input had an identifier, so that the columns do not move.
+    const isCorrelated = this.progress?.hasCorrelation === true || this.rows.some(row => row.record.correlationIdentifier !== undefined)
+    const columns = isCorrelated ? correlatedColumns : rowColumns
+    // The cursor row is black on white; the level and the identifier keep their colors there.
+    const content = layoutRows(this.rows.map(row => rowCells(row, isCorrelated)), columns, this.colSpacing, this.pageWidth - 1)
       .map((row, index) => index === this.relativeRow ? composeMarkup`{white-bg}{black-fg}${row}{/}` : row)
       .join('\n')
     this.rowsElement.setContent(content)

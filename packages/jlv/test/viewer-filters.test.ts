@@ -47,7 +47,7 @@ describe('level filter', () => {
     assert.ok(visibleEntries(viewer.panel).every(entry => entry.record.level === 'info'))
     const rows = screenText(viewer.screen)
     assert.equal(rows[0], topBorder('characterization.log', '1/7'))
-    assert.equal(rows[1], '│ 2026-10-11T10:29:00.000Z  info  *  foxtrot 29                                │')
+    assert.equal(rows[1], '│ 2026-10-11T10:29:00.000Z  info  req-29  *  foxtrot 29                        │')
     assert.equal(rows[23], '  NORMAL  1/7 | 20 | sort: -timestamp | filters: level=info | 4 skipped')
   })
 

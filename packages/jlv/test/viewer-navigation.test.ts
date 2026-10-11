@@ -62,17 +62,17 @@ describe('paging', () => {
     assert.equal(viewer.panel.initialRow, 20)
     assert.deepEqual(screenText(viewer.screen).slice(0, 14), [
       topBorder('characterization.log', '24/31'),
-      '│ 2026-10-11T10:09:00.000Z  info      delta 09                                 │',
-      '│ 2026-10-11T10:08:00.000Z  debug  *  charlie 08                               │',
-      '│ 2026-10-11T10:07:00.000Z  error  *  bravo 07                                 │',
-      '│ 2026-10-11T10:06:00.000Z  warn      alpha 06                                 │',
-      '│ 2026-10-11T10:05:00.000Z  info   *  foxtrot 05                               │',
-      '│ 2026-10-11T10:04:00.000Z  debug  *  echo 04                                  │',
-      '│ 2026-10-11T10:03:00.000Z  error     delta 03                                 │',
-      '│ 2026-10-11T10:02:00.000Z  warn   *  charlie 02                               │',
-      '│ 2026-10-11T10:01:00.000Z  info   *  bravo 01                                 │',
-      '│ 2026-10-11T10:00:00.000Z  debug     alpha 00                                 │',
-      '│                           warn      no timestamp                             │',
+      '│ 2026-10-11T10:09:00.000Z  info              delta 09                         │',
+      '│ 2026-10-11T10:08:00.000Z  debug  req-08  *  charlie 08                       │',
+      '│ 2026-10-11T10:07:00.000Z  error  req-07  *  bravo 07                         │',
+      '│ 2026-10-11T10:06:00.000Z  warn              alpha 06                         │',
+      '│ 2026-10-11T10:05:00.000Z  info   req-05  *  foxtrot 05                       │',
+      '│ 2026-10-11T10:04:00.000Z  debug  req-04  *  echo 04                          │',
+      '│ 2026-10-11T10:03:00.000Z  error             delta 03                         │',
+      '│ 2026-10-11T10:02:00.000Z  warn   req-02  *  charlie 02                       │',
+      '│ 2026-10-11T10:01:00.000Z  info   req-01  *  bravo 01                         │',
+      '│ 2026-10-11T10:00:00.000Z  debug             alpha 00                         │',
+      '│                           warn              no timestamp                     │',
       `│${' '.repeat(78)}│`,
       `│${' '.repeat(78)}│`
     ])
@@ -103,8 +103,8 @@ describe('paging', () => {
     await press(viewer, '$')
     assert.equal(viewer.panel.row, 30)
     assert.equal(viewer.panel.initialRow, 10)
-    assert.equal(screenText(viewer.screen)[20], '│ 2026-10-11T10:00:00.000Z  debug     alpha 00                                 │')
-    assert.equal(screenText(viewer.screen)[21], '│                           warn      no timestamp                             │')
+    assert.equal(screenText(viewer.screen)[20], '│ 2026-10-11T10:00:00.000Z  debug             alpha 00                         │')
+    assert.equal(screenText(viewer.screen)[21], '│                           warn              no timestamp                     │')
     await press(viewer, '0')
     assert.equal(viewer.panel.row, 0)
     assert.equal(viewer.panel.initialRow, 0)
@@ -133,7 +133,7 @@ describe('go to line', () => {
     assert.equal(viewer.panel.row, 4)
     assert.equal(viewer.panel.initialRow, 4)
     assert.equal(viewer.panel.mode, 'normal')
-    assert.equal(screenText(viewer.screen)[1], '│ 2026-10-11T10:25:00.000Z  info   *  bravo 25                                 │')
+    assert.equal(screenText(viewer.screen)[1], '│ 2026-10-11T10:25:00.000Z  info   req-25  *  bravo 25                         │')
   })
 })
 

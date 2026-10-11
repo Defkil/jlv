@@ -82,6 +82,9 @@ $ jv --output plain -l INFO pino.log
   the level. `--where`, `--profile` and `--predicate` start the viewer with filters.
 - `other` in the filter manager reads a field of the original record by the same paths as before, such as
   `user.name:ann`; text filters ignore case and look into the JSON text of numbers and objects.
+- Correlation identifiers have a column, and `c` shows only the records of the selected record's identifier; see
+  [Correlation identifiers](formats.md#correlation-identifiers). The cursor stays on its record when the sort or the
+  filters change.
 
 ## Programs
 
