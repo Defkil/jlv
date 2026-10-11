@@ -10,8 +10,9 @@ There are two parts:
 - **Part A, console probe.** Run it now. It answers the phase 0 question with a
   standalone script: can a Node process read keys from the console while its stdin is
   a pipe, on every supported runtime, and does it restore the terminal afterwards?
-- **Part B, release gate.** Run it after phase 5, against `jlv` itself, before the
-  release.
+- **Part B, release gate.** Run it against the viewer itself before the release. Phase
+  5 built everything it checks: live pipes, the keyboard from the console, follow, save
+  and the plain fallback.
 
 Headless results that already exist are recorded in
 [v2-phase-0-results.md](v2-phase-0-results.md#02-keyboard-input-with-a-live-pipe).
@@ -107,23 +108,81 @@ A runtime that fails a keyboard row may still ship, but only with the automatic 
 output for piped input on that runtime (plan §8 phase 0 acceptance). Write the decision
 into plan §0 and the release notes.
 
-## Part B: release gate (after phase 5)
+## Part B: release gate
 
-Run with the packed `jlv` tarball installed globally or in a scratch project, once per
-runtime. `<producer>` is the command from Part A step 1.
+Run once per runtime. Before phase 8 the command is still `jv`: build the repository with
+`pnpm run build` and start `packages\jlv\dist\cli.js` with the runtime under test.
+After phase 8, use the packed `jlv` tarball installed in a scratch project instead.
 
-1. `<producer> | jlv`: records appear before the producer ends; arrows, PageUp,
-   PageDown, Home, End, Enter (details), Escape (close details), `/` with typed text and
-   Enter (search), and `q` all work; resizing relayouts the screen.
-2. `<producer> | jlv`, then Ctrl-C: exit code 130, the cursor is visible, the alternate
-   screen is left, and the prompt echoes and edits normally.
-3. A producer that ends after a few lines: the viewer stays open with the final count
-   and quits normally with `q`.
-4. `jlv` started from a process without a console (as in Part A step 4): it chooses plain
-   output, writes the records and exits; it never waits for a key.
-5. Explicit `--output tui` without a usable console fails at once with a clear error
-   message instead of hanging.
-6. Repeat 1, 2 and 4 in the Linux terminal.
+```powershell
+$jlv = "C:\path\to\jlv\packages\jlv\dist\cli.js"
+$ticks = "let n = 0; setInterval(() => console.log(JSON.stringify({ timestamp: new Date().toISOString(), level: 'info', message: 'tick ' + n++ })), 500)"
+$burst = "for (let n = 0; n < 200000; n++) console.log(JSON.stringify({ timestamp: new Date().toISOString(), level: 'info', message: 'record ' + n }))"
+```
+
+In the steps, `<ticks>` stands for `& $node -e $ticks` and `<viewer>` for
+`& $node $jlv`. The status line names what the viewer knows about the input: `live`
+while records still arrive, `loading` while files are read, `kept <retained> of <seen>`
+once the store evicts, and the numbers of skipped lines and failed inputs.
+
+1. **Keys with a live pipe.** `<ticks> | <viewer>`: records appear before the producer
+   ends, newest at the bottom (arrival order). Arrows, PageUp, PageDown, `0`, `$`,
+   Enter (details), `j` and Escape in the details, `/` with text and Enter (search),
+   `s` and `l` (pickers) all work; resizing the window relayouts the screen while
+   records keep arriving. Note which console path the runtime uses; Part A lists them.
+2. **Following the newest record.** In step 1, leave the cursor on the last row: it
+   moves to each new record. Press Up: the cursor stays on its record while new ones
+   arrive below. Press `$`: it follows again.
+3. **Ctrl-C.** `<ticks> | <viewer>`, then Ctrl-C: `$LASTEXITCODE` is 130, the
+   alternate screen is left, the cursor is visible, and the prompt echoes and edits
+   normally (raw mode restored). Repeat with `q`: exit code 0, same terminal state.
+4. **Input that ends.** `& $node -e "console.log('{}'); console.log('{}')" | <viewer>`:
+   the viewer stays open, `live` disappears from the status line, and `q` ends it.
+5. **Eviction.** `& $node -e $burst | <viewer>`: the status line reaches
+   `kept 50000 of 200000`; the keys stay responsive while the records arrive; Task
+   Manager shows the process well below 256 MiB.
+6. **Follow.** Create a log with a few records and run `<viewer> --follow app.log`. In a
+   second tab:
+   - append records with `Add-Content app.log '{"level":"info","message":"appended"}'`;
+   - rotate with `Rename-Item app.log app.log.1`, then `Add-Content app.log.1 '{"message":"late"}'`
+     and `Set-Content app.log '{"message":"new file"}'`;
+   - truncate with `Clear-Content app.log`, then add a record;
+   - delete the file, wait a second, and create it again.
+
+   Each change appears within about half a second; the late record of the renamed file
+   appears before the records of the new file. `q` ends the viewer at once.
+7. **Save.** `<ticks> | <viewer> --save $env:TEMP\saved.jsonl`, quit after a few records:
+   the file holds one JSON line per record shown. Run it again: it fails at once with
+   exit code 2 and `the file exists; --overwrite replaces it`; with `--overwrite` it
+   runs. `<viewer> app.log --save app.log --overwrite` is refused with exit code 2.
+8. **Plain output on a terminal.** `<ticks> | <viewer> --output plain`: one line per
+   record as it arrives; Ctrl-C ends with 130 and leaves the prompt intact.
+   `<viewer> app.log --output jsonl` writes JSON lines and ends with 0.
+9. **No console.** Start the viewer as a detached child, which has no console, with
+   piped standard input; it writes plain output and exits, and never waits for a key:
+
+   ```powershell
+   & $node -e "const c = require('node:child_process').spawn(process.argv[1], process.argv.slice(2), { detached: true, stdio: 'pipe', windowsHide: true }); c.stdout.pipe(process.stdout); c.stderr.pipe(process.stderr); c.stdin.end(JSON.stringify({ message: 'piped' }) + '\n'); c.on('exit', code => console.log('exit', code))" $node $jlv
+   ```
+
+   Expected: `- - piped` and `exit 0` within about a second. With `--output tui` added
+   after `$jlv`, the child fails at once with `exit 1` and `the viewer needs a terminal`.
+10. **Records typed into the terminal.** `<viewer> -` and type a JSON line, then Ctrl-Z
+    and Enter: the line comes back as plain output; `--output tui` refuses with exit
+    code 1 because standard input is the terminal.
+11. **Linux.** In the Linux terminal repeat steps 1, 3, 6 and 9 with `/dev/tty` as the
+    keyboard; `echo '{}' | setsid -w node cli.js` shows the plain fallback without a
+    controlling terminal.
+
+### Record, Part B
+
+| Runtime | Console path | Keys (1) | Follow newest (2) | Ctrl-C and q (3) | Input ends (4) | Eviction (5) | Follow (6) | Save (7) | Plain (8) | No console (9) | Typed (10) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 22.9.0 | | | | | | | | | | | |
+| 22.x latest: | | | | | | | | | | | |
+| 24.x latest: | | | | | | | | | | | |
+| 26.x latest: | | | | | | | | | | | |
+| Linux, Node: | | | | | | | | | | | |
 
 ## Probe
 
