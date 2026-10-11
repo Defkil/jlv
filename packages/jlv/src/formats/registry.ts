@@ -3,12 +3,13 @@
 import type { LogFormat } from '../api.js'
 import { bunyanFormat } from './bunyan.js'
 import { jsonLinesFormat } from './json-lines.js'
+import { logfmtFormat } from './logfmt.js'
 import { pinoFormat } from './pino.js'
 import { winstonFormat } from './winston.js'
 
 export { jsonLinesFormat } from './json-lines.js'
 
-const builtInFormats = (): readonly LogFormat[] => [bunyanFormat, pinoFormat, winstonFormat, jsonLinesFormat]
+const builtInFormats = (): readonly LogFormat[] => [bunyanFormat, pinoFormat, logfmtFormat, winstonFormat, jsonLinesFormat]
 
 // The identifiers that --format takes besides auto.
 const builtInFormatIdentifiers: readonly string[] = builtInFormats().map(format => format.identifier)

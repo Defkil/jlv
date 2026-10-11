@@ -1,0 +1,10 @@
+time=2026-10-11T10:00:00Z level=info msg="server started" port=8080
+time=2026-10-11T10:00:01Z level=warn msg="quoted = sign and spaces" query="a=b c=d"
+time=2026-10-11T10:00:02Z level=error msg="escaped \"quote\", backslash \\ and \u00e9 in quotes" path=C:\temp\app.log
+time=2026-10-11T10:00:03Z level=debug msg= empty="" flag
+time=2026-10-11T10:00:04Z level=info msg="first" msg="second wins"
+time=2026-10-11T10:00:05Z level=info msg="Grüße, 漢字 und 😀" user=jürgen
+time=2026-10-11T10:00:06Z level=info msg="a quote that is not closed
+time=2026-10-11T10:00:07Z level=info msg=bad"quote
+=value level=info
+	timestamp=2026-10-11T10:00:09Z  level=INFO message="timestamp and message as names" url=/search?q=a&page=2	

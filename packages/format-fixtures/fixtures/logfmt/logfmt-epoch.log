@@ -1,0 +1,2 @@
+ts=1791712800 level=info msg="seconds since the epoch"
+ts=1791712801.5 level=warn msg="with a fraction"

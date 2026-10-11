@@ -190,6 +190,44 @@ export const formatFixtures = {
       { level: 'unknown', message: 'config reloaded', timestamp: at(7) }
     ],
     diagnostics: []
+  },
+  logfmt: {
+    path: 'logfmt/logfmt.log',
+    description: 'logfmt\'s grammar: quoted spaces and equals signs, escapes, a backslash in a bare value, empty values ' +
+      'and a flag, a duplicate key, UTF-8, three malformed lines, and the names timestamp and message between tabs.',
+    format: 'logfmt',
+    records: [
+      { level: 'info', message: 'server started', timestamp: at(0) },
+      { level: 'warn', message: 'quoted = sign and spaces', timestamp: at(1) },
+      { level: 'error', message: String.raw`escaped "quote", backslash \ and é in quotes`, timestamp: at(2) },
+      { level: 'debug', message: '', timestamp: at(3) },
+      { level: 'info', message: 'second wins', timestamp: at(4) },
+      { level: 'info', message: 'Grüße, 漢字 und 😀', timestamp: at(5) },
+      { level: 'info', message: 'timestamp and message as names', timestamp: at(9) }
+    ],
+    diagnostics: ['5:logfmt-duplicate-key', '7:logfmt-syntax', '8:logfmt-syntax', '9:logfmt-syntax']
+  },
+  logfmtEpoch: {
+    path: 'logfmt/logfmt-epoch.log',
+    description: 'Seconds since the epoch in a key that a mapping names, with --timestamp-unit seconds.',
+    format: 'logfmt',
+    settings: { mapping: { timestamp: ['ts'] }, timestampUnit: 'seconds' },
+    records: [
+      { level: 'info', message: 'seconds since the epoch', timestamp: at(0) },
+      { level: 'warn', message: 'with a fraction', timestamp: '2026-10-11T10:00:01.500Z' }
+    ],
+    diagnostics: []
+  },
+  logfmtEpochWithoutUnit: {
+    path: 'logfmt/logfmt-epoch.log',
+    description: 'The same numeric text without a unit: no unit is guessed, so the text stays visible with a warning.',
+    format: 'logfmt',
+    settings: { mapping: { timestamp: ['ts'] } },
+    records: [
+      { level: 'info', message: 'seconds since the epoch', timestamp: '1791712800' },
+      { level: 'warn', message: 'with a fraction', timestamp: '1791712801.5' }
+    ],
+    diagnostics: ['1:timestamp-unit', '2:timestamp-unit']
   }
 } as const satisfies Readonly<Record<string, FormatFixture>>
 
