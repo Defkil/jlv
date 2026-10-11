@@ -18,8 +18,10 @@ const sampleLineLimit = 32
 // Live input stops filling its sample this long after its first complete line.
 const liveSampleWait = 200
 
-// A reader's events are handed over at least this often, also within one large chunk.
-const maximumBatchEvents = 4096
+// A reader's events are handed over at least this often, also within one large chunk. Few parsed records alive at a
+// time keep V8's young generation small, since it grows with the bytes that survive its collections: with 4096 events
+// per batch, the heap of the million-record benchmark grew to 167 MiB on Node 24.21.0, with 64 events to 64 to 93 MiB.
+const maximumBatchEvents = 64
 
 const lineFeed = 0x0A
 
@@ -509,8 +511,8 @@ const recordAt = (store: RecordStore, sources: readonly SourceState[], sequence:
 }
 
 export {
-  Ingestion, SourceState, StrictModeError, chooseFormat, liveSampleWait, readBatches, recordAt, sampleByteLimit,
-  sampleInput, sampleLineLimit, sourceBatches
+  Ingestion, SourceState, StrictModeError, chooseFormat, liveSampleWait, maximumBatchEvents, readBatches, recordAt,
+  sampleByteLimit, sampleInput, sampleLineLimit, sourceBatches
 }
 export type {
   IngestionOptions, IngestionSettings, InputActivity, NormalizedRecord, SampledInput, Selection, SourceBatch

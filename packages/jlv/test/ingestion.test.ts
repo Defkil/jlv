@@ -8,7 +8,8 @@ import { setTimeout as delay, setImmediate as nextTurn } from 'node:timers/promi
 import type { FormatContext, JsonValue, LogFormat, ParseEvent } from '../src/api.js'
 import { builtInFormats, jsonLinesFormat } from '../src/formats/registry.js'
 import {
-  Ingestion, SourceState, chooseFormat, liveSampleWait, readBatches, sampleInput, sourceBatches, type IngestionSettings
+  Ingestion, SourceState, chooseFormat, liveSampleWait, maximumBatchEvents, readBatches, sampleInput, sourceBatches,
+  type IngestionSettings
 } from '../src/ingestion.js'
 
 const context: FormatContext = {
@@ -173,6 +174,27 @@ describe('reading in batches', () => {
       batches.push(batch.map(event => event.kind === 'entry' ? textOf(event.value['text']) : event.code))
     }
     assert.deepEqual(batches, [['1-a', '1-b'], ['2-a', '2-b']])
+  })
+
+  // Few parsed records alive at a time keep the young generation of the heap small.
+  it('hands over the events of a large chunk in small batches', async () => {
+    const many: LogFormat = {
+      ...fixedFormat('many', 1),
+      read: async function * (input) {
+        for await (const chunk of input) {
+          for (let index = 0; index < 200; index += 1) {
+            yield { kind: 'entry', value: { text: Buffer.from(chunk).toString('utf8') }, position: { firstLine: index + 1, lastLine: index + 1 } }
+          }
+        }
+      }
+    }
+    const sizes: number[] = []
+    const reading = readBatches(many, bufferOf('one chunk'), context)
+    for await (const batch of reading) {
+      sizes.push(batch.length)
+    }
+    assert.equal(maximumBatchEvents, 64)
+    assert.deepEqual(sizes, [64, 64, 64, 8])
   })
 
   it('reads the next chunk only once the batch before it was taken', async () => {
