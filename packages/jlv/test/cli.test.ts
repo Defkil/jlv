@@ -3,7 +3,7 @@
 // pretended terminal, and the plain fallback of a process without a console (plan sections 6.1 and 8, phase 5).
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { after, describe, it } from 'node:test'
@@ -252,6 +252,35 @@ describe('viewer on a pretended terminal', () => {
     })
     assert.equal(result.code, 0)
     assert.doesNotMatch(result.output, /characterization\.log/u)
+  })
+})
+
+describe('following files', () => {
+  // The follower polls every 500 ms; q must end the process at once, without waiting for the next poll.
+  it('ends a followed viewer at once with q', async () => {
+    const followed = path.join(directory, 'followed.log')
+    writeFileSync(followed, record(1, 'followed record'))
+    const result = await run(['--follow', followed], { keys: 'q', preload: pretendedTerminal })
+    assert.equal(result.code, 0)
+    assert.match(compact(result.output), /followedrecord/u)
+    assert.match(stripVTControlCharacters(result.output), /sort: arrival \| live/u)
+    assert.ok(result.milliseconds < 5000)
+  })
+
+  // Like tail -f, the process notices a reader that went away when it writes the next record.
+  it('ends a followed plain output with 0 when the reader goes away and a record arrives', async () => {
+    const followed = path.join(directory, 'piped.log')
+    writeFileSync(followed, record(1, 'first'))
+    const result = await run(['--follow', followed], {
+      drive: child => {
+        child.stdout?.once('data', () => {
+          child.stdout?.destroy()
+          appendFileSync(followed, record(2, 'second'))
+        })
+      }
+    })
+    assert.equal(result.code, 0)
+    assert.equal(result.errors, '')
   })
 })
 

@@ -7,6 +7,7 @@ import { addAbortSignal, type Readable, type Writable } from 'node:stream'
 import type { Widgets } from 'blessed'
 import type { ScreenOptions } from 'neo-blessed'
 import { InputError, readFileChunks, resolveInputs, type InputSource, type SourceInformation } from './input/files.js'
+import { followFiles } from './input/follow.js'
 import { readLines, type LineEvent } from './input/lines.js'
 import { MappingFileError, parseEntry, parseLine, readMapping, timeKey, type Mapping } from './log.js'
 import { LineWriter, formatLine, type MachineFormat } from './output.js'
@@ -251,20 +252,22 @@ async function * merge<T> (sources: readonly AsyncIterable<T>[]): AsyncGenerator
   }
 }
 
-// The sources' batches: finite files one after the other, and every live stream at the same time.
+// The sources' batches: finite files one after the other or, with --follow, all files at every poll, and every live
+// stream at the same time.
 const readSources = (
-  sources: readonly InputSource[],
-  stdin: Readable,
+  run: Run,
   signal: AbortSignal,
   onFailure: (source: SourceInformation, error: unknown) => void
 ): AsyncIterable<Batch> => {
+  const { sources } = run
   const lanes: AsyncIterable<Batch>[] = []
-  if (sources.some(source => source.kind === 'file')) {
-    lanes.push(readFiles(sources, signal, onFailure))
+  const files = sources.filter(source => source.kind === 'file').map(source => ({ source: source.information, path: source.path }))
+  if (files.length > 0) {
+    lanes.push(run.options.isFollowing ? followFiles(files, signal, { onFailure }) : readFiles(sources, signal, onFailure))
   }
   for (const source of sources) {
     if (source.kind === 'stdin') {
-      lanes.push(readStream(source.information, stdin, signal))
+      lanes.push(readStream(source.information, run.environment.stdin, signal))
     } else if (source.kind === 'stream') {
       lanes.push(readStream(source.information, readFileChunks(source.path, signal), signal))
     }
@@ -351,7 +354,7 @@ const runMachineOutput = async (run: Run, format: MachineFormat): Promise<number
     stderr.write(`jv: cannot read '${source.label}': ${errorMessage(error)}\n`)
   }
   try {
-    for await (const batch of readSources(run.sources, environment.stdin, controller.signal, onFailure)) {
+    for await (const batch of readSources(run, controller.signal, onFailure)) {
       let text = ''
       for (const record of ingestion.accept(batch.source, batch.events)) {
         if (isMatch(record)) {
@@ -428,7 +431,7 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
   }
   const reading = (async () => {
     try {
-      for await (const batch of readSources(run.sources, environment.stdin, controller.signal, onFailure)) {
+      for await (const batch of readSources(run, controller.signal, onFailure)) {
         ingestion.accept(batch.source, batch.events)
         refresh.schedule()
       }

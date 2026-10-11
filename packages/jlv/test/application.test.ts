@@ -3,7 +3,7 @@
 // and errors that are reported before a screen opens (plan sections 6.1 and 8, phase 5).
 import assert from 'node:assert/strict'
 import { EventEmitter, once } from 'node:events'
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { PassThrough, Writable } from 'node:stream'
@@ -265,6 +265,41 @@ describe('output without a viewer', () => {
     await producing
     assert.ok(pushedBeforeStop < 2 * 1024 * 1024, `the input took ${String(pushedBeforeStop)} bytes`)
     assert.equal(stdin.destroyed, true)
+  })
+})
+
+describe('following files', () => {
+  it('writes what a followed file holds and what is appended, also after a rotation, until SIGINT', async () => {
+    const followed = path.join(directory, 'followed.log')
+    writeFileSync(followed, record(1, 'before'))
+    const stdout = new TextOutput()
+    const { signals, environment } = harness({ stdout })
+    const running = runApplication(applicationOptions({ inputs: [followed], isFollowing: true, output: 'plain' }), environment)
+    await waitFor(() => stdout.text.includes('before'), 'the existing record')
+    appendFileSync(followed, record(2, 'appended'))
+    await waitFor(() => stdout.text.includes('appended'), 'the appended record')
+    renameSync(followed, `${followed}.1`)
+    appendFileSync(`${followed}.1`, record(3, 'late in the old file'))
+    writeFileSync(followed, record(4, 'in the new file'))
+    await waitFor(() => stdout.text.includes('in the new file'), 'the record of the new file')
+    signals.emit('SIGINT')
+    assert.equal(await running, 130)
+    assert.deepEqual(stdout.text.trimEnd().split('\n').map(line => line.split(' ').slice(2).join(' ')), [
+      'before', 'appended', 'late in the old file', 'in the new file'
+    ])
+  })
+
+  it('shows followed records in arrival order in the viewer and quits with q', async () => {
+    const followed = path.join(directory, 'viewed.log')
+    writeFileSync(followed, record(5, 'newer by time') + record(1, 'older by time'))
+    const { stdout, keyboard, signals, state, environment } = harness()
+    const running = runApplication(applicationOptions({ inputs: [followed], isFollowing: true }), environment)
+    await waitFor(() => shown(stdout).includes('older by time'), 'the records')
+    assert.match(shown(stdout), /sort: arrival \| live/u)
+    keyboard.write('q')
+    assert.equal(await running, 0)
+    assert.equal(state.isKeyboardClosed, true)
+    assert.equal(signalListeners(signals), 0)
   })
 })
 
