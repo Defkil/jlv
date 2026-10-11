@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { fixturePath, legacyViewerFixtures } from '../../format-fixtures/src/catalog.js'
-import { keys, openFileViewer, press, screenText } from './support/terminal.js'
+import { keys, openFileViewer, plainTopBorder, press, screenText } from './support/terminal.js'
 
 const characterization = fixturePath(legacyViewerFixtures.characterization)
 const dialog = (rows: readonly string[], from: number, to: number): string[] => rows.slice(from, to).map(row => row.slice(20, 60))
@@ -29,7 +29,7 @@ describe('level filter', () => {
     // The uppercase INFO record does not match (upstream issue #14).
     assert.ok(viewer.panel.lines.every(entry => entry.level === 'info'))
     const rows = screenText(viewer.screen)
-    assert.equal(rows[0], '┌──[ characterization.log ] [ 1/6 ]────────────────────────────────────────────┐')
+    assert.equal(rows[0], plainTopBorder())
     assert.equal(rows[1], '│ 2026-10-11T10:29:00.000Z  info  *  foxtrot 29                                │')
     assert.equal(rows[23], '  NORMAL  1/6 | 20 | sort: -timestamp | filters: level:info')
   })

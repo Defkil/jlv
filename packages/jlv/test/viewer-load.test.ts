@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { fixturePath, legacyViewerFixtures } from '../../format-fixtures/src/catalog.js'
 import { upstreamFixture } from './support/fixtures.js'
 import { loadLegacyLog } from './support/legacy.js'
-import { cellStyle, keys, openFileViewer, press, screenText } from './support/terminal.js'
+import { cellStyle, keys, openFileViewer, plainTopBorder, press, screenText } from './support/terminal.js'
 
 const characterization = fixturePath(legacyViewerFixtures.characterization)
 const empty = fixturePath(legacyViewerFixtures.empty)
@@ -19,10 +19,10 @@ const levelColumn = 28
 const defaultColor = 0x1_FF
 
 describe('initial load', () => {
-  it('renders newest first with the file label and the status line', t => {
+  it('renders newest first with the status line', t => {
     const viewer = openFileViewer(t, characterization)
     assert.deepEqual(screenText(viewer.screen), [
-      '┌──[ characterization.log ] [ 1/32 ]───────────────────────────────────────────┐',
+      plainTopBorder(),
       '│ undefined                          warn      no timestamp                    │',
       '│                                                                              │',
       '│ undefined                               undefined                            │',
@@ -101,11 +101,11 @@ describe('empty log', () => {
   it('shows 1/0, moves the cursor to -1 and fails to open details', async t => {
     const viewer = openFileViewer(t, empty)
     const rows = screenText(viewer.screen)
-    assert.equal(rows[0], '┌──[ empty.log ] [ 1/0 ]───────────────────────────────────────────────────────┐')
+    assert.equal(rows[0], plainTopBorder())
     assert.equal(rows[23], '  NORMAL  1/0 | 20 | sort: -timestamp')
     await press(viewer, keys.down)
     assert.equal(viewer.panel.row, -1)
-    assert.equal(screenText(viewer.screen)[0], '┌──[ empty.log ] [ 0/0 ]───────────────────────────────────────────────────────┐')
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  0/0 | 20 | sort: -timestamp')
     assert.throws(() => { viewer.panel.displayDetails() }, TypeError)
   })
 })
@@ -141,7 +141,7 @@ describe('resize', () => {
     await nextTurn()
     const rows = screenText(viewer.screen)
     assert.equal(rows.length, 30)
-    assert.equal(rows[0], `┌──[ characterization.log ] [ 1/32 ]${'─'.repeat(63)}┐`)
+    assert.equal(rows[0], plainTopBorder(100))
     assert.equal(rows[29], '  NORMAL  1/32 | 26 | sort: -timestamp')
     assert.equal(viewer.panel.pageHeight, 26)
   })

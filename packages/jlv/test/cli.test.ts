@@ -62,11 +62,10 @@ describe('command line', () => {
   it('renders the file and exits with 0 on q', async () => {
     const result = await run(['characterization.log'], { keys: 'q' })
     assert.equal(result.code, 0)
-    // The constructor renders once before the file is loaded.
-    assert.match(result.output, /\[ undefined \]\[ 1\/0 \]/u)
-    assert.match(result.output, /\[ characterization\.log \] \[ 1\/32 \]/u)
+    // Since upstream PR #13 the panel shows no file label; the status line carries the position.
+    assert.doesNotMatch(result.output, /characterization\.log/u)
     assert.match(compact(result.output), /foxtrot29/u)
-    assert.match(result.output, /sort: -timestamp/u)
+    assert.match(result.output, /NORMAL {2}1\/32 \| 20 \| sort: -timestamp/u)
   })
 
   it('exits with 0 on Ctrl-C', async () => {
@@ -76,7 +75,7 @@ describe('command line', () => {
 
   it('applies -l and --sort from the command line', async () => {
     const level = await run(['-l', 'error', 'characterization.log'], { keys: 'q' })
-    assert.match(level.output, /\[ characterization\.log \] \[ 1\/7 \]/u)
+    assert.match(level.output, /NORMAL {2}1\/7 /u)
     assert.match(compact(level.output), /delta27/u)
     assert.doesNotMatch(compact(level.output), /foxtrot29/u)
     assert.match(level.output, /filters: level:error/u)

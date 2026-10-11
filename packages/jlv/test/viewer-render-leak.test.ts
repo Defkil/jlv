@@ -1,37 +1,65 @@
-// Characterization of how the main panel manages its children on every render (upstream PR #13 topic).
+// Characterization of how the main panel manages its children on every render. Upstream PR #13 makes
+// update() remove the panel's children before it appends the new row element. Before the patch, every
+// render appended one more element (3 children after loading, 13 after ten moves, 113 after another
+// hundred renders) and kept the border label and closed dialogs.
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import { setImmediate as nextTurn } from 'node:timers/promises'
 import { fixturePath, legacyViewerFixtures } from '../../format-fixtures/src/catalog.js'
-import { keys, openFileViewer, press, screenText } from './support/terminal.js'
+import { keys, openFileViewer, plainTopBorder, press, screenText, type Viewer } from './support/terminal.js'
 
 const characterization = fixturePath(legacyViewerFixtures.characterization)
 
-const childTypes = (children: readonly { readonly type: string }[]): string[] => children.map(child => child.type)
+const children = (viewer: Viewer): string[] => viewer.panel.children.map(child =>
+  `${child.type}${Reflect.get(child, 'hidden') === true ? ' (hidden)' : ''}`)
 
 describe('main panel children', () => {
-  it('appends one more row element on every render (upstream leak)', async t => {
+  it('keeps one row element however often the panel renders', async t => {
     const viewer = openFileViewer(t, characterization)
-    // The border label plus one element for the constructor render and one for loading the file.
-    assert.deepEqual(childTypes(viewer.panel.children), ['box', 'element', 'element'])
+    assert.deepEqual(children(viewer), ['element'])
     await press(viewer, ...Array.from({ length: 10 }, () => keys.down))
-    assert.equal(viewer.panel.children.length, 13)
+    assert.deepEqual(children(viewer), ['element'])
     for (let render = 0; render < 100; render += 1) {
       viewer.panel.renderLines()
     }
-    assert.equal(viewer.panel.children.length, 113)
+    assert.deepEqual(children(viewer), ['element'])
   })
 
-  it('keeps the border label with the file name and the cursor position', async t => {
+  it('removes the border label with the other children (regression of the patch)', async t => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, ...Array.from({ length: 10 }, () => keys.down))
-    assert.equal(screenText(viewer.screen)[0], '┌──[ characterization.log ] [ 11/32 ]──────────────────────────────────────────┐')
+    assert.equal(screenText(viewer.screen)[0], plainTopBorder())
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  11/32 | 20 | sort: -timestamp')
   })
 
-  it('keeps closed prompts and messages as hidden children', async t => {
+  // The patch removes children while iterating over the same array, so each render removes only every
+  // second child. Once a dialog has been a child, two row elements remain.
+  it('removes closed dialogs one render later and then keeps two row elements', async t => {
     const viewer = openFileViewer(t, characterization)
-    await press(viewer, '/', 'zzz', keys.enter, keys.enter)
-    const dialogs = viewer.panel.children.filter(child => child.type === 'prompt' || child.type === 'question')
-    assert.deepEqual(childTypes(dialogs), ['prompt', 'question'])
-    assert.ok(dialogs.every(child => Reflect.get(child, 'hidden') === true))
+    await press(viewer, '/', 'zzz', keys.enter)
+    assert.deepEqual(children(viewer), ['element', 'prompt (hidden)', 'question'])
+    await press(viewer, keys.enter)
+    assert.deepEqual(children(viewer), ['prompt (hidden)', 'element'])
+    await press(viewer, keys.down)
+    assert.deepEqual(children(viewer), ['element', 'element'])
+    for (let render = 0; render < 100; render += 1) {
+      viewer.panel.renderLines()
+    }
+    assert.deepEqual(children(viewer), ['element', 'element'])
+  })
+
+  it('detaches an open prompt on the second resize while it keeps reading keys (modal limitation)', async t => {
+    const viewer = openFileViewer(t, characterization)
+    await press(viewer, '/')
+    assert.ok(screenText(viewer.screen).some(row => row.includes('Search:')))
+    viewer.output.resizeTo(100, 30)
+    await nextTurn()
+    viewer.output.resizeTo(80, 24)
+    await nextTurn()
+    assert.deepEqual(children(viewer), ['element', 'element'])
+    assert.ok(screenText(viewer.screen).every(row => !row.includes('Search:')))
+    assert.equal(Reflect.get(viewer.screen, 'grabKeys'), true)
+    await press(viewer, 'charlie', keys.enter)
+    assert.equal(viewer.panel.row, 5)
   })
 })

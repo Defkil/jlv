@@ -44,6 +44,9 @@ export interface ViewerOptions {
   readonly sort?: string
 }
 
+// The main panel's top border without a label, as rendered since upstream PR #13 removes the label.
+export const plainTopBorder = (columns = 80): string => `┌${'─'.repeat(columns - 2)}┐`
+
 export const keys = {
   up: '\u{1B}[A',
   down: '\u{1B}[B',
