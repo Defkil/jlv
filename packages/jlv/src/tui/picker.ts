@@ -1,0 +1,112 @@
+// Successor of upstream src/widgets/Picker.js: a list dialog that emits select with the chosen item, or with
+// undefined when it is closed with Escape.
+import type { Widgets } from 'blessed'
+import BaseWidget = require('./base-widget.js')
+import boundary = require('./blessed-boundary.js')
+import formatting = require('./formatting.js')
+
+const { markup } = formatting
+
+interface PickerOptions {
+  readonly items: readonly string[]
+  readonly label?: string
+  // Chooses the first item that starts with a typed lowercase letter.
+  readonly keySelect?: boolean
+}
+
+class Picker extends BaseWidget {
+  items: readonly string[]
+  label: string
+  keySelect: boolean
+  // Created by update(), which the constructor calls.
+  list!: Widgets.ListElement
+
+  constructor (parent: Widgets.Node, options: PickerOptions) {
+    super({
+      ...options,
+      parent,
+      top: 'center',
+      left: 'center',
+      width: 'shrink',
+      height: 'shrink',
+      shadow: true,
+      padding: 1,
+      style: {
+        border: {
+          fg: 'red'
+        },
+        header: {
+          fg: 'blue',
+          bold: true
+        },
+        cell: {
+          fg: 'magenta',
+          selected: {
+            bg: 'blue'
+          }
+        }
+      }
+    })
+    this.items = options.items
+    this.label = options.label || 'Select item'
+    this.keySelect = !!options.keySelect
+    this.update()
+  }
+
+  update (): void {
+    this.setLabel(markup`{bold} ${this.label} {/}`)
+    this.list = boundary.createList({
+      screen: this.screen,
+      interactive: true,
+      keys: true,
+      style: {
+        selected: {
+          bg: 'white',
+          fg: 'black',
+          bold: true
+        }
+      }
+    })
+    this.list.on('focus', () => { this.log('focus') })
+    this.list.on('blur', () => { this.log('blur') })
+    this.list.on('keypress', this.handleKeyPressed.bind(this))
+    this.list.on('select', this.handleSelected.bind(this))
+    this.list.setItems([...this.items])
+    this.append(this.list)
+  }
+
+  handleSelected (_item: Widgets.BoxElement, index: number): void {
+    this.selected(this.items[index])
+  }
+
+  selected (value: string | undefined): void {
+    this.list.detach()
+    this.detach()
+    this.screen.render()
+    this.emit('select', undefined, value)
+  }
+
+  // blessed passes no character for keys such as the arrows. Like upstream, the check then sees the text
+  // "undefined", which no item starts with.
+  handleKeyPressed (character: string | undefined, key: Widgets.Events.IKeyEventArg): void {
+    if (this.keySelect && /[a-z]/.test(String(character))) {
+      const item = this.items.find(candidate => candidate.startsWith(String(character)))
+      if (item) {
+        this.log('item', item)
+        this.selected(item)
+      }
+    }
+
+    if (key.name === 'escape') {
+      this.selected(undefined)
+    }
+  }
+
+  override setCurrent (): this {
+    this.list.focus()
+    this.screen.render()
+    return this
+  }
+}
+
+export = Picker

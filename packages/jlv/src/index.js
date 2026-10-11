@@ -5,7 +5,7 @@ const _ = require('lodash');
 require('./polyfills');
 
 const MainPanel = require('./widgets/MainPanel');
-const StatusLine = require('./widgets/StatusLine');
+const StatusLine = require('./tui/status-line');
 
 const opts = minimist(process.argv.slice(2));
 const logFile = opts._[0];

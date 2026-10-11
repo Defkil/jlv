@@ -1,7 +1,7 @@
 const blessed = require('blessed');
 const _ = require('lodash');
 
-const BaseWidget = require('./BaseWidget');
+const BaseWidget = require('../tui/base-widget');
 
 const fmtKey = (rawKey, padding=undefined) => {
   const key = padding

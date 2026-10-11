@@ -4,9 +4,9 @@ const _ = require('lodash');
 const { readLog } = require('../log');
 const { formatRows, levelColors } = require('../tui/formatting');
 
-const BaseWidget = require('./BaseWidget');
+const BaseWidget = require('../tui/base-widget');
 const LogDetails = require('./LogDetails');
-const Picker = require('./Picker');
+const Picker = require('../tui/picker');
 
 const FIELDS = ['timestamp', 'level', 'message'];
 

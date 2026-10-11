@@ -34,6 +34,14 @@ describe('level filter', () => {
     assert.equal(rows[23], '  NORMAL  1/6 | 20 | sort: -timestamp | filters: level:info')
   })
 
+  it('chooses a level with the arrow keys and Enter', async t => {
+    const viewer = openFileViewer(t, characterization)
+    await press(viewer, 'l', keys.down, keys.down, keys.enter)
+    assert.equal(viewer.panel.levelFilter, 'info')
+    assert.equal(viewer.panel.lines.length, 6)
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/6 | 20 | sort: -timestamp | filters: level:info')
+  })
+
   it('clears the level filter with all and keeps it when the picker is closed with Escape', async t => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, 'l', 'e')

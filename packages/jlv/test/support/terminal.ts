@@ -5,7 +5,9 @@ import { PassThrough, Writable } from 'node:stream'
 import type { TestContext } from 'node:test'
 import { setImmediate as nextTurn } from 'node:timers/promises'
 import type { Widgets } from 'blessed'
-import { loadMainPanel, loadStatusLine, loadTerminalLibrary, type LegacyMainPanel } from './legacy.js'
+import boundary from '../../src/tui/blessed-boundary.js'
+import StatusLine from '../../src/tui/status-line.js'
+import { loadMainPanel, type LegacyMainPanel } from './legacy.js'
 
 export class TerminalOutput extends Writable {
   readonly isTTY = true
@@ -62,7 +64,7 @@ export const keys = {
 export const openViewer = (context: TestContext, file: string, options: ViewerOptions = {}): Viewer => {
   const input = new PassThrough()
   const output = new TerminalOutput(options.columns ?? 80, options.rows ?? 24)
-  const screen = loadTerminalLibrary().screen({
+  const screen = boundary.createScreen({
     input,
     output,
     terminal: 'xterm-256color',
@@ -74,7 +76,6 @@ export const openViewer = (context: TestContext, file: string, options: ViewerOp
   const MainPanel = loadMainPanel()
   const panel = new MainPanel({ screen, level: options.level, sort: options.sort })
   panel.loadFile(file)
-  const StatusLine = loadStatusLine()
   const status = new StatusLine({ screen, mainPanel: panel })
   screen.append(status)
   panel.setCurrent()
