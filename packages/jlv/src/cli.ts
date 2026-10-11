@@ -1,41 +1,58 @@
 #!/usr/bin/env node
-// Successor of upstream src/index.js, the jv command: reads the arguments and opens the main panel and the status
-// line on the screen. This module owns the process-level effects; the modules it imports have none on import.
+// Successor of upstream src/index.js, the jv command: reads the arguments, prints the help, the version and usage
+// errors, and runs the application with the process's streams. It sets the exit code and lets the process end by
+// itself once the application has closed its streams and the terminal. The modules it imports have no effects on
+// import.
+import { readFileSync } from 'node:fs'
+import os from 'node:os'
 import { parseArgs } from 'node:util'
-import { Ingestion, ingestFiles, throttle } from './application.js'
-import { InputError, resolveInputs } from './input/files.js'
-import { MappingFileError, parseEntry, readMapping } from './log.js'
-import { RecordStore } from './store.js'
-import { createScreen } from './tui/blessed-boundary.js'
-import { MainPanel } from './tui/main-panel.js'
-import { RecordView } from './tui/record-view.js'
-import { StatusLine } from './tui/status-line.js'
+import { runApplication, type ApplicationOptions, type OutputMode } from './application.js'
+import { openKeyboard } from './terminal.js'
 
-const usage = 'usage: jv [-l <level>] [-s <field>] [--log <file>] <log-file>'
+const usage = 'usage: jv [options] [file | \'glob\' | -]...'
 
-// The options of upstream's minimist parser. Unknown options and options without their value are now usage errors;
-// a value that starts with a dash needs the = form, such as --sort=-timestamp.
+const help = `${usage}
+
+Shows JSON lines from files, quoted glob patterns or standard input (-) in a terminal viewer, or writes them as text
+or JSON lines when there is no terminal.
+
+options:
+  -f, --files <glob>     read the files that a pattern matches; repeatable
+  --follow               keep reading files that grow, are truncated or replaced
+  --sort <order>         timestamp, level, message, arrival or another field; a leading - sorts descending
+                         (default: -timestamp for files, arrival for pipes and --follow)
+  -l, --level <level>    show only records of this level
+  --output <mode>        auto, tui, plain or jsonl (default: auto, the viewer when the terminal allows it)
+  --max-records <n>      records the viewer keeps (default: 50000)
+  --max-bytes <n>        bytes of records the viewer keeps (default: 67108864)
+  --log <file>           write the terminal library's debug log
+  -h, --help             show this help
+  --version              show the version
+
+Exit codes: 0 done, 1 an input or the output failed, 2 usage error, 130 interrupted.
+`
+
+// Unknown options and options without their value are usage errors; a value that starts with a dash needs the =
+// form, such as --sort=-timestamp.
 const optionDefinitions = {
+  files: { type: 'string', short: 'f', multiple: true },
+  follow: { type: 'boolean' },
+  sort: { type: 'string' },
   level: { type: 'string', short: 'l' },
-  sort: { type: 'string', short: 's' },
-  log: { type: 'string' }
+  output: { type: 'string' },
+  'max-records': { type: 'string' },
+  'max-bytes': { type: 'string' },
+  log: { type: 'string' },
+  help: { type: 'boolean', short: 'h' },
+  version: { type: 'boolean' }
 } as const
 
-const isUsageError = (error: unknown): error is Error =>
-  error instanceof TypeError && 'code' in error && typeof error.code === 'string' && error.code.startsWith('ERR_PARSE_ARGS_')
+const outputModes: ReadonlySet<string> = new Set<OutputMode>(['auto', 'tui', 'plain', 'jsonl'])
 
-// Usage errors exit with code 2 (plan section 6.1).
-const readArguments = () => {
-  try {
-    return parseArgs({ args: process.argv.slice(2), options: optionDefinitions, allowPositionals: true })
-  } catch (error) {
-    if (isUsageError(error)) {
-      process.stderr.write(`jv: ${error.message}\n${usage}\n`)
-      process.exit(2)
-    }
-    throw error
-  }
-}
+class UsageError extends Error {}
+
+const isParseError = (error: unknown): error is Error =>
+  error instanceof TypeError && 'code' in error && typeof error.code === 'string' && error.code.startsWith('ERR_PARSE_ARGS_')
 
 // minimist read numeric values as numbers, which the level filter compares as they are, so -l 30 matches pino's
 // numeric level 30. The level keeps minimist's number test; every other value stays text.
@@ -44,75 +61,95 @@ const decimalPattern = /^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?$/
 const levelValue = (text: string | undefined): string | number | undefined =>
   text !== undefined && (hexadecimalPattern.test(text) || decimalPattern.test(text)) ? Number(text) : text
 
-const { values, positionals } = readArguments()
-const [logFile] = positionals
-
-if (!logFile) {
-  console.log('error: missing log file')
-  process.exit(1)
+// The store's limits are positive integers below 2^32.
+const limitValue = (name: string, text: string | undefined): number | undefined => {
+  if (text === undefined) {
+    return undefined
+  }
+  const value = /^\d+$/.test(text) ? Number(text) : NaN
+  if (!(value >= 1 && value <= 0xFF_FF_FF_FF)) {
+    throw new UsageError(`--${name} needs a whole number from 1 to 4294967295, not '${text}'`)
+  }
+  return value
 }
 
-// The input and the mapping are checked before the screen opens.
-const exitWith = (code: number, message: string): never => {
-  process.stderr.write(`jv: ${message}\n`)
-  process.exit(code)
+const readOptions = (): ApplicationOptions | 'help' | 'version' => {
+  const { values, tokens } = parseArgs({
+    args: process.argv.slice(2),
+    options: optionDefinitions,
+    allowPositionals: true,
+    tokens: true
+  })
+  if (values.help === true) {
+    return 'help'
+  }
+  if (values.version === true) {
+    return 'version'
+  }
+  const output = values.output ?? 'auto'
+  if (!outputModes.has(output)) {
+    throw new UsageError(`--output takes auto, tui, plain or jsonl, not '${output}'`)
+  }
+  const sort = values.sort
+  if (sort !== undefined && sort !== 'arrival' && (output === 'plain' || output === 'jsonl')) {
+    throw new UsageError(`--output ${output} writes the records in arrival order; --sort ${sort} needs the viewer`)
+  }
+  // Positional arguments and --files keep their order on the command line.
+  const inputs: string[] = []
+  for (const token of tokens) {
+    const isInput = token.kind === 'positional' || (token.kind === 'option' && token.name === 'files')
+    if (isInput && typeof token.value === 'string') {
+      inputs.push(token.value)
+    }
+  }
+  return {
+    inputs,
+    isFollowing: values.follow === true,
+    sort,
+    level: levelValue(values.level),
+    output: output as OutputMode,
+    maximumRecords: limitValue('max-records', values['max-records']),
+    maximumBytes: limitValue('max-bytes', values['max-bytes']),
+    debugLog: values.log
+  }
 }
-const resolveSources = async (): Promise<Awaited<ReturnType<typeof resolveInputs>>> => {
+
+// The version of the package, read from its manifest next to the emitted code.
+const packageVersion = (): string => {
+  const manifest: unknown = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  const version: unknown = typeof manifest === 'object' && manifest !== null ? Reflect.get(manifest, 'version') : undefined
+  return typeof version === 'string' ? version : 'unknown'
+}
+
+const main = async (): Promise<number> => {
+  let options: ReturnType<typeof readOptions>
   try {
-    return await resolveInputs([logFile], { workingDirectory: process.cwd(), isStdinTerminal: true })
+    options = readOptions()
   } catch (error) {
-    if (error instanceof InputError) {
-      exitWith(error.exitCode, error.message)
+    if (isParseError(error) || error instanceof UsageError) {
+      process.stderr.write(`jv: ${error.message}\n${usage}\nRun jv --help for the options.\n`)
+      return 2
     }
     throw error
   }
-}
-const sources = await resolveSources()
-const mapping = (() => {
-  try {
-    return readMapping()
-  } catch (error) {
-    if (error instanceof MappingFileError) {
-      exitWith(2, error.message)
-    }
-    throw error
+  if (options === 'help') {
+    process.stdout.write(help)
+    return 0
   }
-})()
-
-const store = new RecordStore()
-const ingestion = new Ingestion({ store, mapping })
-const view = new RecordView(store, text => parseEntry(text, mapping))
-
-const screen = createScreen({
-  smartCSR: true,
-  // An empty file name, as from --log=, writes no log, as before.
-  log: values.log || undefined
-})
-screen.key(['C-c'], () => {
-  process.exit(0)
-})
-
-const mainPanel = new MainPanel({ screen, view, label: logFile, progress: ingestion, level: levelValue(values.level), sort: values.sort })
-mainPanel.on('quit', () => {
-  process.exit(0)
-})
-
-const statusLine = new StatusLine({ screen, mainPanel })
-screen.append(statusLine)
-mainPanel.setCurrent()
-
-screen.render()
-
-process.on('SIGWINCH', () => {
-  screen.emit('resize')
-})
-
-const refresh = throttle(() => { mainPanel.refresh() })
-try {
-  await ingestFiles(sources, ingestion, refresh.schedule)
-  ingestion.activity = 'done'
-  refresh.flush()
-} catch (error) {
-  screen.destroy()
-  exitWith(1, error instanceof Error ? error.message : String(error))
+  if (options === 'version') {
+    process.stdout.write(`${packageVersion()}\n`)
+    return 0
+  }
+  return runApplication(options, {
+    stdin: process.stdin,
+    stdout: process.stdout,
+    stderr: process.stderr,
+    workingDirectory: process.cwd(),
+    home: os.homedir(),
+    platform: process.platform,
+    signals: process,
+    openKeyboard
+  })
 }
+
+process.exitCode = await main()

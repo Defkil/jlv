@@ -60,10 +60,10 @@ export default defineConfig([
     }
   },
   {
-    files: ['packages/jlv/src/application.ts'],
+    files: codeFiles,
     rules: {
-      // Plan section 4.1 names this module application.ts; Unicorn 77 would shorten the file name to app.ts.
-      'unicorn/name-replacements': ['error', { checkFilenames: false }]
+      // Plan section 4.1 names the application module with the full word; Unicorn 77 would shorten it to app.
+      'unicorn/name-replacements': ['error', { replacements: { application: false } }]
     }
   },
   {

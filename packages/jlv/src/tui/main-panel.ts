@@ -23,10 +23,12 @@ type Filter =
 
 type PickerCallback = (error: unknown, value: string | undefined) => void
 
-// How far the input has come: the lines skipped so far and whether records still arrive.
+// How far the input has come: whether records still arrive, the lines skipped so far and the inputs that could not
+// be read to their end.
 interface InputProgress {
-  readonly skipped: number
   readonly activity: 'loading' | 'live' | 'done'
+  readonly skipped: number
+  readonly failed: number
 }
 
 interface MainPanelOptions {
@@ -226,18 +228,22 @@ class MainPanel extends BaseWidget {
   }
 
   // What the status line reports about the input: whether records still arrive, how many the store keeps of those
-  // that arrived, and how many lines were skipped.
+  // that arrived, how many lines were skipped and how many inputs failed.
   get inputStatus (): string {
     const { store } = this.view
+    const { progress } = this
     const parts: string[] = []
-    if (this.progress !== undefined && this.progress.activity !== 'done') {
-      parts.push(this.progress.activity)
+    if (progress !== undefined && progress.activity !== 'done') {
+      parts.push(progress.activity)
     }
     if (store.evicted > 0) {
       parts.push(`kept ${String(store.retained)} of ${String(store.seen)}`)
     }
-    if (this.progress !== undefined && this.progress.skipped > 0) {
-      parts.push(`${String(this.progress.skipped)} skipped`)
+    if (progress !== undefined && progress.skipped > 0) {
+      parts.push(`${String(progress.skipped)} skipped`)
+    }
+    if (progress !== undefined && progress.failed > 0) {
+      parts.push(`${String(progress.failed)} failed`)
     }
     return parts.join(' | ')
   }

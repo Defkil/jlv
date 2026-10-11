@@ -20,14 +20,21 @@ export class TerminalOutput extends Writable {
   readonly isTTY = true
   columns: number
   rows: number
+  // Everything written, when the output records it.
+  written = ''
+  readonly isRecording: boolean
 
-  constructor (columns: number, rows: number) {
+  constructor (columns: number, rows: number, isRecording = false) {
     super()
     this.columns = columns
     this.rows = rows
+    this.isRecording = isRecording
   }
 
-  override _write (_chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
+  override _write (chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
+    if (this.isRecording) {
+      this.written += chunk.toString('utf8')
+    }
     callback()
   }
 

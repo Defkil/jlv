@@ -1,0 +1,304 @@
+// The application of src/application.ts with streams of the test instead of the process: live standard input in the
+// viewer, keys from a separate keyboard, signals, the automatic plain fallback, machine output with backpressure,
+// and errors that are reported before a screen opens (plan sections 6.1 and 8, phase 5).
+import assert from 'node:assert/strict'
+import { EventEmitter, once } from 'node:events'
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { PassThrough, Writable } from 'node:stream'
+import { after, describe, it } from 'node:test'
+import { setTimeout as delay } from 'node:timers/promises'
+import { stripVTControlCharacters } from 'node:util'
+import { fixturePath, legacyViewerFixtures } from '../../format-fixtures/src/catalog.js'
+import { runApplication, type ApplicationEnvironment, type ApplicationOptions } from '../src/application.js'
+import { TerminalOutput } from './support/terminal.js'
+
+const characterization = fixturePath(legacyViewerFixtures.characterization)
+const directory = mkdtempSync(path.join(tmpdir(), 'jlv-application-'))
+const home = path.join(directory, 'home')
+mkdirSync(home)
+after(() => {
+  rmSync(directory, { recursive: true, force: true })
+})
+
+const record = (minute: number, message: string, level = 'info'): string =>
+  `${JSON.stringify({ timestamp: `2026-10-11T10:${String(minute).padStart(2, '0')}:00.000Z`, level, message })}\n`
+
+class TextOutput extends Writable {
+  text = ''
+
+  override _write (chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
+    this.text += chunk.toString('utf8')
+    callback()
+  }
+}
+
+interface Harness {
+  readonly stdin: PassThrough & { isTTY?: boolean }
+  readonly stdout: Writable & { readonly isTTY?: boolean }
+  readonly stderr: TextOutput
+  readonly signals: EventEmitter
+  readonly keyboard: PassThrough
+  readonly state: { isKeyboardClosed: boolean }
+  readonly environment: ApplicationEnvironment
+}
+
+interface HarnessOptions {
+  readonly hasKeyboard?: boolean
+  readonly stdout?: Writable & { readonly isTTY?: boolean }
+  readonly home?: string
+}
+
+const harness = (options: HarnessOptions = {}): Harness => {
+  const stdin = new PassThrough()
+  const stdout = options.stdout ?? new TerminalOutput(80, 24, true)
+  const stderr = new TextOutput()
+  // eslint-disable-next-line unicorn/prefer-event-target -- the application listens to process, which is an EventEmitter
+  const signals = new EventEmitter()
+  const keyboard = new PassThrough()
+  const state = { isKeyboardClosed: false }
+  const environment: ApplicationEnvironment = {
+    stdin,
+    stdout,
+    stderr,
+    workingDirectory: path.dirname(characterization),
+    home: options.home ?? home,
+    platform: process.platform,
+    signals,
+    openKeyboard: () => options.hasKeyboard === false
+      ? undefined
+      : { stream: keyboard, path: 'test keyboard', close: () => { state.isKeyboardClosed = true } },
+    screenOptions: { terminal: 'xterm-256color', forceUnicode: true, warnings: false }
+  }
+  return { stdin, stdout, stderr, signals, keyboard, state, environment }
+}
+
+const applicationOptions = (overrides: Partial<ApplicationOptions> = {}): ApplicationOptions => ({
+  inputs: [],
+  isFollowing: false,
+  sort: undefined,
+  level: undefined,
+  output: 'auto',
+  maximumRecords: undefined,
+  maximumBytes: undefined,
+  debugLog: undefined,
+  ...overrides
+})
+
+// What the terminal shows so far, without escape sequences.
+const shown = (output: Writable): string => output instanceof TerminalOutput ? stripVTControlCharacters(output.written) : ''
+
+const waitFor = async (isReady: () => boolean, what: string): Promise<void> => {
+  const deadline = performance.now() + 5000
+  while (!isReady()) {
+    if (performance.now() > deadline) {
+      assert.fail(`timed out waiting for ${what}`)
+    }
+    await delay(5)
+  }
+}
+
+const signalListeners = (signals: EventEmitter): number =>
+  ['SIGINT', 'SIGTERM', 'SIGHUP'].reduce((sum, signal) => sum + signals.listenerCount(signal), 0)
+
+describe('viewer with live standard input', () => {
+  it('shows records before standard input ends, reads keys from the keyboard and quits with q', async () => {
+    const { stdin, stdout, keyboard, signals, state, environment } = harness()
+    const running = runApplication(applicationOptions(), environment)
+    stdin.write(record(1, 'first arrival'))
+    await waitFor(() => shown(stdout).includes('first arrival'), 'the first record')
+    assert.match(shown(stdout), /\[ stdin \]/u)
+    assert.equal(signalListeners(signals), 3)
+    stdin.write(record(2, 'second arrival'))
+    await waitFor(() => shown(stdout).includes('second arrival'), 'the second record')
+    keyboard.write('q')
+    assert.equal(await running, 0)
+    // The pipe never ended; quitting stops reading it, closes the keyboard and stops listening for signals.
+    assert.equal(stdin.destroyed, true)
+    assert.equal(state.isKeyboardClosed, true)
+    assert.equal(signalListeners(signals), 0)
+  })
+
+  it('stays open when standard input ends', async () => {
+    const { stdin, stdout, keyboard, environment } = harness()
+    let isDone = false
+    const running = (async () => {
+      try {
+        return await runApplication(applicationOptions(), environment)
+      } finally {
+        isDone = true
+      }
+    })()
+    stdin.end(record(1, 'only record'))
+    await waitFor(() => shown(stdout).includes('only record'), 'the record')
+    await delay(150)
+    assert.equal(isDone, false)
+    keyboard.write('q')
+    assert.equal(await running, 0)
+  })
+})
+
+describe('ending the viewer', () => {
+  const cases = [
+    { name: 'Ctrl-C', exitCode: 130, stop: (subject: Harness) => { subject.keyboard.write('\u{3}') } },
+    { name: 'SIGINT', exitCode: 130, stop: (subject: Harness) => { subject.signals.emit('SIGINT') } },
+    { name: 'SIGTERM', exitCode: 143, stop: (subject: Harness) => { subject.signals.emit('SIGTERM') } },
+    { name: 'SIGHUP', exitCode: 129, stop: (subject: Harness) => { subject.signals.emit('SIGHUP') } }
+  ]
+  for (const { name, exitCode, stop } of cases) {
+    it(`ends with ${String(exitCode)} on ${name} and closes the keyboard`, async () => {
+      const subject = harness()
+      const running = runApplication(applicationOptions({ inputs: ['characterization.log'] }), subject.environment)
+      await waitFor(() => shown(subject.stdout).includes('foxtrot 29'), 'the records')
+      stop(subject)
+      assert.equal(await running, exitCode)
+      assert.equal(subject.state.isKeyboardClosed, true)
+      assert.equal(signalListeners(subject.signals), 0)
+    })
+  }
+
+  it('keeps the viewer open after a file was read', async () => {
+    const { stdout, keyboard, environment } = harness()
+    let isDone = false
+    const running = (async () => {
+      try {
+        return await runApplication(applicationOptions({ inputs: ['characterization.log'] }), environment)
+      } finally {
+        isDone = true
+      }
+    })()
+    // The screen redraws only the cells that change, so the status line arrives in pieces; the rows arrive whole.
+    await waitFor(() => shown(stdout).includes('foxtrot 29'), 'the records')
+    await delay(150)
+    assert.equal(isDone, false)
+    keyboard.write('q')
+    assert.equal(await running, 0)
+  })
+})
+
+describe('output without a viewer', () => {
+  it('writes plain text when no keyboard can be found and says that --sort applies to the viewer only', async () => {
+    const stdout = new TextOutput()
+    const { stdin, stderr, environment } = harness({ hasKeyboard: false, stdout: Object.assign(stdout, { isTTY: true }) })
+    const running = runApplication(applicationOptions({ sort: 'level' }), environment)
+    stdin.end(record(2, 'second', 'warn') + record(1, 'first'))
+    assert.equal(await running, 0)
+    assert.equal(stdout.text, '2026-10-11T10:02:00.000Z warn second\n2026-10-11T10:01:00.000Z info first\n')
+    assert.equal(stderr.text, 'jv: plain output keeps the arrival order; --sort level applies to the viewer only\n')
+  })
+
+  it('fails with 1 for --output tui without a keyboard or without a terminal and opens no screen', async () => {
+    const withoutKeyboard = harness({ hasKeyboard: false })
+    assert.equal(await runApplication(applicationOptions({ output: 'tui' }), withoutKeyboard.environment), 1)
+    assert.match(withoutKeyboard.stderr.text, /^jv: the viewer needs a terminal: no terminal to read keys from: /u)
+    assert.equal(shown(withoutKeyboard.stdout), '')
+    const withoutTerminal = harness({ stdout: new TextOutput() })
+    assert.equal(await runApplication(applicationOptions({ output: 'tui', inputs: ['characterization.log'] }), withoutTerminal.environment), 1)
+    assert.equal(withoutTerminal.stderr.text, 'jv: the viewer needs a terminal: standard output is no terminal\n')
+  })
+
+  it('writes the records that match the level as JSON lines in arrival order and reports skipped lines', async () => {
+    const stdout = new TextOutput()
+    const { stderr, environment } = harness({ stdout })
+    const running = runApplication(applicationOptions({ inputs: ['characterization.log'], output: 'jsonl', level: 'error' }), environment)
+    assert.equal(await running, 0)
+    const messages = stdout.text.trimEnd().split('\n').map(line => Reflect.get(JSON.parse(line) as object, 'message') as unknown)
+    assert.deepEqual(messages, ['bravo 07', 'bravo 19', 'delta 03', 'delta 15', 'delta 27', 'foxtrot 11', 'foxtrot 23'])
+    assert.equal(stderr.text, [
+      'jv: characterization.log:5: skipped a line that is no JSON',
+      'jv: characterization.log:11: skipped a line that is no JSON',
+      'jv: characterization.log:20: skipped a JSON value that is no record',
+      ''
+    ].join('\n'))
+  })
+
+  it('reports the first ten skipped lines and counts the others', async () => {
+    const stdout = new TextOutput()
+    const { stdin, stderr, environment } = harness({ stdout })
+    const running = runApplication(applicationOptions({ output: 'plain' }), environment)
+    stdin.end(`${'not json\n'.repeat(12)}${record(1, 'one')}`)
+    assert.equal(await running, 0)
+    const lines = stderr.text.trimEnd().split('\n')
+    assert.equal(lines.length, 11)
+    assert.equal(lines[9], 'jv: stdin:10: skipped a line that is no JSON')
+    assert.equal(lines[10], 'jv: skipped 12 lines in total, the first 10 of them shown above')
+  })
+
+  it('fails with 1 when nonempty input holds no records', async () => {
+    const { stdin, stderr, environment } = harness({ stdout: new TextOutput() })
+    const running = runApplication(applicationOptions({ output: 'plain' }), environment)
+    stdin.end('garbage\n{"truncated":\n')
+    assert.equal(await running, 1)
+    assert.match(stderr.text, /jv: the input holds no records, only 2 skipped lines\n$/u)
+  })
+
+  it('reads from a live input only as fast as a slow output takes the records, and stops on SIGINT', async () => {
+    // One chunk per 20 ms with a 16-byte buffer.
+    const sink = new Writable({
+      highWaterMark: 16,
+      write: (_chunk, _encoding, callback) => { setTimeout(callback, 20) }
+    })
+    const { stdin, signals, environment } = harness({ stdout: sink })
+    const running = runApplication(applicationOptions({ output: 'jsonl' }), environment)
+    const line = record(1, 'x'.repeat(40))
+    const total = 64 * 1024 * 1024
+    let pushed = 0
+    const producing = (async () => {
+      while (pushed < total && !stdin.destroyed) {
+        pushed += line.length
+        if (stdin.write(line)) {
+          continue
+        }
+        try {
+          await Promise.race([once(stdin, 'drain'), once(stdin, 'close')])
+        } catch {
+          // The application stopped reading and destroyed the input.
+          return
+        }
+      }
+    })()
+    await delay(500)
+    const pushedBeforeStop = pushed
+    signals.emit('SIGINT')
+    assert.equal(await running, 130)
+    await producing
+    assert.ok(pushedBeforeStop < 2 * 1024 * 1024, `the input took ${String(pushedBeforeStop)} bytes`)
+    assert.equal(stdin.destroyed, true)
+  })
+})
+
+describe('errors before a screen opens', () => {
+  it('reports a mapping file that cannot be read with 2', async () => {
+    const unreadable = path.join(directory, 'unreadable-home')
+    mkdirSync(path.join(unreadable, '.json-log-viewer'), { recursive: true })
+    const { stdout, stderr, environment } = harness({ home: unreadable })
+    assert.equal(await runApplication(applicationOptions({ inputs: ['characterization.log'] }), environment), 2)
+    assert.match(stderr.text, /^jv: cannot read the mapping file /u)
+    assert.equal(shown(stdout), '')
+  })
+
+  it('reports a missing file with 1 and no input on a terminal with 2', async () => {
+    const missing = harness()
+    assert.equal(await runApplication(applicationOptions({ inputs: ['missing.log'] }), missing.environment), 1)
+    assert.equal(missing.stderr.text, 'jv: cannot read \'missing.log\': no such file\n')
+    const terminal = harness()
+    terminal.stdin.isTTY = true
+    assert.equal(await runApplication(applicationOptions(), terminal.environment), 2)
+    assert.equal(terminal.stderr.text, 'jv: no input: name a log file or pipe records into jv\n')
+    assert.equal(shown(terminal.stdout), '')
+  })
+
+  // A file that cannot be opened after it was found; Windows has no permission bits for this test.
+  it('reports a file that cannot be read, reads the others and ends with 1', { skip: process.platform === 'win32' || process.getuid?.() === 0 }, async () => {
+    const locked = path.join(directory, 'locked.log')
+    writeFileSync(locked, record(1, 'hidden'))
+    chmodSync(locked, 0)
+    const stdout = new TextOutput()
+    const { stderr, environment } = harness({ stdout })
+    const running = runApplication(applicationOptions({ inputs: [locked, characterization], output: 'plain' }), environment)
+    assert.equal(await running, 1)
+    assert.match(stderr.text, /jv: cannot read '.*locked\.log': .*EACCES/u)
+    assert.match(stdout.text, /foxtrot 29/u)
+  })
+})
