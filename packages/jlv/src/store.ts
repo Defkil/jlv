@@ -1,12 +1,14 @@
 // The records that the viewer keeps (plan sections 6.1 and 0.9): the last ingested records under a count and a byte
-// limit, 50,000 records and 64 MiB by default. A record's text lives in one byte arena outside the JavaScript heap,
-// a ring buffer that grows up to the byte limit; typed arrays hold its place, time key, source and record number.
-// Only what the viewer shows is parsed again. Retaining parsed records instead peaked above the 256 MiB target of
+// limit, 50,000 records and 64 MiB by default. A record's JSON text lives in one byte arena outside the JavaScript
+// heap, a ring buffer that grows up to the byte limit; typed arrays hold its place, its normalized time and level,
+// its source, record number and lines. Only what the viewer shows is parsed and normalized again. Retaining parsed records instead peaked above the 256 MiB target of
 // the phase 0 benchmark, because the collector keeps evicted records around; the arena stays far below it.
 //
 // Records get sequence numbers in arrival order. The store keeps a contiguous range of them: appending beyond a
 // limit evicts the oldest records. Every append changes dataRevision, so a view recomputes its order once per
 // revision and never on cursor moves.
+
+import type { RecordPosition } from './api.js'
 
 const defaultMaximumRecords = 50_000
 const defaultMaximumBytes = 64 * 1024 * 1024
@@ -25,10 +27,15 @@ interface StoredRecord {
   readonly source: number
   // The number of the record within its source, from 1; it goes on across file replacements.
   readonly recordNumber: number
-  // The record's text as UTF-8, which the store copies.
+  // The record's JSON text as UTF-8, which the store copies.
   readonly bytes: Uint8Array
-  // The time key of the record in epoch milliseconds, NaN without a valid time.
+  // The record's normalized time in epoch milliseconds, NaN without a valid time.
   readonly time: number
+  // The severity of the record's normalized level, from 0 for trace to 6 for unknown.
+  readonly level: number
+  // The first and the last line of the record in its file.
+  readonly firstLine: number
+  readonly lastLine: number
 }
 
 const checkLimit = (name: string, value: number, maximum: number): number => {
@@ -54,6 +61,9 @@ class RecordStore {
   #times: Float64Array
   #sources: Uint32Array
   #recordNumbers: Float64Array
+  #levels: Uint8Array
+  #firstLines: Float64Array
+  #lastLines: Float64Array
   #firstSequence = 0
   #endSequence = 0
   readonly maximumRecords: number
@@ -74,6 +84,9 @@ class RecordStore {
     this.#times = new Float64Array(this.#slots)
     this.#sources = new Uint32Array(this.#slots)
     this.#recordNumbers = new Float64Array(this.#slots)
+    this.#levels = new Uint8Array(this.#slots)
+    this.#firstLines = new Float64Array(this.#slots)
+    this.#lastLines = new Float64Array(this.#slots)
   }
 
   #slot (sequence: number): number {
@@ -146,6 +159,9 @@ class RecordStore {
     const times = new Float64Array(slots)
     const sources = new Uint32Array(slots)
     const recordNumbers = new Float64Array(slots)
+    const levels = new Uint8Array(slots)
+    const firstLines = new Float64Array(slots)
+    const lastLines = new Float64Array(slots)
     for (let sequence = this.#firstSequence; sequence < this.#endSequence; sequence += 1) {
       const from = this.#slot(sequence)
       const to = sequence % slots
@@ -154,6 +170,9 @@ class RecordStore {
       times[to] = this.#times[from] ?? NaN
       sources[to] = this.#sources[from] ?? 0
       recordNumbers[to] = this.#recordNumbers[from] ?? 0
+      levels[to] = this.#levels[from] ?? 0
+      firstLines[to] = this.#firstLines[from] ?? 0
+      lastLines[to] = this.#lastLines[from] ?? 0
     }
     this.#slots = slots
     this.#offsets = offsets
@@ -161,6 +180,9 @@ class RecordStore {
     this.#times = times
     this.#sources = sources
     this.#recordNumbers = recordNumbers
+    this.#levels = levels
+    this.#firstLines = firstLines
+    this.#lastLines = lastLines
   }
 
   get retained (): number {
@@ -210,6 +232,9 @@ class RecordStore {
     this.#times[slot] = record.time
     this.#sources[slot] = record.source
     this.#recordNumbers[slot] = record.recordNumber
+    this.#levels[slot] = record.level
+    this.#firstLines[slot] = record.firstLine
+    this.#lastLines[slot] = record.lastLine
     this.#head = offset + length
     this.#endSequence += 1
     this.retainedBytes += length
@@ -236,6 +261,20 @@ class RecordStore {
 
   recordNumberAt (sequence: number): number {
     return this.#recordNumbers[this.#check(sequence)] ?? 0
+  }
+
+  levelAt (sequence: number): number {
+    return this.#levels[this.#check(sequence)] ?? 0
+  }
+
+  // The record's number in its source and its first and last line.
+  positionAt (sequence: number): RecordPosition {
+    const slot = this.#check(sequence)
+    return {
+      recordNumber: this.#recordNumbers[slot] ?? 0,
+      firstLine: this.#firstLines[slot] ?? 0,
+      lastLine: this.#lastLines[slot] ?? 0
+    }
   }
 
   identifierAt (sequence: number): string {

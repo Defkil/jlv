@@ -13,7 +13,7 @@ const viewOf = (store: RecordStore): RecordView => new RecordView(store, text =>
 const append = (store: RecordStore, source: number, records: readonly object[]): void => {
   for (const record of records) {
     const recordNumber = store.seen + 1
-    store.append({ source, recordNumber, bytes: Buffer.from(JSON.stringify(record)), time: timeKey(record) })
+    store.append({ source, recordNumber, bytes: Buffer.from(JSON.stringify(record)), time: timeKey(record), level: 6, firstLine: 1, lastLine: 1 })
   }
 }
 

@@ -12,6 +12,7 @@ import { followFiles } from './input/follow.js'
 import { readLines, type LineEvent } from './input/lines.js'
 import { MappingFileError, parseEntry, parseLine, readMapping, timeKey, type Mapping } from './log.js'
 import { LineWriter, SaveFileError, formatLine, jsonLine, openSaveFile, type MachineFormat } from './output.js'
+import { levelCode } from './record.js'
 import { RecordStore } from './store.js'
 import type { Keyboard, KeyboardOptions } from './terminal.js'
 import { createScreen } from './tui/blessed-boundary.js'
@@ -90,6 +91,8 @@ const skipMessages = {
 const exitCodes = { success: 0, failure: 1, usage: 2 } as const
 const signalExitCodes: Readonly<Record<'SIGHUP' | 'SIGINT' | 'SIGTERM', number>> = { SIGHUP: 129, SIGINT: 130, SIGTERM: 143 }
 
+const unknownLevel = levelCode('unknown')
+
 // At most this many skipped lines are reported one by one on standard error; the rest are counted.
 const diagnosticLimit = 10
 
@@ -137,7 +140,16 @@ class Ingestion {
       const recordNumber = (this.#recordNumbers.get(source.order) ?? 0) + 1
       this.#recordNumbers.set(source.order, recordNumber)
       this.records += 1
-      this.store?.append({ source: source.order, recordNumber, bytes: event.bytes, time: timeKey(parsed.value) })
+      // The legacy rows have no normalized level yet: every record counts as unknown.
+      this.store?.append({
+        source: source.order,
+        recordNumber,
+        bytes: event.bytes,
+        time: timeKey(parsed.value),
+        level: unknownLevel,
+        firstLine: event.lineNumber,
+        lastLine: event.lineNumber
+      })
       values.push(parsed.value)
     }
     return values

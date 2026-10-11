@@ -13,6 +13,10 @@ export interface LegacyViewerFixture extends FixtureFile {
   readonly entries: number
   // Non-empty lines that upstream readLog drops.
   readonly skippedLines: number
+  // Records of the final model (plan section 5), which reads JSON objects only.
+  readonly records: number
+  // Lines that the final model reports and skips: no JSON, or JSON values other than objects.
+  readonly skippedRecords: number
 }
 
 export const legacyViewerFixtures = {
@@ -22,19 +26,25 @@ export const legacyViewerFixtures = {
       'records with and without extra data, a two-line and an overlong message, a numeric line, a record ' +
       'without a timestamp, truncated JSON, plain text, a null line and an empty line.',
     entries: 32,
-    skippedLines: 3
+    skippedLines: 3,
+    records: 31,
+    skippedRecords: 4
   },
   empty: {
     path: 'legacy-viewer/empty.log',
     description: 'A zero-byte log.',
     entries: 0,
-    skippedLines: 0
+    skippedLines: 0,
+    records: 0,
+    skippedRecords: 0
   },
   numericLevels: {
     path: 'legacy-viewer/numeric-levels.log',
-    description: 'Three records with the numeric pino levels 30 and 40.',
+    description: 'Three generic records with pino\'s numeric levels 30 and 40, which only pino\'s profile reads as levels.',
     entries: 3,
-    skippedLines: 0
+    skippedLines: 0,
+    records: 3,
+    skippedRecords: 0
   }
 } as const satisfies Readonly<Record<string, LegacyViewerFixture>>
 
@@ -59,6 +69,66 @@ export const pinoFixtures = {
     levels: ['trace', 'debug', 'info', 'warn', 'error', 'fatal']
   }
 } as const satisfies { readonly mapping: FixtureFile, readonly levels: PinoLevelFixture }
+
+// What jlv makes of a record of a fixture: its normalized level, its message, and its timestamp as the viewer shows
+// it (UTC RFC 3339 with milliseconds, or the original text of a timestamp that is no time), or none.
+export interface ExpectedRecord {
+  readonly level: string
+  readonly message: string
+  readonly timestamp?: string
+}
+
+// The settings that a run needs for a fixture: --format, --timestamp-unit and a configuration's mapping, CSV
+// delimiter and levels.
+export interface FixtureSettings {
+  readonly format?: string
+  readonly timestampUnit?: string
+  readonly mapping?: Readonly<Record<string, readonly (string | number)[]>>
+  readonly levels?: Readonly<Record<string, string>>
+  readonly csvDelimiter?: string
+}
+
+export interface FormatFixture extends FixtureFile {
+  // The format that reads the file: the one jlv recognizes, or the one the settings name.
+  readonly format: string
+  readonly settings?: FixtureSettings
+  readonly records: readonly ExpectedRecord[]
+  // The first line and the code of each diagnostic, as '<line>:<code>', in input order.
+  readonly diagnostics: readonly string[]
+}
+
+// A second of 2026-10-11 from 10:00:00 UTC, as the viewer shows it.
+const at = (second: number): string => new Date(Date.UTC(2026, 9, 11, 10, 0, second)).toISOString()
+
+// The shared corpus of the built-in formats (plan section 6.2). Every fixture is read whole and in chunks of one byte,
+// on every supported Node version, and must give the same records and diagnostics.
+export const formatFixtures = {
+  pinoLevels: {
+    path: pinoFixtures.levels.path,
+    description: 'jlv-pino\'s six levels, 10 to 60, with fatal on the final row.',
+    format: 'pino',
+    records: pinoFixtures.levels.levels.map((level, second) => ({ level, message: `${level} message`, timestamp: at(second) })),
+    diagnostics: []
+  },
+  pinoStructure: {
+    path: 'pino/pino-structure.log',
+    description: 'The cases that text substitution got wrong: spaces around the colons, "level":50 inside a message, ' +
+      'a nested level, the level 100, a record without time, one without msg, a large error object, and fatal on ' +
+      'the final row without a line feed.',
+    format: 'pino',
+    records: [
+      { level: 'info', message: 'spaces around the colons', timestamp: at(0) },
+      { level: 'info', message: 'the text "level":50 in a message stays text', timestamp: at(1) },
+      { level: 'warn', message: 'a nested level stays as it is', timestamp: at(2) },
+      { level: 'unknown', message: 'level 100 is no pino level', timestamp: at(3) },
+      { level: 'info', message: 'a record without time' },
+      { level: 'debug', message: '', timestamp: at(5) },
+      { level: 'error', message: 'request failed', timestamp: at(6) },
+      { level: 'fatal', message: 'fatal on the final row, without a line feed', timestamp: at(7) }
+    ],
+    diagnostics: []
+  }
+} as const satisfies Readonly<Record<string, FormatFixture>>
 
 export const fixtureUrl = (fixture: FixtureFile): URL => new URL(`../fixtures/${fixture.path}`, import.meta.url)
 

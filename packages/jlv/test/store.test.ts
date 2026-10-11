@@ -5,7 +5,7 @@ import { describe, it } from 'node:test'
 import { RecordStore, defaultMaximumBytes, defaultMaximumRecords } from '../src/store.js'
 
 const record = (text: string, recordNumber = 1, source = 0, time = NaN): Parameters<RecordStore['append']>[0] =>
-  ({ source, recordNumber, bytes: Buffer.from(text, 'utf8'), time })
+  ({ source, recordNumber, bytes: Buffer.from(text, 'utf8'), time, level: 6, firstLine: recordNumber, lastLine: recordNumber })
 
 const retainedTexts = (store: RecordStore): string[] => {
   const texts: string[] = []
@@ -117,6 +117,16 @@ describe('record store', () => {
     store.append(record('a4', 4, 0))
     assert.equal(store.sequenceOf('1:1'), undefined)
     assert.equal(store.sequenceOf('1:4'), 4)
+  })
+
+  it('keeps the level and the lines of each record, also when its slots grow', () => {
+    const store = new RecordStore({ maximumRecords: 3000 })
+    for (let index = 0; index < 2500; index += 1) {
+      store.append({ ...record(`r${String(index)}`, index + 1), level: index % 7, firstLine: index * 2 + 1, lastLine: index * 2 + 2 })
+    }
+    assert.equal(store.levelAt(2000), 2000 % 7)
+    assert.deepEqual(store.positionAt(2000), { recordNumber: 2001, firstLine: 4001, lastLine: 4002 })
+    assert.throws(() => store.positionAt(2500), RangeError)
   })
 
   it('rejects limits that are not positive integers', () => {

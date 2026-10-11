@@ -62,8 +62,9 @@ export default defineConfig([
   {
     files: codeFiles,
     rules: {
-      // Plan section 4.1 names the application module with the full word; Unicorn 77 would shorten it to app.
-      'unicorn/name-replacements': ['error', { replacements: { application: false } }]
+      // Plan section 4.1 names the application and configuration modules with the full words; Unicorn 77 would shorten
+      // them to app and config.
+      'unicorn/name-replacements': ['error', { replacements: { application: false, configuration: false } }]
     }
   },
   {
