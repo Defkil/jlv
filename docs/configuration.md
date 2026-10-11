@@ -16,8 +16,8 @@ A file is JSON when its name ends in `.json` or its text starts with `{`; any ot
 `.json-log-viewer`. The viewer's status line names the file that it read. Options on the command line win over the
 file: `--format`, `--timestamp-unit`, `--max-records` and `--max-bytes`.
 
-A configuration that jlv cannot use ends the run with exit code 2 before anything else happens, with the file and
-the place of the problem:
+A configuration that jlv cannot use ends the run with exit code 2 before jlv reads a record or opens its screen, and
+the message names the file and the place of the problem:
 
 ```console
 $ jv --output plain -c misspelled.config.json backup.log; echo $?

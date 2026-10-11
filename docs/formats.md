@@ -64,7 +64,7 @@ Every record has these parts, whatever its format:
 | Part | Value |
 | --- | --- |
 | `identifier` | `<input>:<record number>`, unique within a run |
-| `source` | the input: its identifier, its label as written on the command line, and its order |
+| `source` | the input: its identifier and order, and its label, which is the argument as given, the path of a pattern's match or `stdin` |
 | `position` | the record's number in its input, and its first and last line |
 | `timestamp` | epoch milliseconds, when the record has a time that jlv reads |
 | `timestampText` | the original text of a time that jlv cannot read, which the viewer shows instead |
