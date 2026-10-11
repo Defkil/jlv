@@ -24,6 +24,7 @@ Adds following features to [json-log-viewer](https://github.com/gistia/json-log-
 - [Transformers](#wrench-transformers)
 - [Support](#hammer_and_wrench-support)
 - [Contributing](#memo-contributing)
+- [Credits](#credits)
 - [License](#scroll-license)
 
 ## :package: Installation
@@ -76,6 +77,14 @@ Please [open an issue](https://github.com/Defkil/jlv/issues/new) for support.
 
 Please contribute using [Github Flow](https://guides.github.com/introduction/flow/). Create a branch, add commits, and [open a pull request](https://github.com/Defkil/jlv/compare/).
 
+## Credits
+
+jlv 2 is a fork of [json-log-viewer](https://github.com/gistia/json-log-viewer), the terminal JSON log viewer by
+Felipe Coury and contributors, published by Gistia under the MIT license. Its history is imported unchanged
+under `packages/jlv`. [docs/upstream-provenance.md](docs/upstream-provenance.md) records the sources, original
+authors and adopted patches.
+
 ## :scroll: License
 
-[MIT](https://github.com/Defkil/jlv/blob/master/LICENSE) © [Oliver Grüttner](https://github.com/Defkil/)
+[MIT](https://github.com/Defkil/jlv/blob/master/LICENSE) © [Oliver Grüttner](https://github.com/Defkil/) and
+Felipe Coury and json-log-viewer contributors
