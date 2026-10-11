@@ -1,0 +1,4 @@
+timestamp,level,message,order
+2026-10-11T10:00:00Z,info,order placed,A-17
+2026-10-11T10:00:05Z,error,"payment declined
+card expired",A-17

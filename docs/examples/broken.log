@@ -1,0 +1,5 @@
+{"timestamp":"2026-10-11T10:00:00Z","level":"info","message":"first"}
+this line is no JSON
+[1, 2, 3]
+{"timestamp":"2026-10-11 10:00:01","level":"info","message":"no zone"}
+{"timestamp":"2026-10-11T10:00:02Z","level":"loud","message":"unknown level"}

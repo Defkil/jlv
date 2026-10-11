@@ -1,0 +1,4 @@
+{"level":30,"time":1791712800000,"pid":4120,"hostname":"api-1","msg":"server listening","port":8080}
+{"level":40,"time":1791712801250,"pid":4120,"hostname":"api-1","reqId":"req-7","msg":"slow request","responseTime":1840}
+{"level":50,"time":1791712802500,"pid":4120,"hostname":"api-1","reqId":"req-8","err":{"type":"Error","message":"connection refused"},"msg":"upstream failed"}
+{"level":60,"time":1791712803000,"pid":4120,"hostname":"api-1","msg":"shutting down"}

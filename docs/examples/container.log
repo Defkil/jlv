@@ -1,0 +1,2 @@
+{"log":"{\"level\":30,\"time\":1791712800000,\"msg\":\"server listening\"}\n","stream":"stdout","time":"2026-10-11T10:00:00.000000001Z"}
+{"log":"npm warn config production Use --omit=dev instead.\n","stream":"stderr","time":"2026-10-11T10:00:00.5Z"}

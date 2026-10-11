@@ -1,0 +1,3 @@
+{"message":"Matched route \"heartbeat\"","context":{},"level":200,"level_name":"INFO","channel":"request","datetime":"2026-10-11T12:00:00.253060+02:00","extra":{}}
+{"message":"Disk usage at 91%","context":{"disk":"/var"},"level":250,"level_name":"NOTICE","channel":"monitor","datetime":"2026-10-11T12:00:05.000000+02:00","extra":{}}
+{"message":"Database unreachable","context":{},"level":550,"level_name":"ALERT","channel":"db","datetime":"2026-10-11T12:00:09.500000+02:00","extra":{}}

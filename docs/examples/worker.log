@@ -1,0 +1,2 @@
+time=2026-10-11T10:00:00Z level=info msg="worker started" queue=mail
+time=2026-10-11T10:00:02Z level=warn msg="retrying job" job=17 attempt=2

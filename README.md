@@ -7,6 +7,13 @@ jlv 1 wrapper, which merged log files and started json-log-viewer for them. The 
 lives in `packages/jlv`, its command stays `jv` until the 2.0 release, and [docs/v2-plan.md](docs/v2-plan.md)
 describes the remaining steps.
 
+## Documentation
+
+- [Log formats](docs/formats.md): the formats that jlv reads and how it chooses one, the record, timestamps, levels,
+  diagnostics and plugins.
+- [Configuration](docs/configuration.md): `jlv.config.json`, the legacy `.json-log-viewer` and the command line.
+- [Migrating to jlv 2](docs/migration.md): what changes for users of jlv 1 and json-log-viewer.
+
 ## Development
 
 The repository is a pnpm workspace and needs Node 22.9 or later:

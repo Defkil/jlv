@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "mapping": {
+    "timestamp": ["datetime"],
+    "level": ["level_name"]
+  },
+  "levels": {
+    "NOTICE": "info",
+    "ALERT": "fatal",
+    "EMERGENCY": "fatal"
+  }
+}
