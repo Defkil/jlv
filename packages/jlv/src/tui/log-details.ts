@@ -7,10 +7,10 @@
 // an object or array shows its first 1000 entries, and below 16 levels a value shows as JSON on one line.
 import type { Widgets } from 'blessed'
 import { escapeControls } from '../terminal-text.js'
-import { BaseWidget } from './base-widget.js'
-import { createElement, destroyElement, toCells } from './blessed-boundary.js'
+import { toCells } from './blessed-boundary.js'
 import { boundText, cutToWidth, displayText, displayWidth, escapeMarkup, markup, padToWidth } from './formatting.js'
 import type { LogRow } from './log-row.js'
+import { TextDialog } from './text-dialog.js'
 
 // The levels of objects and arrays that the tree shows as such; deeper values show as JSON.
 const maximumTreeDepth = 16
@@ -77,76 +77,22 @@ interface LogDetailsOptions {
   readonly screen: Widgets.Screen
 }
 
-class LogDetails extends BaseWidget {
+class LogDetails extends TextDialog {
   json = false
   // The data of the record; display() sets it before update() runs.
   entryData!: LogRow['data']
-  // The scrollable element with the formatted data, replaced by every update.
-  element: Widgets.BoxElement | undefined
 
   constructor (options: LogDetailsOptions) {
-    super({
-      ...options,
-      width: '90%',
-      height: '80%',
-      shadow: true,
-      handleKeys: true
-    })
+    super({ screen: options.screen, closingKeys: ['enter', 'escape'] })
   }
 
-  override handleKeyPress (_character: string | undefined, key: Widgets.Events.IKeyEventArg): void {
-    if (key.name === 'enter' || key.name === 'escape') {
-      this.log('detach')
-      if (this.element === undefined) {
-        // Upstream detached the missing element of a dialog that shows no record yet.
-        throw new TypeError('The details dialog shows no record.')
-      }
-      // The dialog closes for good, with its element and label.
-      destroyElement(this)
-      this.screen.render()
-      return
+  override handleDialogKey (_character: string | undefined, key: Widgets.Events.IKeyEventArg): boolean {
+    if (key.name !== 'j') {
+      return false
     }
-    if (key.name === 'j') {
-      this.json = !this.json
-      this.update()
-      return
-    }
-    this.scrollByKey(key)
-  }
-
-  // Home and End jump to the first and the last line of the data. PageUp and PageDown move by the height of the
-  // dialog less three lines, at least one line, and five pages at once with Shift.
-  scrollByKey (key: Widgets.Events.IKeyEventArg): void {
-    const { element } = this
-    if (element === undefined) {
-      return
-    }
-    const pageStep = (): number => {
-      const pages = key.shift ? 5 : 1
-      return Math.max(toCells(this.height) * pages - pages * 3, 1)
-    }
-    switch (key.name) {
-      case 'home': {
-        element.scroll(-element.getScrollHeight())
-        break
-      }
-      case 'end': {
-        element.scroll(element.getScrollHeight())
-        break
-      }
-      case 'pageup': {
-        element.scroll(-pageStep())
-        break
-      }
-      case 'pagedown': {
-        element.scroll(pageStep())
-        break
-      }
-      default: {
-        return
-      }
-    }
-    this.screen.render()
+    this.json = !this.json
+    this.update()
+    return true
   }
 
   // The label names the record's timestamp, level and message, cut to the width of the dialog: blessed would wrap a
@@ -159,25 +105,8 @@ class LogDetails extends BaseWidget {
   }
 
   update (): void {
-    if (this.element) {
-      destroyElement(this.element)
-      this.element = undefined
-    }
     const content = this.json ? escapeMarkup(boundText(jsonText(this.entryData), maximumJsonText)) : formatObject(this.entryData)
-    this.element = createElement({
-      screen: this.screen,
-      scrollable: true,
-      alwaysScroll: true,
-      keys: true,
-      scrollbar: { ch: ' ', track: { bg: 'grey' }, style: { bg: 'yellow' } },
-      tags: true,
-      content
-    })
-    this.element.on('keypress', this.handleKeyPress.bind(this))
-    this.element.focus()
-
-    this.append(this.element)
-    this.screen.render()
+    this.showContent(content)
   }
 }
 
