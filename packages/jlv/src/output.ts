@@ -6,13 +6,16 @@ import { open, realpath, stat } from 'node:fs/promises'
 import type { Writable } from 'node:stream'
 import type { LogRecord } from './api.js'
 import type { NormalizedRecord } from './ingestion.js'
+import { escapeControls, visibleText } from './terminal-text.js'
 import { rowOf, type LogRow, type RowOptions } from './tui/log-row.js'
 
 type MachineFormat = 'plain' | 'jsonl'
 
 // A record as one JSON line in the record model's shape (plan section 5): its identity, its normalized parts and its
-// complete original fields, in a fixed order. Values are the parsed ones, never the raw bytes.
-const jsonLine = (record: LogRecord): string => `${JSON.stringify({
+// complete original fields, in a fixed order. Values are the parsed ones, never the raw bytes. JSON.stringify leaves
+// DEL, the C1 controls and a few other control characters as they are; they become escapes too, which JSON reads back
+// as the same values, so that the line is safe on a terminal.
+const jsonLine = (record: LogRecord): string => `${escapeControls(JSON.stringify({
   identifier: record.identifier,
   source: record.source,
   position: record.position,
@@ -22,19 +25,20 @@ const jsonLine = (record: LogRecord): string => `${JSON.stringify({
   message: record.message,
   correlationIdentifier: record.correlationIdentifier,
   fields: record.fields
-})}\n`
+}))}\n`
 
-const escapeLineBreaks = (text: string): string => text.replaceAll('\r', String.raw`\r`).replaceAll('\n', String.raw`\n`)
-
-// Text as it is, a missing or empty value as a dash; line breaks become visible escapes, so that every record stays on
-// one line.
-const plainField = (value: string | undefined): string => value === undefined || value === '' ? '-' : escapeLineBreaks(value)
+// Text as the viewer shows it: no escape sequences, and control characters such as line breaks as JSON escapes, so
+// that every record stays on one line. A missing or empty value is a dash.
+const plainField = (value: string | undefined): string => {
+  const text = value === undefined ? '' : visibleText(value)
+  return text === '' ? '-' : text
+}
 
 // A record as one text line: timestamp, level and message of the viewer's row, then the fields that the viewer's
 // details show, as JSON.
 const plainLine = (row: LogRow): string => {
   const fields = [row.timestamp, row.level, row.message].map(value => plainField(value)).join(' ')
-  return Object.keys(row.data).length > 0 ? `${fields} ${escapeLineBreaks(JSON.stringify(row.data))}\n` : `${fields}\n`
+  return Object.keys(row.data).length > 0 ? `${fields} ${escapeControls(JSON.stringify(row.data))}\n` : `${fields}\n`
 }
 
 const formatLine = (format: MachineFormat, normalized: NormalizedRecord, options: RowOptions): string =>

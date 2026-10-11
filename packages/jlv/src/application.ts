@@ -24,6 +24,7 @@ import { createScreen } from './tui/blessed-boundary.js'
 import { rowOf, type RowOptions } from './tui/log-row.js'
 import { MainPanel } from './tui/main-panel.js'
 import { RecordView } from './tui/record-view.js'
+import { visibleText } from './terminal-text.js'
 import { StatusLine } from './tui/status-line.js'
 
 type OutputMode = 'auto' | 'tui' | 'plain' | 'jsonl'
@@ -125,6 +126,9 @@ const throttle = (callback: () => void, interval = refreshInterval): Throttle =>
 const isAbortError = (error: unknown): boolean => error instanceof Error && error.name === 'AbortError'
 
 const errorMessage = (error: unknown): string => error instanceof Error ? error.message : String(error)
+
+// A line for standard error. Its text may name inputs, fields and values of records, so it shows only visible text.
+const errorLine = (message: string): string => `jv: ${visibleText(message)}\n`
 
 // The next batch of a source, or the error it failed with.
 type Pending<T> =
@@ -293,7 +297,7 @@ class DiagnosticReport {
       }
       this.#warningKinds.add(kind)
       this.#shownWarnings += 1
-      this.#write(`jv: ${source.label}${position}: warning: ${diagnostic.message}\n`)
+      this.#write(errorLine(`${source.label}${position}: warning: ${diagnostic.message}`))
       return
     }
     this.#errors += 1
@@ -301,15 +305,15 @@ class DiagnosticReport {
       return
     }
     this.#shownErrors += 1
-    this.#write(`jv: ${source.label}${position}: ${diagnostic.message}\n`)
+    this.#write(errorLine(`${source.label}${position}: ${diagnostic.message}`))
   }
 
   end (): void {
     if (this.#errors > this.#shownErrors) {
-      this.#write(`jv: skipped ${String(this.#errors)} lines in total, the first ${String(this.#shownErrors)} of them shown above\n`)
+      this.#write(errorLine(`skipped ${String(this.#errors)} lines in total, the first ${String(this.#shownErrors)} of them shown above`))
     }
     if (this.#warnings > this.#shownWarnings) {
-      this.#write(`jv: ${String(this.#warnings)} warnings in total, the first of each kind shown above\n`)
+      this.#write(errorLine(`${String(this.#warnings)} warnings in total, the first of each kind shown above`))
     }
   }
 }
@@ -329,7 +333,7 @@ const runMachineOutput = async (run: Run, format: MachineFormat): Promise<number
   })
   const writer = new LineWriter(environment.stdout, error => {
     if (error !== undefined) {
-      stderr.write(`jv: cannot write the output: ${error.message}\n`)
+      stderr.write(errorLine(`cannot write the output: ${error.message}`))
       exitCode = exitCodes.failure
     }
     controller.abort()
@@ -341,14 +345,14 @@ const runMachineOutput = async (run: Run, format: MachineFormat): Promise<number
   const saveWriter = run.saveFile === undefined
     ? undefined
     : new LineWriter(run.saveFile, error => {
-      stderr.write(`jv: cannot save the records: ${error?.message ?? 'the file was closed'}\n`)
+      stderr.write(errorLine(`cannot save the records: ${error?.message ?? 'the file was closed'}`))
       exitCode = exitCodes.failure
       controller.abort()
     })
   const isMatch = levelMatcher(options.level)
   const onFailure = (source: SourceInformation, error: unknown): void => {
     ingestion.failed += 1
-    stderr.write(`jv: cannot read '${source.label}': ${errorMessage(error)}\n`)
+    stderr.write(errorLine(`cannot read '${source.label}': ${errorMessage(error)}`))
   }
   const states = sourceStates(run, controller.signal)
   try {
@@ -367,7 +371,7 @@ const runMachineOutput = async (run: Run, format: MachineFormat): Promise<number
     }
   } catch (error) {
     if (error instanceof StrictModeError) {
-      stderr.write('jv: --strict stops at the first record that cannot be read\n')
+      stderr.write(errorLine('--strict stops at the first record that cannot be read'))
       exitCode = exitCodes.failure
     } else if (!isAbortError(error) && !controller.signal.aborted) {
       throw error
@@ -379,7 +383,7 @@ const runMachineOutput = async (run: Run, format: MachineFormat): Promise<number
   await Promise.all([writer.flush(), saveWriter?.end()])
   report.end()
   if (exitCode === exitCodes.success && ingestion.records === 0 && ingestion.skipped > 0) {
-    stderr.write(`jv: the input holds no records, only ${String(ingestion.skipped)} skipped lines\n`)
+    stderr.write(errorLine(`the input holds no records, only ${String(ingestion.skipped)} skipped lines`))
     exitCode = exitCodes.failure
   }
   return exitCode === exitCodes.success && ingestion.failed > 0 ? exitCodes.failure : exitCode
@@ -441,7 +445,7 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
   })
   const onFailure = (source: SourceInformation, error: unknown): void => {
     ingestion.failed += 1
-    failures.push(`jv: cannot read '${source.label}': ${errorMessage(error)}\n`)
+    failures.push(errorLine(`cannot read '${source.label}': ${errorMessage(error)}`))
     refresh.schedule()
   }
   // A save file that fails is reported after the viewer closed; the viewer goes on.
@@ -449,7 +453,7 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
     ? undefined
     : new LineWriter(run.saveFile, error => {
       ingestion.failed += 1
-      failures.push(`jv: cannot save the records: ${error?.message ?? 'the file was closed'}\n`)
+      failures.push(errorLine(`cannot save the records: ${error?.message ?? 'the file was closed'}`))
       refresh.schedule()
     })
   const isMatch = levelMatcher(options.level)
@@ -469,10 +473,10 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
       }
     } catch (error) {
       if (error instanceof StrictModeError) {
-        failures.push(`jv: ${error.message}\njv: --strict stops at the first record that cannot be read\n`)
+        failures.push(errorLine(error.message) + errorLine('--strict stops at the first record that cannot be read'))
         state.finish?.(exitCodes.failure)
       } else if (!isAbortError(error) && !controller.signal.aborted) {
-        failures.push(`jv: cannot read the input: ${errorMessage(error)}\n`)
+        failures.push(errorLine(`cannot read the input: ${errorMessage(error)}`))
         ingestion.failed += 1
       }
     }
@@ -562,7 +566,7 @@ const ingestionSettings = (options: ApplicationOptions, configuration: Configura
 const runApplication = async (options: ApplicationOptions, environment: ApplicationEnvironment): Promise<number> => {
   const { stderr, stdin } = environment
   const fail = (exitCode: number, message: string): number => {
-    stderr.write(`jv: ${message}\n`)
+    stderr.write(errorLine(message))
     return exitCode
   }
   let sources: InputSource[]
@@ -636,7 +640,7 @@ const runApplication = async (options: ApplicationOptions, environment: Applicat
     return runMachineOutput(run, 'jsonl')
   }
   if (options.output === 'auto' && options.sort !== undefined && options.sort !== 'arrival') {
-    stderr.write(`jv: plain output keeps the arrival order; --sort ${options.sort} applies to the viewer only\n`)
+    stderr.write(errorLine(`plain output keeps the arrival order; --sort ${options.sort} applies to the viewer only`))
   }
   return runMachineOutput(run, 'plain')
 }

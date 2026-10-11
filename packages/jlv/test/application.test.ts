@@ -15,6 +15,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { stripVTControlCharacters } from 'node:util'
 import { fixturePath, legacyViewerFixtures } from '../../format-fixtures/src/catalog.js'
 import { runApplication, type ApplicationEnvironment, type ApplicationOptions } from '../src/application.js'
+import { hasControls } from '../src/terminal-text.js'
 import { TerminalOutput } from './support/terminal.js'
 
 const characterization = fixturePath(legacyViewerFixtures.characterization)
@@ -447,6 +448,18 @@ describe('diagnostics', () => {
       'jv: 3 warnings in total, the first of each kind shown above',
       ''
     ].join('\n'))
+  })
+
+  // A logfmt key reaches the warning as it was written; a terminal must not act on it.
+  it('show the keys and values of records on standard error as visible text', async () => {
+    const stdout = new TextOutput()
+    const { stdin, stderr, environment } = harness({ stdout })
+    const running = runApplication(applicationOptions({ output: 'plain', format: 'logfmt' }), environment)
+    const key = 'key\u{1B}]0;title\u{7}\u{7}'
+    stdin.end(`msg=one ${key}=1 ${key}=2\n`)
+    assert.equal(await running, 0)
+    assert.equal(stderr.text, String.raw`jv: stdin:1: warning: the key key\u0007 appears more than once; its last value counts` + '\n')
+    assert.equal(hasControls(stdout.text.trimEnd()), false)
   })
 
   it('stop at the first error with --strict and end with 1', async () => {

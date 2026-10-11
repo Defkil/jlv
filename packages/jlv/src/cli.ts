@@ -10,6 +10,7 @@ import type { LogLevel, TimestampUnit } from './api.js'
 import { runApplication, type ApplicationOptions, type OutputMode } from './application.js'
 import { commonLevel, logLevels, timestampUnits } from './record.js'
 import { openKeyboard } from './terminal.js'
+import { visibleText } from './terminal-text.js'
 
 const usage = 'usage: jv [options] [file | \'glob\' | -]...'
 
@@ -221,7 +222,8 @@ const main = async (): Promise<number> => {
     options = readOptions()
   } catch (error) {
     if (isParseError(error) || error instanceof UsageError) {
-      process.stderr.write(`jv: ${error.message}\n${usage}\nRun jv --help for the options.\n`)
+      // The message may quote an argument, which shows as visible text only.
+      process.stderr.write(`jv: ${visibleText(error.message)}\n${usage}\nRun jv --help for the options.\n`)
       return 2
     }
     throw error

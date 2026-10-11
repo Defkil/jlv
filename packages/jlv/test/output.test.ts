@@ -6,6 +6,7 @@ import { describe, it } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { LogRecord } from '../src/api.js'
 import { LineWriter, jsonLine, plainLine } from '../src/output.js'
+import { hasControls } from '../src/terminal-text.js'
 import { readRecords, rowsOf } from './support/records.js'
 
 const record: LogRecord = {
@@ -59,6 +60,26 @@ describe('record lines', () => {
     assert.deepEqual(rowsOf(records).map(row => plainLine(row)), ['- constructor a\n', '- __proto__ b\n'])
     const line = jsonLine(records[0]?.record ?? assert.fail('no record'))
     assert.equal(Reflect.get(JSON.parse(line) as object, 'level'), 'unknown')
+  })
+
+  // Upstream issues #6 and #18: plain output shows a record as text, so a terminal never acts on its contents.
+  it('writes escape sequences as nothing and other control characters as JSON escapes', async () => {
+    const value = {
+      timestamp: 'yesterday\u{1B}[2J',
+      level: 'NOTICE\u{1B}]0;title\u{7}',
+      message: '\u{1B}[31mred\u{1B}[0m\ttab \u{9B}2Jcsi \u{202E}right-to-left',
+      path: String.raw`C:\temp\{red-fg}/x`,
+      control: 'delete\u{7F}'
+    }
+    const { records } = await readRecords(`${JSON.stringify(value)}\n`)
+    assert.deepEqual(rowsOf(records).map(row => plainLine(row)), [
+      String.raw`yesterday NOTICE red\ttab csi \u202eright-to-left {"path":"C:\\temp\\{red-fg}/x","control":"delete\u007f"}` + '\n'
+    ])
+    const [record] = records
+    assert.ok(record)
+    const line = jsonLine(record.record)
+    assert.equal(hasControls(line.slice(0, -1)), false)
+    assert.deepEqual(Reflect.get(JSON.parse(line) as object, 'fields'), value)
   })
 
   it('keeps every record on one line', async () => {

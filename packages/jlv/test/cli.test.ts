@@ -126,6 +126,8 @@ describe('help, version and usage errors', () => {
       [['-l', 'constructor'], /^jv: --level takes trace, debug, info, warn, error, fatal, unknown, not 'constructor'\n/u],
       [['--level=__proto__'], /^jv: --level takes trace, debug, info, warn, error, fatal, unknown, not '__proto__'\n/u],
       [['--__proto__.polluted=yes'], /^jv: Unknown option '--__proto__\.polluted'\./u],
+      // The message quotes the argument as visible text: no window title, no bell.
+      [['--\u{1B}]0;title\u{7}bad\u{7}'], /^jv: Unknown option '--bad\\u0007'\./u],
       [['--sort'], /^jv: Option '--sort <value>' argument missing/u],
       [['--sort', '-timestamp', 'a.log'], /^jv: Option '--sort' argument is ambiguous\./u],
       [['--output', 'html'], /^jv: --output takes auto, tui, plain or jsonl, not 'html'\n/u],
