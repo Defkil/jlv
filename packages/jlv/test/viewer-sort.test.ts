@@ -34,12 +34,15 @@ describe('sort', () => {
   })
 
   // Upstream showed the new sort in the status line but kept the old order until the next render (fixed by
-  // farolanf/json-log-viewer ae42be2).
-  it('renders the new order as soon as the sort changes', async t => {
+  // farolanf/json-log-viewer ae42be2), and its cursor kept its row, now on another record. The cursor stays on its
+  // record now, foxtrot 29, in the same screen row.
+  it('renders the new order as soon as the sort changes and keeps the cursor on its record', async t => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, 's', 'l')
     assert.equal(viewer.panel.sort, 'level')
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/31 | 20 | sort: level | 4 skipped')
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  14/31 | 20 | sort: level | 4 skipped')
+    assert.equal(screenText(viewer.screen)[1], '│ 2026-10-11T10:29:00.000Z  info   *  foxtrot 29                               │')
+    await press(viewer, '0')
     assert.deepEqual(screenText(viewer.screen).slice(1, 4), [
       '│ 2026-10-11T10:22:00.000Z  trace  *  echo 22                                  │',
       '│ 2026-10-11T10:00:00.000Z  debug     alpha 00                                 │',
@@ -50,8 +53,8 @@ describe('sort', () => {
     // their arrival order (plan section 5): the fatal record leads, and the last debug record of the file is the
     // last but one.
     await press(viewer, 's', 'l')
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/31 | 20 | sort: -level | 4 skipped')
-    assert.equal(screenText(viewer.screen)[1], '│ 2026-10-11T10:13:00.000Z  fatal  *  bravo 13                                 │')
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  31/31 | 20 | sort: -level | 4 skipped')
+    assert.equal(visibleEntries(viewer.panel)[0]?.message, 'bravo 13')
     assert.deepEqual(visibleEntries(viewer.panel).slice(-2).map(entry => [entry.level, entry.message]), [['debug', 'echo 16'], ['trace', 'echo 22']])
   })
 
@@ -67,7 +70,7 @@ describe('sort', () => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, 's', 'l', 's', 'l')
     assert.equal(viewer.panel.sort, '-level')
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/31 | 20 | sort: -level | 4 skipped')
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  20/31 | 20 | sort: -level | 4 skipped')
   })
 
   it('keeps the sort when the picker is closed with Escape', async t => {

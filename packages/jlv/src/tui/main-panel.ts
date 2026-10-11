@@ -245,7 +245,9 @@ class MainPanel extends BaseWidget {
   }
 
   // The sequences of the visible records in order. When only the records changed, a cursor at the end where the
-  // records arrive stays there, and any other cursor stays on its record while that record is visible.
+  // records arrive stays there, and any other cursor stays on its record while that record is visible; an evicted
+  // record leaves the cursor on its row. When the sort or the filters changed, the cursor stays on its record in its
+  // screen row, or starts at the first record when the filters left its record out.
   get order (): readonly number[] {
     const { query } = this
     if (!this.view.isStale(query)) {
@@ -253,24 +255,24 @@ class MainPanel extends BaseWidget {
     }
     const previous = this.shownOrder
     const isDataChange = this.shownQueryRevision === this.queryRevision
-    const isFollowing = previous.length === 0 || this.row === (this.isNewestLast ? previous.length - 1 : 0)
+    const isFollowing = isDataChange && (previous.length === 0 || this.row === (this.isNewestLast ? previous.length - 1 : 0))
     const selected = previous[this.row]
+    const offset = this.row - this.initialRow
     const order = this.view.order(query)
     this.shownOrder = order
     this.shownQueryRevision = this.queryRevision
-    if (!isDataChange) {
-      return order
-    }
-    const offset = this.row - this.initialRow
     if (isFollowing) {
       this.row = this.isNewestLast ? Math.max(order.length - 1, 0) : 0
       this.initialRow = this.isNewestLast ? this.row - this.pageHeight : 0
-    } else if (selected !== undefined) {
-      const row = order.indexOf(selected)
-      if (row !== -1) {
-        this.row = row
-        this.initialRow = row - offset
-      }
+      return order
+    }
+    const row = selected === undefined ? -1 : order.indexOf(selected)
+    if (row !== -1) {
+      this.row = row
+      this.initialRow = row - offset
+    } else if (!isDataChange) {
+      this.row = 0
+      this.initialRow = 0
     }
     return order
   }
@@ -584,11 +586,9 @@ class MainPanel extends BaseWidget {
     this.renderLines()
   }
 
-  // Applies another filter and shows the records that it keeps from the first one on.
+  // Applies another filter; the cursor stays on its record while the filter keeps it (see order).
   setFilter (filter: RecordFilter): void {
     this.filter = filter
-    this.row = 0
-    this.initialRow = 0
     this.setQueryChanged()
     this.renderLines()
   }

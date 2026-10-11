@@ -92,6 +92,33 @@ describe('arriving records', () => {
   })
 })
 
+// Plan section 6.3 and upstream issue #15: the selection is a record, not a row, across sorts, filters, new records
+// and eviction.
+describe('stable selection', () => {
+  it('keeps the cursor on its record and in its screen row when the sort or the filters change', async t => {
+    const viewer = openFileViewer(t, characterization)
+    await press(viewer, keys.down, keys.down, keys.down)
+    const identifier = selected(viewer)
+    assert.equal(viewer.panel.entryAt(viewer.panel.row)?.message, 'charlie 26')
+    const changes = [['s', 'l'], ['s', 'm'], ['s', 'a'], ['f', 'a', 'm', 'charlie', keys.enter], ['l', 'w'], ['s', 't', 's', 't']]
+    for (const change of changes) {
+      await press(viewer, ...change)
+      assert.equal(selected(viewer), identifier, change.join(' '))
+      assert.ok(viewer.panel.row - viewer.panel.initialRow <= 3, change.join(' '))
+    }
+    viewer.append(record(1, 'charlie newer'))
+    assert.equal(selected(viewer), identifier)
+    assert.match(screenText(viewer.screen)[1 + viewer.panel.row - viewer.panel.initialRow] ?? '', / charlie 26 /u)
+  })
+
+  it('starts at the first record when a filter leaves the selected record out', async t => {
+    const viewer = openFileViewer(t, characterization)
+    await press(viewer, keys.down, keys.down, keys.down, 'l', 'e')
+    assert.deepEqual([viewer.panel.row, viewer.panel.initialRow], [0, 0])
+    assert.equal(viewer.panel.entryAt(0)?.message, 'delta 27')
+  })
+})
+
 describe('arrival order and quitting', () => {
   it('offers arrival in the sort picker and shows the records in the order they arrived', async t => {
     const viewer = openFileViewer(t, characterization)

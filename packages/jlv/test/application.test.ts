@@ -682,7 +682,8 @@ describe('filters of the command line', () => {
     subject.keyboard.write('f')
     await delay(50)
     subject.keyboard.write('c')
-    await waitFor(() => hasShown(subject.stdout, 'foxtrot 29'), 'all records')
+    // The cursor stays on alpha 24, the newest of the alpha records, so the records after it show now.
+    await waitFor(() => hasShown(subject.stdout, 'foxtrot 23'), 'all records')
     subject.keyboard.write('q')
     assert.equal(await running, 0)
     assert.deepEqual(savedMessages(saved), ['alpha 00', 'alpha 12', 'alpha 24', 'alpha 06', 'alpha 18'])
