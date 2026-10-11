@@ -2,13 +2,13 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { fixturePath, legacyViewerFixtures } from '../../format-fixtures/src/catalog.js'
-import { loadLogDetails, type LegacyLogDetails } from './support/legacy.js'
+import LogDetails from '../src/tui/log-details.js'
 import { keys, openFileViewer, press, screenText } from './support/terminal.js'
 
 const characterization = fixturePath(legacyViewerFixtures.characterization)
 
 // Reads the element that display() replaces on every call.
-const contentOf = (details: LegacyLogDetails): string | undefined => details.el?.content
+const contentOf = (details: LogDetails): string | undefined => details.element?.content
 
 // The details box spans columns 4 to 75.
 const detailsBox = (rows: readonly string[], from: number, to: number): string[] => rows.slice(from, to).map(row => row.slice(4, 76))
@@ -67,10 +67,16 @@ describe('details', () => {
     assert.equal(detailsBox(screenText(viewer.screen), 4, 5)[0], '│ {}                                                                   │')
   })
 
+  it('throws a TypeError when Enter reaches a details dialog that shows no record', t => {
+    const viewer = openFileViewer(t, characterization)
+    const details = new LogDetails({ screen: viewer.screen })
+    const enter = { name: 'enter', full: 'enter', sequence: '\r', ctrl: false, meta: false, shift: false }
+    assert.throws(() => details.emit('keypress', '\r', enter), TypeError)
+  })
+
   // Replaces the useful formatEntry expectations of the skipped upstream browser.test.js.
   it('formats keys in bold blue and indents nested objects by one space', t => {
     const viewer = openFileViewer(t, characterization)
-    const LogDetails = loadLogDetails()
     const details = new LogDetails({ screen: viewer.screen })
     details.display({ timestamp: 'now', level: 'info', message: 'formatting', data: { Name: 'felipe' } })
     assert.equal(contentOf(details), '\n{blue-fg}{bold}Name:{/bold}{/blue-fg} felipe')

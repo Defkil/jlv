@@ -6,8 +6,8 @@ import type { TestContext } from 'node:test'
 import { setImmediate as nextTurn } from 'node:timers/promises'
 import type { Widgets } from 'blessed'
 import boundary from '../../src/tui/blessed-boundary.js'
+import MainPanel from '../../src/tui/main-panel.js'
 import StatusLine from '../../src/tui/status-line.js'
-import { loadMainPanel, type LegacyMainPanel } from './legacy.js'
 
 export class TerminalOutput extends Writable {
   readonly isTTY = true
@@ -35,7 +35,7 @@ export interface Viewer {
   readonly input: PassThrough
   readonly output: TerminalOutput
   readonly screen: Widgets.Screen
-  readonly panel: LegacyMainPanel
+  readonly panel: MainPanel
   readonly status: Widgets.BoxElement
 }
 
@@ -73,7 +73,6 @@ export const openViewer = (context: TestContext, file: string, options: ViewerOp
     warnings: false
   })
   context.after(() => { screen.destroy() })
-  const MainPanel = loadMainPanel()
   const panel = new MainPanel({ screen, level: options.level, sort: options.sort })
   panel.loadFile(file)
   const status = new StatusLine({ screen, mainPanel: panel })

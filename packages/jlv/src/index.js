@@ -4,7 +4,7 @@ const blessed = require('blessed');
 const _ = require('lodash');
 require('./polyfills');
 
-const MainPanel = require('./widgets/MainPanel');
+const MainPanel = require('./tui/main-panel');
 const StatusLine = require('./tui/status-line');
 
 const opts = minimist(process.argv.slice(2));

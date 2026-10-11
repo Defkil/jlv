@@ -50,7 +50,7 @@ describe('level filter', () => {
     assert.equal(viewer.panel.lines.length, 7)
     await press(viewer, 'l', 'a')
     assert.equal(viewer.panel.lines.length, 32)
-    assert.equal(viewer.panel.levelFilter, null)
+    assert.equal(viewer.panel.levelFilter, undefined)
   })
 
   it('accepts the initial level from the options', t => {
