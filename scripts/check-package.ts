@@ -18,8 +18,8 @@
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
-  appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync,
-  writeFileSync
+  appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync,
+  symlinkSync, writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -541,8 +541,10 @@ const checkConsumer = async (project: string): Promise<void> => {
   const commonJs = path.join(project, 'commonjs')
   mkdirSync(consumer)
   mkdirSync(commonJs)
-  // The consumers compile with the workspace's TypeScript and Node types, linked into the project.
-  const nodeTypes = path.join(repository, 'node_modules', '@types', 'node')
+  // The consumers compile with the workspace's TypeScript and Node types, linked into the project. The junction names
+  // the real directory: Node 22.9.0 writes a junction's target with a trailing backslash, and such a junction to
+  // pnpm's symbolic link of @types/node fails stat, readdir and realpath on Windows.
+  const nodeTypes = realpathSync(path.join(repository, 'node_modules', '@types', 'node'))
   mkdirSync(path.join(project, 'node_modules', '@types'), { recursive: true })
   symlinkSync(nodeTypes, path.join(project, 'node_modules', '@types', 'node'), 'junction')
   const authorFixture = path.join(fixtures, 'plugin-author')
