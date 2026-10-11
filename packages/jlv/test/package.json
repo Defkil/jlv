@@ -1,0 +1,4 @@
+{
+  "description": "Runs the TypeScript tests as ES modules while the upstream sources stay CommonJS. Remove this file once packages/jlv itself is type module.",
+  "type": "module"
+}
