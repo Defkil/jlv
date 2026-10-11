@@ -445,6 +445,8 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
       input: keyboard.stream,
       output: environment.stdout,
       smartCSR: true,
+      // A prompt that reads text grabs every key; Ctrl-C still ends the viewer then.
+      ignoreLocked: ['C-c'],
       // An empty file name, as from --log=, writes no log, as before.
       log: options.debugLog || undefined,
       ...environment.screenOptions

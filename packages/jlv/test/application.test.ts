@@ -214,6 +214,96 @@ describe('ending the viewer', () => {
   })
 })
 
+// The exit code of a run that should end now. A run that does not end within five seconds fails the test and is ended
+// with SIGTERM, so that the test process does not wait for it forever.
+const timeoutAfter = async (milliseconds: number, signal: AbortSignal): Promise<'timeout' | 'cancelled'> => {
+  try {
+    await delay(milliseconds, undefined, { signal })
+    return 'timeout'
+  } catch {
+    return 'cancelled'
+  }
+}
+
+const ended = async (running: Promise<number>, subject: Harness): Promise<number> => {
+  const controller = new AbortController()
+  const result = await Promise.race([running, timeoutAfter(5000, controller.signal)])
+  controller.abort()
+  if (typeof result !== 'number') {
+    subject.signals.emit('SIGTERM')
+    await running
+    return assert.fail('the viewer did not end')
+  }
+  return result
+}
+
+// Plan section 8, phase 7: a run ends cleanly while a prompt, a picker or the key help is open, whatever ends it.
+describe('ending the viewer with a dialog open', () => {
+  const dialogs = [
+    { name: 'the search prompt', keys: ['/', 'char'], shows: 'Search:' },
+    { name: 'the filter manager', keys: ['f'], shows: 'addafilter' },
+    { name: 'a filter prompt', keys: ['f', 'a', 'm', 'al'], shows: 'Filtermessageby:' },
+    { name: 'the key help', keys: ['?'], shows: 'Keys' }
+  ]
+  const endings = [
+    { name: 'Ctrl-C', exitCode: 130, stop: (subject: Harness) => { subject.keyboard.write('\u{3}') } },
+    { name: 'SIGTERM', exitCode: 143, stop: (subject: Harness) => { subject.signals.emit('SIGTERM') } }
+  ]
+  for (const dialog of dialogs) {
+    for (const ending of endings) {
+      it(`ends with ${String(ending.exitCode)} on ${ending.name} while ${dialog.name} is open`, async () => {
+        const subject = harness()
+        const running = runApplication(applicationOptions({ inputs: ['characterization.log'] }), subject.environment)
+        await waitFor(() => hasShown(subject.stdout, 'foxtrot 29'), 'the records')
+        for (const key of dialog.keys) {
+          subject.keyboard.write(key)
+          await delay(20)
+        }
+        await waitFor(() => hasShown(subject.stdout, dialog.shows), dialog.name)
+        ending.stop(subject)
+        assert.equal(await ended(running, subject), ending.exitCode)
+        assert.equal(subject.state.isKeyboardClosed, true)
+        assert.equal(signalListeners(subject.signals), 0)
+      })
+    }
+  }
+
+  it('takes q as text in a prompt and quits with q once the prompt is closed', async () => {
+    const subject = harness()
+    let isDone = false
+    const running = (async () => {
+      try {
+        return await runApplication(applicationOptions({ inputs: ['characterization.log'] }), subject.environment)
+      } finally {
+        isDone = true
+      }
+    })()
+    await waitFor(() => hasShown(subject.stdout, 'foxtrot 29'), 'the records')
+    subject.keyboard.write('/')
+    await waitFor(() => hasShown(subject.stdout, 'Search:'), 'the search prompt')
+    subject.keyboard.write('q')
+    await delay(150)
+    assert.equal(isDone, false)
+    subject.keyboard.write('\u{1B}')
+    await delay(100)
+    subject.keyboard.write('q')
+    assert.equal(await ended(running, subject), 0)
+  })
+
+  it('ends with 1 when --strict stops the input while a prompt is open, and gives the keyboard back', async () => {
+    const subject = harness()
+    const running = runApplication(applicationOptions({ isStrict: true }), subject.environment)
+    subject.stdin.write(record(1, 'kept'))
+    await waitFor(() => hasShown(subject.stdout, 'kept'), 'the record')
+    subject.keyboard.write('/')
+    await waitFor(() => hasShown(subject.stdout, 'Search:'), 'the search prompt')
+    subject.stdin.write('not json\n')
+    assert.equal(await ended(running, subject), 1)
+    assert.equal(subject.state.isKeyboardClosed, true)
+    assert.equal(subject.stderr.text, 'jv: stdin:2: skipped a line that is no JSON\njv: --strict stops at the first record that cannot be read\n')
+  })
+})
+
 describe('output without a viewer', () => {
   it('writes plain text when no keyboard can be found and says that --sort applies to the viewer only', async () => {
     const stdout = new TextOutput()
