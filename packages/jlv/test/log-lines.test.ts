@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, it } from 'node:test'
-import { MappingFileError, parseLine, readLog, readMapping, transform } from '../src/log.js'
+import { MappingFileError, parseEntry, parseLine, readLog, readMapping, timeKey, transform } from '../src/log.js'
 import { valueAt } from './support/fixtures.js'
 
 const textReader = (text: string): { readonly readFileSync: () => string } => ({ readFileSync: () => text })
@@ -113,5 +113,32 @@ describe('transform mapping', () => {
     const mapped = transform(record, readMapping(fileSystem))
     assert.deepEqual(mapped, { m: 'deep', d: 'dotted', t: 'v', missing: undefined, all: record, empty: undefined, c: undefined, p: undefined })
     assert.notEqual(valueAt(mapped, ['all']), record)
+  })
+})
+
+describe('parseEntry', () => {
+  it('gives the row of a stored record again', () => {
+    assert.deepEqual(parseEntry('{"message":"m","a":1}', undefined), { message: 'm', data: { a: 1 } })
+    assert.deepEqual(parseEntry('{"msg":"m"}', { message: 'msg' }), { message: 'm', data: {} })
+  })
+})
+
+describe('timeKey', () => {
+  it('reads finite numbers as epoch milliseconds and RFC 3339 text with a zone', () => {
+    assert.equal(timeKey({ timestamp: 0 }), 0)
+    assert.equal(timeKey({ timestamp: -1500 }), -1500)
+    assert.equal(timeKey({ timestamp: '2026-10-11T10:00:00.000Z' }), Date.UTC(2026, 9, 11, 10))
+    assert.equal(timeKey({ timestamp: '2026-10-11 10:00:00z' }), Date.UTC(2026, 9, 11, 10))
+    assert.equal(timeKey({ timestamp: '2026-10-11t12:00:00+02:00' }), Date.UTC(2026, 9, 11, 10))
+    assert.equal(timeKey({ timestamp: '2017-12-06T09:23:42.253060Z' }), Date.UTC(2017, 11, 6, 9, 23, 42, 253))
+  })
+
+  it('gives NaN for a missing, naive, unparseable or non-finite time and for other types', () => {
+    for (const record of [
+      {}, { timestamp: null }, { timestamp: '2017-12-06 09:23:42.253060' }, { timestamp: 'yesterday' }, { timestamp: '1700000000000' },
+      { timestamp: Infinity }, { timestamp: true }, { timestamp: { date: '2026-10-11T10:00:00Z' } }, 'text', 42, [1]
+    ]) {
+      assert.ok(Number.isNaN(timeKey(record)), JSON.stringify(record))
+    }
   })
 })

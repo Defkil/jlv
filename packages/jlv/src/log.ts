@@ -127,6 +127,31 @@ const toEntry = (line: unknown): LogEntry => {
   return { ...fields, data }
 }
 
+// The row of a stored record's text. The store keeps only lines that parsed as records, so the same text and mapping
+// give the same row again.
+const parseEntry = (text: string, mapping: Mapping | undefined): LogEntry => {
+  const parsed = parseLine(text, mapping)
+  return toEntry(parsed.kind === 'record' ? parsed.value : {})
+}
+
+// An RFC 3339 date and time with a zone; a space may separate date and time.
+const timestampPattern = /^\d{4}-\d{2}-\d{2}[ Tt]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})$/
+
+// The time key by which the viewer sorts a record, in epoch milliseconds: the timestamp field of the row as a finite
+// number, or as RFC 3339 text with a zone. Anything else is NaN and sorts last: a missing timestamp, a naive or
+// unparseable text, or a value of another type. The final model of plan section 5 replaces this transition rule.
+const timeKey = (record: unknown): number => {
+  const timestamp: unknown = record === undefined || record === null
+    ? undefined
+    : Object.getOwnPropertyDescriptor(new Object(record), 'timestamp')?.value
+  if (typeof timestamp === 'number') {
+    return Number.isFinite(timestamp) ? timestamp : NaN
+  }
+  return typeof timestamp === 'string' && timestampPattern.test(timestamp)
+    ? Date.parse(`${timestamp.slice(0, 10)}T${timestamp.slice(11).toUpperCase()}`)
+    : NaN
+}
+
 // The rows of a whole file, framed and parsed like a stream that ends with the file.
 const readLog = (file: string, reader: LogReader = fs, mapping: Mapping | undefined = readMapping()): LogEntry[] => {
   const contents = reader.readFileSync(file)
@@ -142,5 +167,5 @@ const readLog = (file: string, reader: LogReader = fs, mapping: Mapping | undefi
   return entries
 }
 
-export { MappingFileError, parseLine, readLog, readMapping, toEntry, transform }
+export { MappingFileError, parseEntry, parseLine, readLog, readMapping, timeKey, toEntry, transform }
 export type { ConfigFileSystem, LogEntry, LogReader, Mapping, ParsedLine }
