@@ -39,7 +39,7 @@ the tests.
 | --- | --- |
 | Files | 124: `package.json`, `README.md`, `LICENSE`, `NOTICE.md` and `.js`, `.js.map` (sources inline) and `.d.ts` of the 40 modules of `src` |
 | Size | 234,036 bytes packed, 884,663 bytes unpacked |
-| SHA-256 | `644b63a36f80df515a629807940c4bab4f5d46737942369cd280146bec7483d3`. npm 11.19.1 on Windows and npm 12.2.0 on Linux pack the same bytes: the tarball of the release commit `a3405ff`, before the last README changes, had `8b506b1abe7339fad3a95d52937a78cf8356a0d6cb3511a7418c9c18e00f6faa` in both |
+| SHA-256 | `644b63a36f80df515a629807940c4bab4f5d46737942369cd280146bec7483d3`, from npm 11.19.1 on Windows and from npm 12.2.0 on Linux in CI alike; the tarball of the release commit `a3405ff`, before the last README changes, had `8b506b1abe7339fad3a95d52937a78cf8356a0d6cb3511a7418c9c18e00f6faa` in both |
 | Production install | 7 packages: jlv 2.0.0, csv-parse 7.0.3, ini 6.0.0, neo-blessed 0.2.0, tinyglobby 0.2.17, fdir 6.5.0, picomatch 4.0.7; no install script, no native code; `npm audit --omit=dev --audit-level=high` clean |
 | Public declarations | `api.d.ts` and `formats/index.d.ts` reach 11 more declaration files of the package and nothing else; none names blessed |
 
@@ -66,7 +66,7 @@ signal handler and set no exit code, and jlv runs all three plugins.
 | 22.23.3 | 10.9.9 | all checks passed |
 | 24.21.0 | 11.19.0 | all checks passed |
 | 26.10.0 | 11.19.1 | all checks passed |
-| CI on Linux, run 38181449879 for the tarball of `a3405ff`: 24.21.0 (quality), 22.9.0, 22.23.3, 24.21.0, 26.11.1 | 12.2.0, 10.8.3, 10.9.9, 11.19.0, 11.20.0 | all checks passed |
+| CI on Linux, run 38183368059: 24.21.0 (quality), 22.9.0, 22.23.3, 24.21.0, 26.11.1 | 12.2.0, 10.8.3, 10.9.9, 11.19.0, 11.20.0 | all checks passed, for the same SHA-256 |
 
 A tarball with one more file in `dist` fails the check (`unexpected: dist/extra.txt`).
 
@@ -107,6 +107,7 @@ Runs on the branch:
 | [38179631342](https://github.com/Defkil/jlv/actions/runs/38179631342) | `3a0134c` | quality passed the package check and stopped at the release decision: no changelog section for 0.1.2 yet, as expected |
 | [38181266439](https://github.com/Defkil/jlv/actions/runs/38181266439) | `b7acdd3` | the same, before the release commit |
 | [38181449879](https://github.com/Defkil/jlv/actions/runs/38181449879) | `a3405ff`, `chore(release): jlv 2.0.0` | success: quality with the notice `jlv@2.0.0 is not on npm yet; the publish job on master publishes jlv-2.0.0.tgz (SHA-256 8b506b1a…) with npm 12.2.0`, all four runtime jobs, publish skipped |
+| [38183368059](https://github.com/Defkil/jlv/actions/runs/38183368059) | `dbd2daf`, the phase 8 results, with the final package | success: the tarball `644b63a3…` passed the package check in quality and in all four runtime jobs, 507 tests with 505 passed and 2 skipped on each runtime, publish skipped |
 
 The publish decision was also run against the registry locally as a dry run: `jlv@2.0.0 is not on npm yet`. The
 registry lists `jlv` 1.0.0 and 1.0.1.
