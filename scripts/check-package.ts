@@ -194,8 +194,9 @@ const obtainTarball = async (temporary: string): Promise<string> => {
   const destination = path.resolve(options['pack-destination'] ?? path.join(temporary, 'pack'))
   mkdirSync(destination, { recursive: true })
   const packed = await npm(['pack', '--json', '--pack-destination', destination], { cwd: packageDirectory, timeout: 120_000 })
-  const report: unknown = packed.code === 0 ? JSON.parse(packed.output.slice(packed.output.indexOf('['))) : undefined
-  const result: unknown = Array.isArray(report) ? report[0] : undefined
+  const report: unknown = packed.code === 0 ? JSON.parse(packed.output) : undefined
+  // npm 11 reports a list of packages, npm 12 an object with a key per package.
+  const result: unknown = Array.isArray(report) ? report[0] : property(report, 'jlv')
   const fileName = property(result, 'filename')
   if (typeof fileName === 'string') {
     return path.join(destination, fileName)
