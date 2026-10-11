@@ -94,7 +94,9 @@ its correlation column. The real `runApplication()` of the emitted tree shows th
 viewer on a headless 120x40 terminal with the default limits and order and quits with `q`.
 *First record* is the time until a record's text reaches the terminal, *whole file* until the
 newest record, which sorts first only once the file has been read. Three runs per runtime;
-the export of the phase 6 head ran on the same fixture right after them.
+the export of the phase 6 head ran on the same fixture right after them. The phase 7 tree
+was that of `e4d688b`: the later commits wrap source lines, add documentation and change the
+sanitizer only for text with control characters, which the fixture does not hold.
 
 | Node | Tree | First write | First record | Whole file | Peak RSS | RSS at the end | Heap after GC | Peak heap committed |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -127,11 +129,11 @@ per change of the filters or the sort, never for a cursor move.
 
 ## Lifecycle
 
-The proof with `JLV_LIFECYCLE_CYCLES=10000` passed on Node 26.10.0: the census of nodes,
-keyable and clickable elements, focus history and listeners was unchanged after 10,000 cycles,
-which now also open and close the key help and the filter manager (316.8 s; 356.2 s in
-phase 6), and the order was computed once per data or query revision, never for a cursor move
-(15.2 s; 22.8 s in phase 6). The focus history settles below blessed's maximum of ten entries,
+The proof with `JLV_LIFECYCLE_CYCLES=10000` passed on Node 26.10.0 with the tree of
+`079e70d`, the last code commit: the census of nodes, keyable and clickable elements, focus
+history and listeners was unchanged after 10,000 cycles, which now also open and close the
+key help and the filter manager (304.1 s; 356.2 s in phase 6), and the order was computed
+once per data or query revision, never for a cursor move (15.6 s; 22.8 s in phase 6). The focus history settles below blessed's maximum of ten entries,
 since closing a dialog takes its entries back out; the test checks that it stays bounded.
 
 ## Test matrix
@@ -140,15 +142,17 @@ The suite of the last code commit, emitted once and run with each runtime:
 
 | Node | Tests | Passed | Failed | Skipped | Wall time |
 | --- | --- | --- | --- | --- | --- |
-| 22.9.0 | 470 | 468 | 0 | 2 | 20 s |
-| 22.23.3 | 470 | 468 | 0 | 2 | 22 s |
+| 22.9.0 | 470 | 468 | 0 | 2 | 22 s |
+| 22.23.3 | 470 | 468 | 0 | 2 | 19 s |
 | 24.21.0 | 470 | 468 | 0 | 2 | 21 s |
-| 26.10.0 | 470 | 468 | 0 | 2 | 16 s |
+| 26.10.0 | 470 | 468 | 0 | 2 | 17 s |
 
 The first run of the matrix, with `util.stripVTControlCharacters` in the sanitizer, failed four
 tests on both Node 22 releases; see the deviations. The two skipped tests are the POSIX-only
 ones of phase 5 (an unreadable file and SIGINT during a live input). `pnpm run typecheck`,
-`pnpm run lint` and `pnpm test` passed for every phase 7 commit on Node 26.10.0.
+`pnpm run lint` and `pnpm test` passed for every phase 7 commit on Node 26.10.0, each run in
+a clean export of its commit with an install from the lockfile. The phase 6 head had 392
+tests.
 
 ## Deviations from the plan
 
