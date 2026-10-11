@@ -147,6 +147,18 @@ describe('jlv.config.json', () => {
     })
   })
 
+  // Level names and profile names were assigned key by key, so __proto__ set the prototype of the table instead of
+  // naming a level or a profile.
+  it('keeps level and profile names such as __proto__ as own keys', () => {
+    const profile = '{"mode":"all","clauses":[{"field":["message"],"operator":"contains","value":"x"}]}'
+    const configuration = readJsonConfiguration(
+      `{"version":1,"levels":{"__proto__":"info","Constructor":"warn"},"profiles":{"__proto__":${profile}}}`, 'jlv.config.json')
+    assert.deepEqual(Object.keys(configuration.levels), ['__proto__', 'constructor'])
+    assert.equal(Object.getPrototypeOf(configuration.levels), Object.prototype)
+    assert.deepEqual(Object.keys(configuration.profiles), ['__proto__'])
+    assert.equal(Object.getPrototypeOf(configuration.profiles), Object.prototype)
+  })
+
   it('refuses misspelled keys with a hint, other versions and invalid JSON', () => {
     assert.equal(jsonError(json({ version: 1, maping: {} })),
       'jlv.config.json: the configuration has the unknown key "maping" (did you mean mapping?). Known keys: $schema, version, format, ' +

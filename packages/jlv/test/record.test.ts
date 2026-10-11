@@ -58,6 +58,18 @@ describe('levels', () => {
     assert.equal(normalizeLevel('verbose', { hasNumericLevels: false, levelNames: { verbose: 'debug' }, customLevels: {} }), 'debug')
   })
 
+  // The level tables are objects, whose prototype answered constructor with the Object function and __proto__ with
+  // Object.prototype: --output plain then failed on a level that was no text (upstream issue #6).
+  it('keep raw levels that name members of Object.prototype unknown, unless the user names them', () => {
+    for (const raw of ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf', '__defineGetter__']) {
+      assert.equal(normalizeLevel(raw, noLevels), 'unknown', raw)
+      assert.equal(normalizeLevel(raw, { hasNumericLevels: false, levelNames: { verbose: 'debug' }, customLevels: {} }), 'unknown', raw)
+    }
+    const customLevels = Object.fromEntries([['__proto__', 'warn'], ['constructor', 'error']]) as Readonly<Record<string, 'warn' | 'error'>>
+    assert.equal(normalizeLevel('__PROTO__', { hasNumericLevels: false, customLevels }), 'warn')
+    assert.equal(normalizeLevel('Constructor', { hasNumericLevels: false, customLevels }), 'error')
+  })
+
   it('order by severity with unknown last', () => {
     assert.deepEqual(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'unknown'].map(level => levelCode(normalizeLevel(level, noLevels))), [0, 1, 2, 3, 4, 5, 6])
     assert.equal(levelOfCode(4), 'error')

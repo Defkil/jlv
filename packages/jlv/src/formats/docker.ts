@@ -46,15 +46,11 @@ const envelopeKey = (inner: JsonObject | undefined): string => {
   return key
 }
 
-// The envelope's fields without log, or with the output's text for plain text.
+// The envelope's fields without log, or with the output's text for plain text. Object.fromEntries defines own
+// properties, so an envelope key such as __proto__ stays a field.
 const envelopeFields = (envelope: JsonObject, text: string | undefined): JsonObject => {
-  const fields: Record<string, JsonValue> = {}
-  for (const [key, value] of Object.entries(envelope)) {
-    if (key !== 'log') {
-      fields[key] = value
-    }
-  }
-  return text === undefined ? fields : { log: text, ...fields }
+  const fields: [string, JsonValue][] = Object.entries(envelope).filter(([key]) => key !== 'log')
+  return Object.fromEntries(text === undefined ? fields : [['log', text], ...fields])
 }
 
 const innerProfile = (inner: JsonObject): FieldProfile => {

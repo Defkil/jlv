@@ -33,6 +33,16 @@ describe('Docker envelopes', () => {
     assert.deepEqual([row.timestamp, row.record.level, row.message], ['2026-10-11T10:00:00.250Z', 'unknown', 'plain text'])
   })
 
+  // Copying the envelope key by key set the prototype of the copy for a key __proto__ and lost the key.
+  it('keep an envelope key such as __proto__ as a field', async () => {
+    const { records } = await readRecords(envelope('plain\n', JSON.parse('{"__proto__":{"level":"error"}}') as object))
+    const docker: unknown = records[0]?.record.fields['docker']
+    assert.ok(typeof docker === 'object' && docker !== null)
+    assert.deepEqual(Object.keys(docker), ['log', 'stream', 'time', '__proto__'])
+    assert.equal(Object.getPrototypeOf(docker), Object.prototype)
+    assert.equal(records[0]?.record.level, 'unknown')
+  })
+
   it('read records without an envelope in a Docker source as generic JSON', async () => {
     const { records } = await readRecords(`${envelope('first\n')}{"level":"info","message":"no envelope"}\n`)
     assert.deepEqual(records.map(({ record }) => [record.level, record.message]), [['unknown', 'first'], ['info', 'no envelope']])

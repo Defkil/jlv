@@ -52,6 +52,15 @@ describe('record lines', () => {
     ])
   })
 
+  // A raw level such as constructor read the Object function from the level tables, and the plain line failed on it.
+  it('writes raw levels that name members of Object.prototype as unknown levels', async () => {
+    const { records } = await readRecords('{"level":"constructor","message":"a"}\n{"level":"__proto__","message":"b"}\n')
+    assert.deepEqual(records.map(({ record }) => record.level), ['unknown', 'unknown'])
+    assert.deepEqual(rowsOf(records).map(row => plainLine(row)), ['- constructor a\n', '- __proto__ b\n'])
+    const line = jsonLine(records[0]?.record ?? assert.fail('no record'))
+    assert.equal(Reflect.get(JSON.parse(line) as object, 'level'), 'unknown')
+  })
+
   it('keeps every record on one line', async () => {
     const { records } = await readRecords('{"message":"first\\r\\nsecond","detail":"a\\nb"}\n')
     assert.deepEqual(rowsOf(records).map(row => plainLine(row)), [String.raw`- - first\r\nsecond {"detail":"a\nb"}` + '\n'])

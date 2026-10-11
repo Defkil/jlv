@@ -266,13 +266,11 @@ const readJsonConfiguration = (text: string, label: string): Configuration => {
   if (root['timestampUnit'] !== undefined) {
     mutable.timestampUnit = reader.oneOf(root['timestampUnit'], 'timestampUnit', timestampUnits)
   }
+  // Object.fromEntries defines own properties, so a name such as __proto__ is a key like any other.
   if (root['levels'] !== undefined) {
-    const levels: Record<string, LogLevel> = {}
     const entries = Object.entries(reader.record(root['levels'], 'levels'))
-    for (const [raw, level] of entries) {
-      levels[raw.toLowerCase()] = isLogLevel(level) ? level : reader.fail(`levels.${raw}`, `must be one of ${logLevels.join(', ')}`)
-    }
-    mutable.levels = levels
+    mutable.levels = Object.fromEntries(entries.map(([raw, level]): [string, LogLevel] =>
+      [raw.toLowerCase(), isLogLevel(level) ? level : reader.fail(`levels.${raw}`, `must be one of ${logLevels.join(', ')}`)]))
   }
   if (root['csv'] !== undefined) {
     const csv = reader.object(root['csv'], 'csv', ['delimiter'])
@@ -288,12 +286,8 @@ const readJsonConfiguration = (text: string, label: string): Configuration => {
     mutable.maximumBytes = reader.limit(root['maxBytes'], 'maxBytes')
   }
   if (root['profiles'] !== undefined) {
-    const profiles: Record<string, FilterGroup> = {}
     const entries = Object.entries(reader.record(root['profiles'], 'profiles'))
-    for (const [name, profile] of entries) {
-      profiles[name] = reader.profile(profile, `profiles.${name}`)
-    }
-    mutable.profiles = profiles
+    mutable.profiles = Object.fromEntries(entries.map(([name, profile]) => [name, reader.profile(profile, `profiles.${name}`)]))
   }
   return mutable
 }

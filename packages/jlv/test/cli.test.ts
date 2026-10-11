@@ -123,6 +123,8 @@ describe('help, version and usage errors', () => {
       [['--timestamp-unit', 'hours'], /^jv: --timestamp-unit takes seconds, milliseconds, microseconds, nanoseconds, not 'hours'\n/u],
       [['--sort=user.name'], /^jv: --sort takes timestamp, level, message or arrival, with a leading - to sort descending, not 'user\.name'\n/u],
       [['-l', 'notice'], /^jv: --level takes trace, debug, info, warn, error, fatal, unknown, not 'notice'\n/u],
+      [['-l', 'constructor'], /^jv: --level takes trace, debug, info, warn, error, fatal, unknown, not 'constructor'\n/u],
+      [['--level=__proto__'], /^jv: --level takes trace, debug, info, warn, error, fatal, unknown, not '__proto__'\n/u],
       [['--__proto__.polluted=yes'], /^jv: Unknown option '--__proto__\.polluted'\./u],
       [['--sort'], /^jv: Option '--sort <value>' argument missing/u],
       [['--sort', '-timestamp', 'a.log'], /^jv: Option '--sort' argument is ambiguous\./u],

@@ -74,15 +74,23 @@ interface LevelOptions {
 // A raw level as the key of the user's custom levels: numbers as decimal text, text in lower case.
 const customLevelKey = (value: string | number): string => typeof value === 'number' ? String(value) : value.toLowerCase()
 
+// The level that a table names for a key, read from the table's own keys: a raw level such as constructor, toString
+// or __proto__ never reaches the members of Object.prototype.
+const levelIn = (table: Readonly<Record<string, LogLevel>> | undefined, key: string): LogLevel | undefined =>
+  table !== undefined && Object.hasOwn(table, key) ? table[key] : undefined
+
+// The level of a common level name or alias, ignoring case.
+const commonLevel = (name: string): LogLevel | undefined => levelIn(commonLevelNames, name.toLowerCase())
+
 // Normalizes a raw level: the user's custom levels first, then the format's names or numbers, then the common names,
 // ignoring case. Anything else is unknown and keeps its value in the fields.
 const normalizeLevel = (value: JsonValue | undefined, options: LevelOptions): LogLevel => {
   if (typeof value === 'string') {
     const key = value.toLowerCase()
-    return options.customLevels[key] ?? options.levelNames?.[key] ?? commonLevelNames[key] ?? 'unknown'
+    return levelIn(options.customLevels, key) ?? levelIn(options.levelNames, key) ?? levelIn(commonLevelNames, key) ?? 'unknown'
   }
   if (typeof value === 'number') {
-    return options.customLevels[customLevelKey(value)] ??
+    return levelIn(options.customLevels, customLevelKey(value)) ??
       (options.hasNumericLevels ? pinoLevelNumbers.get(value) : undefined) ??
       'unknown'
   }
@@ -453,8 +461,8 @@ const asJsonObject = (value: object): JsonObject => value as JsonObject
 const emptyMapping: FieldMapping = {}
 
 export {
-  asJsonObject, boundedJson, commonLevelNames, correlationOf, correlationPaths, emptyMapping, genericProfile, isLogLevel,
-  isPlainObject, jsonProblem, levelCode, levelOfCode, logLevels, maximumJsonDepth, messageOf, normalizeFields,
-  normalizeLevel, normalizeTimestamp, timestampUnits
+  asJsonObject, boundedJson, commonLevel, commonLevelNames, correlationOf, correlationPaths, emptyMapping, genericProfile,
+  isLogLevel, isPlainObject, jsonProblem, levelCode, levelOfCode, logLevels, maximumJsonDepth, messageOf,
+  normalizeFields, normalizeLevel, normalizeTimestamp, timestampUnits
 }
 export type { FieldProfile, JsonProblem, TimestampProblem, TimestampResult }

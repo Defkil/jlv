@@ -8,7 +8,7 @@ import os from 'node:os'
 import { parseArgs } from 'node:util'
 import type { LogLevel, TimestampUnit } from './api.js'
 import { runApplication, type ApplicationOptions, type OutputMode } from './application.js'
-import { commonLevelNames, logLevels, timestampUnits } from './record.js'
+import { commonLevel, logLevels, timestampUnits } from './record.js'
 import { openKeyboard } from './terminal.js'
 
 const usage = 'usage: jv [options] [file | \'glob\' | -]...'
@@ -85,8 +85,7 @@ const levelValue = (text: string | undefined): LogLevel | undefined => {
   if (text === undefined) {
     return undefined
   }
-  const key = text.toLowerCase()
-  const level = key === 'unknown' ? 'unknown' : commonLevelNames[key]
+  const level = text.toLowerCase() === 'unknown' ? 'unknown' : commonLevel(text)
   if (level === undefined) {
     throw new UsageError(`--level takes ${logLevels.join(', ')}, not '${text}'`)
   }
