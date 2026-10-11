@@ -198,6 +198,9 @@ importers:
       neo-blessed:
         specifier: 0.2.0
         version: 0.2.0
+      tinyglobby:
+        specifier: 0.2.17
+        version: 0.2.17
     devDependencies:
       '@types/blessed':
         specifier: 0.1.27
@@ -205,6 +208,9 @@ importers:
       '@types/ini':
         specifier: 4.1.1
         version: 4.1.1
+      '@types/picomatch':
+        specifier: 4.0.3
+        version: 4.0.3
 
 packages:
 
@@ -303,6 +309,9 @@ packages:
 
   '@types/node@22.20.5':
     resolution: {integrity: sha512-U2+DNr+wSjpsTS/wZGYHq7GcwfuSmKiKvoPvK22zwTlRhU91yOniN4qRR5KhIjvif7ysw/dz/hKmfDH0Ris4aA==}
+
+  '@types/picomatch@4.0.3':
+    resolution: {integrity: sha512-iG0T6+nYJ9FAPmx9SsUlnwcq1ZVRuCXcVEvWnntoPlrOpwtSTKNDC9uVAxTsC3PUvJ+99n4RpAcNgBbHX3JSnQ==}
 
   '@typescript-eslint/eslint-plugin@8.71.1':
     resolution: {integrity: sha512-nNlBf6HuotqMgZvSkWD5hNdemiBIxQ2NmrlgfcUIeZRs+BbakjscCQRq/Hb74EFVnFiSWWdL12JruqwBy3ERDw==}
@@ -975,6 +984,8 @@ snapshots:
   '@types/node@22.20.5':
     dependencies:
       undici-types: 6.21.0
+
+  '@types/picomatch@4.0.3': {}
 
   '@typescript-eslint/eslint-plugin@8.71.1(@typescript-eslint/parser@8.71.1(eslint@10.12.0(supports-color@2.0.0))(supports-color@2.0.0)(typescript@6.0.3))(eslint@10.12.0(supports-color@2.0.0))(supports-color@2.0.0)(typescript@6.0.3)':
     dependencies:

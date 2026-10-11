@@ -14,10 +14,12 @@
   },
   "dependencies": {
     "ini": "6.0.0",
-    "neo-blessed": "0.2.0"
+    "neo-blessed": "0.2.0",
+    "tinyglobby": "0.2.17"
   },
   "devDependencies": {
     "@types/blessed": "0.1.27",
-    "@types/ini": "4.1.1"
+    "@types/ini": "4.1.1",
+    "@types/picomatch": "4.0.3"
   }
 }
