@@ -173,16 +173,23 @@ once the store evicts, and the numbers of skipped lines and failed inputs.
 11. **Linux.** In the Linux terminal repeat steps 1, 3, 6 and 9 with `/dev/tty` as the
     keyboard; `echo '{}' | setsid -w node cli.js` shows the plain fallback without a
     controlling terminal.
+12. **Formats and configuration.** In the repository's `docs\examples`, run
+    `<viewer> pino.log orders.csv container.log`: the status line shows
+    `format: pino, csv, docker`, the level column shows `info` to `fatal` instead of pino's
+    numbers, `l` offers the seven levels, and `s` with `level` sorts by severity. With
+    `<viewer> -c monolog.config.json monolog.log` the status line shows
+    `config: monolog.config.json` and the times show in UTC; `<viewer> broken.log` shows
+    `2 skipped | 1 warning`.
 
 ### Record, Part B
 
-| Runtime | Console path | Keys (1) | Follow newest (2) | Ctrl-C and q (3) | Input ends (4) | Eviction (5) | Follow (6) | Save (7) | Plain (8) | No console (9) | Typed (10) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 22.9.0 | | | | | | | | | | | |
-| 22.x latest: | | | | | | | | | | | |
-| 24.x latest: | | | | | | | | | | | |
-| 26.x latest: | | | | | | | | | | | |
-| Linux, Node: | | | | | | | | | | | |
+| Runtime | Console path | Keys (1) | Follow newest (2) | Ctrl-C and q (3) | Input ends (4) | Eviction (5) | Follow (6) | Save (7) | Plain (8) | No console (9) | Typed (10) | Formats (12) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 22.9.0 | | | | | | | | | | | | |
+| 22.x latest: | | | | | | | | | | | | |
+| 24.x latest: | | | | | | | | | | | | |
+| 26.x latest: | | | | | | | | | | | | |
+| Linux, Node: | | | | | | | | | | | | |
 
 ## Probe
 
