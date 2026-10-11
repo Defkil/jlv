@@ -7,12 +7,17 @@
   "packageManager": "pnpm@12.9.1",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint --max-warnings 0 .",
     "test:build": "node -e \"fs.rmSync('.test-dist', { recursive: true, force: true })\" && tsc -p tsconfig.test.json && node .test-dist/scripts/prepare-test-tree.js",
     "test:run": "node .test-dist/scripts/run-tests.js",
     "test": "pnpm run test:build && pnpm run test:run"
   },
   "devDependencies": {
     "@types/node": "22.20.5",
-    "typescript": "6.0.3"
+    "eslint": "10.12.0",
+    "eslint-plugin-unicorn": "77.0.0",
+    "neostandard": "0.14.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.1"
   }
 }
