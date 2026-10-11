@@ -1,0 +1,2 @@
+# Identical LF bytes on Windows and Linux for lint, snapshots and package tarballs.
+* text=auto eol=lf
