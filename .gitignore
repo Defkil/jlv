@@ -3,4 +3,6 @@
 .coveralls.yml
 .idea
 /example/
-/docs/
+# Generated v1 jsdoc and coverage output stays ignored; authored Markdown in docs/ is tracked.
+/docs/*
+!/docs/*.md
