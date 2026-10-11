@@ -1,10 +1,11 @@
 // Upstream test/utils.test.js (for src/utils.js), moved to node:test with unchanged assertions and in the same order:
-// hasColors keeps state in a global regular expression, so the order is part of the behavior.
+// hasColors keeps state in a global regular expression, so the order is part of the behavior. The tests run against
+// the TypeScript port in src/tui/formatting.ts, where upstream's len is named textLength.
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { loadLegacyUtilities } from './support/legacy.js'
+import formatting from '../src/tui/formatting.js'
 
-const { formatRows, maxLengths, stripColors, hasColors, spaces, padEnd, len, trunc } = loadLegacyUtilities()
+const { formatRows, maxLengths, stripColors, hasColors, spaces, padEnd, textLength, trunc } = formatting
 
 describe('hasColors', () => {
   it('is false for string with no colors', () => {
@@ -40,7 +41,7 @@ describe('formatRows', () => {
     ]
     const columns = [
       { key: 'ts' },
-      { key: 'lvl', format: (level: string) => level === 'debug' ? `{fg-yellow}${level}{/fg-yellow}` : level },
+      { key: 'lvl', format: (level: unknown) => level === 'debug' ? `{fg-yellow}${level}{/fg-yellow}` : String(level) },
       { key: 'msg' }
     ]
     const expected = [
@@ -85,12 +86,12 @@ describe('padEnd', () => {
 describe('len', () => {
   it('ignores colors', () => {
     const text = '{fg-green}{bold}felipe{/bold}{/fg-green} {bold}coury{/bold}'
-    assert.equal(len(text), 12)
+    assert.equal(textLength(text), 12)
   })
 
   it('considers colors when flag set', () => {
     const text = '{fg-green}{bold}felipe{/bold}{/fg-green} {bold}coury{/bold}'
-    assert.equal(len(text, true), text.length)
+    assert.equal(textLength(text, true), text.length)
   })
 })
 

@@ -20,6 +20,7 @@
     "minimist": "1.2.0"
   },
   "devDependencies": {
-    "@types/blessed": "0.1.27"
+    "@types/blessed": "0.1.27",
+    "@types/lodash": "4.17.26"
   }
 }

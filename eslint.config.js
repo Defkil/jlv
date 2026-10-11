@@ -43,6 +43,14 @@ export default defineConfig([
     }
   },
   {
+    files: ['packages/jlv/src/**/*.ts'],
+    rules: {
+      // Temporary (plan §8 phase 3): ported modules stay CommonJS while upstream JavaScript still requires them;
+      // the command line port switches packages/jlv to ES modules and removes this entry.
+      '@typescript-eslint/no-require-imports': ['error', { allowAsImport: true }]
+    }
+  },
+  {
     files: ['packages/jlv/src/tui/blessed-boundary.ts', 'packages/**/test/**/*.ts',
       'packages/format-fixtures/src/**/*.ts'],
     rules: {

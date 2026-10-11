@@ -2,7 +2,7 @@ const blessed = require('blessed');
 const _ = require('lodash');
 
 const { readLog } = require('../log');
-const { formatRows, levelColors } = require('../utils');
+const { formatRows, levelColors } = require('../tui/formatting');
 
 const BaseWidget = require('./BaseWidget');
 const LogDetails = require('./LogDetails');

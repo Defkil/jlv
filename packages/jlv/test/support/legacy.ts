@@ -27,26 +27,6 @@ export interface LegacyLog {
   transform: (entry: unknown, fileSystem?: ConfigFileSystem) => unknown
 }
 
-export interface LegacyColumn {
-  readonly key: string
-  readonly length?: number
-  readonly format?: (value: string) => string
-}
-
-export type LegacyRow = Readonly<Record<string, string | undefined>>
-
-export interface LegacyUtilities {
-  formatRows: (rows: readonly LegacyRow[], columns: readonly LegacyColumn[], spacing?: number, maxWidth?: number) => string[]
-  maxLengths: (columns: readonly LegacyColumn[], rows: readonly LegacyRow[], spacing: number, maxWidth: number) => Record<string, number>
-  hasColors: (text: string) => boolean
-  stripColors: (text: string | undefined) => string
-  spaces: (count: number) => string
-  padEnd: (text: string, length: number, shouldIgnoreColors?: boolean) => string
-  len: (text: string | null | undefined, shouldIgnoreColors?: boolean) => number
-  trunc: (text: string | null, length: number, shouldIgnoreColors?: boolean) => string
-  levelColors: Readonly<Record<string, (text: string) => string>>
-}
-
 // @types/blessed declares the screen streams the wrong way round (plan §0.9).
 export type ScreenOptions = Omit<Widgets.IScreenOptions, 'input' | 'output'> & {
   readonly input: Readable
@@ -109,8 +89,6 @@ export interface LegacyLogDetails extends Widgets.BoxElement {
 export type LegacyLogDetailsClass = new (options: { readonly screen: Widgets.Screen }) => LegacyLogDetails
 
 export const loadLegacyLog = (): LegacyLog => loadModule('../../src/log.js') as LegacyLog
-
-export const loadLegacyUtilities = (): LegacyUtilities => loadModule('../../src/utils.js') as LegacyUtilities
 
 // The widgets require blessed themselves; this loads the same module instance for the screen.
 export const loadTerminalLibrary = (): TerminalLibrary => loadModule('blessed') as TerminalLibrary
