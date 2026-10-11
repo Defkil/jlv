@@ -4,7 +4,8 @@
 import assert from 'node:assert/strict'
 import { EventEmitter, once } from 'node:events'
 import {
-  appendFileSync, chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync
+  appendFileSync, chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync,
+  writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -85,6 +86,8 @@ const applicationOptions = (overrides: Partial<ApplicationOptions> = {}): Applic
   format: undefined,
   timestampUnit: undefined,
   isStrict: false,
+  configuration: undefined,
+  isConfigurationDisabled: false,
   maximumRecords: undefined,
   maximumBytes: undefined,
   save: undefined,
@@ -426,13 +429,71 @@ describe('saving records', () => {
   })
 })
 
+// The names, sizes and modification times of the home directory's entries, to see that nothing wrote into it.
+const homeSnapshot = (): string[] => readdirSync(home, { recursive: true }).map(name => {
+  const status = statSync(path.join(home, String(name)))
+  return `${String(name)} ${String(status.size)} ${String(status.mtimeMs)}`
+}).toSorted((left, right) => left.localeCompare(right))
+
+describe('configuration', () => {
+  const project = path.join(directory, 'configured')
+  mkdirSync(project)
+  writeFileSync(path.join(project, 'jlv.config.json'), JSON.stringify({
+    version: 1, format: 'logfmt', mapping: { message: ['text'] }, levels: { notice: 'warn' }
+  }))
+  writeFileSync(path.join(project, 'app.log'), 'level=notice text="from logfmt"\n')
+
+  it('reads the project\'s file, lets the command line win, and leaves the home directory as it was', async () => {
+    writeFileSync(path.join(home, '.json-log-viewer'), '[transform]\nmessage=home_message\n')
+    const homeBefore = homeSnapshot()
+    const configured = harness({ stdout: new TextOutput() })
+    const environment = { ...configured.environment, workingDirectory: project }
+    assert.equal(await runApplication(applicationOptions({ inputs: ['app.log'], output: 'plain' }), environment), 0)
+    assert.equal(configured.stdout instanceof TextOutput ? configured.stdout.text : '', '- warn from logfmt\n')
+    const overridden = harness({ stdout: new TextOutput() })
+    const options = applicationOptions({ inputs: ['app.log'], output: 'plain', format: 'jsonl' })
+    assert.equal(await runApplication(options, { ...overridden.environment, workingDirectory: project }), 1)
+    assert.match(overridden.stderr.text, /^jv: app\.log:1: skipped a line that is no JSON\n/u)
+    const ignored = harness({ stdout: new TextOutput() })
+    const withoutFile = applicationOptions({ inputs: ['app.log'], output: 'plain', format: 'logfmt', isConfigurationDisabled: true })
+    assert.equal(await runApplication(withoutFile, { ...ignored.environment, workingDirectory: project }), 0)
+    assert.equal(ignored.stdout instanceof TextOutput ? ignored.stdout.text : '', '- notice - {"text":"from logfmt"}\n')
+    assert.deepEqual(homeSnapshot(), homeBefore)
+    rmSync(path.join(home, '.json-log-viewer'))
+  })
+
+  // viewer-load.test.ts shows the whole status line; the screen here redraws only the cells that change.
+  it('names the configuration file in the status line', async () => {
+    const { stdout, keyboard, environment } = harness()
+    const running = runApplication(applicationOptions({ inputs: ['app.log'] }), { ...environment, workingDirectory: project })
+    await waitFor(() => hasShown(stdout, 'from logfmt'), 'the record')
+    await waitFor(() => hasShown(stdout, 'loading | config: jlv.config.json'), 'the configuration file')
+    keyboard.write('q')
+    assert.equal(await running, 0)
+  })
+
+  it('reports a configuration that cannot be used with 2 before a screen opens', async () => {
+    const missing = harness()
+    assert.equal(await runApplication(applicationOptions({ inputs: ['app.log'], configuration: 'missing.json' }), {
+      ...missing.environment, workingDirectory: project
+    }), 2)
+    assert.equal(missing.stderr.text, 'jv: the configuration file missing.json does not exist\n')
+    assert.equal(shown(missing.stdout), '')
+    const unknownFormat = harness()
+    assert.equal(await runApplication(applicationOptions({ inputs: ['app.log'], format: 'xml' }), {
+      ...unknownFormat.environment, workingDirectory: project
+    }), 2)
+    assert.equal(unknownFormat.stderr.text, 'jv: --format takes auto or one of docker, bunyan, pino, logfmt, csv, winston, jsonl, not \'xml\'\n')
+  })
+})
+
 describe('errors before a screen opens', () => {
   it('reports a mapping file that cannot be read with 2', async () => {
     const unreadable = path.join(directory, 'unreadable-home')
     mkdirSync(path.join(unreadable, '.json-log-viewer'), { recursive: true })
     const { stdout, stderr, environment } = harness({ home: unreadable })
     assert.equal(await runApplication(applicationOptions({ inputs: ['characterization.log'] }), environment), 2)
-    assert.match(stderr.text, /^jv: cannot read the mapping file /u)
+    assert.match(stderr.text, /^jv: cannot read the configuration file .*\.json-log-viewer: /u)
     assert.equal(shown(stdout), '')
   })
 

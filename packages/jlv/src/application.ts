@@ -7,7 +7,7 @@ import { addAbortSignal, type Readable, type Writable } from 'node:stream'
 import type { Widgets } from 'blessed'
 import type { ScreenOptions } from 'neo-blessed'
 import type { LogFormat, LogLevel, ParseDiagnostic, SourceInformation, TimestampUnit } from './api.js'
-import { ConfigurationError, readHomeMapping, type LegacyMapping } from './configuration.js'
+import { ConfigurationError, loadConfiguration, type Configuration } from './configuration.js'
 import { builtInFormats, jsonLinesFormat } from './formats/registry.js'
 import {
   Ingestion, SourceState, StrictModeError, recordAt, sourceBatches, type IngestionSettings, type NormalizedRecord,
@@ -40,6 +40,9 @@ interface ApplicationOptions {
   readonly format: string | undefined
   // The unit of numeric timestamps; undefined lets each format use its own.
   readonly timestampUnit: TimestampUnit | undefined
+  // The configuration file of --config, and --no-config, which turns the discovery of a file off.
+  readonly configuration: string | undefined
+  readonly isConfigurationDisabled: boolean
   // Ends the run with exit code 1 at the first record that cannot be read.
   readonly isStrict: boolean
   readonly maximumRecords: number | undefined
@@ -62,7 +65,7 @@ interface ApplicationEnvironment {
   readonly stdout: Writable & { readonly isTTY?: boolean }
   readonly stderr: Writable
   readonly workingDirectory: string
-  // The directory of the legacy mapping file ~/.json-log-viewer.
+  // The home directory, where discovery looks for a configuration file after the working directory.
   readonly home: string
   readonly platform: NodeJS.Platform
   readonly signals: SignalSource
@@ -191,6 +194,7 @@ interface Run {
   readonly options: ApplicationOptions
   readonly environment: ApplicationEnvironment
   readonly sources: readonly InputSource[]
+  readonly configuration: Configuration
   readonly settings: IngestionSettings
   readonly rowOptions: RowOptions
   readonly isLive: boolean
@@ -380,7 +384,10 @@ const runMachineOutput = async (run: Run, format: MachineFormat): Promise<number
 const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
   const { environment, options } = run
   const controller = new AbortController()
-  const store = new RecordStore({ maximumRecords: options.maximumRecords, maximumBytes: options.maximumBytes })
+  const store = new RecordStore({
+    maximumRecords: options.maximumRecords ?? run.configuration.maximumRecords,
+    maximumBytes: options.maximumBytes ?? run.configuration.maximumBytes
+  })
   const ingestion = new Ingestion({ store, isCollecting: run.saveFile !== undefined, isStrict: options.isStrict })
   ingestion.activity = run.isLive ? 'live' : 'loading'
   const states = sourceStates(run, controller.signal)
@@ -397,7 +404,15 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
       ...environment.screenOptions
     })
     const sort = options.sort ?? (run.isLive ? 'arrival' : '-timestamp')
-    panel = new MainPanel({ screen, view, label: inputsLabel(run.sources), progress: ingestion, level: options.level, sort })
+    panel = new MainPanel({
+      screen,
+      view,
+      label: inputsLabel(run.sources),
+      progress: ingestion,
+      configuration: run.configuration.file,
+      level: options.level,
+      sort
+    })
     const statusLine = new StatusLine({ screen, mainPanel: panel })
     screen.append(statusLine)
     panel.setCurrent()
@@ -509,22 +524,23 @@ const chooseKeyboard = (
   return { failure: `the viewer needs a terminal: ${reason}` }
 }
 
-// The settings of the formats: every format for the probes, and the one that --format names.
-const ingestionSettings = (options: ApplicationOptions, legacy: LegacyMapping | undefined): IngestionSettings => {
-  const formats: readonly LogFormat[] = builtInFormats()
-  const format = options.format === undefined || options.format === 'auto'
-    ? undefined
-    : formats.find(candidate => candidate.identifier === options.format)
-  if (format === undefined && options.format !== undefined && options.format !== 'auto') {
-    throw new ConfigurationError(`--format takes auto or one of ${formats.map(candidate => candidate.identifier).join(', ')}, not '${options.format}'`)
+// The settings of the formats: every format for the probes, and the one that --format or the configuration names.
+// Options of the command line win over the configuration.
+const ingestionSettings = (options: ApplicationOptions, configuration: Configuration): IngestionSettings => {
+  const formats: readonly LogFormat[] = builtInFormats({ csvDelimiter: configuration.csvDelimiter })
+  const name = options.format ?? configuration.format
+  const format = name === undefined || name === 'auto' ? undefined : formats.find(candidate => candidate.identifier === name)
+  if (format === undefined && name !== undefined && name !== 'auto') {
+    const origin = options.format === undefined ? `the format of ${configuration.file ?? 'the configuration'}` : '--format'
+    throw new ConfigurationError(`${origin} takes auto or one of ${formats.map(candidate => candidate.identifier).join(', ')}, not '${name}'`)
   }
   return {
     formats,
     format,
     fallback: jsonLinesFormat,
-    mapping: legacy?.mapping ?? {},
-    timestampUnit: options.timestampUnit,
-    levels: {},
+    mapping: configuration.mapping,
+    timestampUnit: options.timestampUnit ?? configuration.timestampUnit,
+    levels: configuration.levels,
     maximumRecordSize: defaultMaximumLineBytes
   }
 }
@@ -550,11 +566,16 @@ const runApplication = async (options: ApplicationOptions, environment: Applicat
     }
     throw error
   }
-  let legacy: LegacyMapping | undefined
+  let configuration: Configuration
   let settings: IngestionSettings
   try {
-    legacy = readHomeMapping(environment.home)
-    settings = ingestionSettings(options, legacy)
+    configuration = loadConfiguration({
+      workingDirectory: environment.workingDirectory,
+      home: environment.home,
+      file: options.configuration,
+      isDiscoveryDisabled: options.isConfigurationDisabled
+    })
+    settings = ingestionSettings(options, configuration)
   } catch (error) {
     if (error instanceof ConfigurationError) {
       return fail(exitCodes.usage, error.message)
@@ -582,8 +603,8 @@ const runApplication = async (options: ApplicationOptions, environment: Applicat
     }
   }
   const isLive = options.isFollowing || sources.some(source => source.kind !== 'file')
-  const rowOptions: RowOptions = { legacyExtras: legacy?.extras }
-  const run: Run = { options, environment, sources, settings, rowOptions, isLive, saveFile }
+  const rowOptions: RowOptions = { legacyExtras: configuration.legacyExtras }
+  const run: Run = { options, environment, sources, configuration, settings, rowOptions, isLive, saveFile }
   if (keyboard !== undefined) {
     return runViewer(run, keyboard)
   }

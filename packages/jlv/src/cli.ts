@@ -8,7 +8,6 @@ import os from 'node:os'
 import { parseArgs } from 'node:util'
 import type { LogLevel, TimestampUnit } from './api.js'
 import { runApplication, type ApplicationOptions, type OutputMode } from './application.js'
-import { builtInFormatIdentifiers } from './formats/registry.js'
 import { commonLevelNames, logLevels, timestampUnits } from './record.js'
 import { openKeyboard } from './terminal.js'
 
@@ -28,6 +27,8 @@ options:
   -l, --level <level>    show only records of this level: trace, debug, info, warn, error, fatal or unknown
   --timestamp-unit <u>   seconds, milliseconds, microseconds or nanoseconds for numeric timestamps
   --strict               stop with exit code 1 at the first record that cannot be read
+  -c, --config <file>    read this configuration file, JSON or legacy INI, instead of discovering one
+  --no-config            read no configuration file
   --output <mode>        auto, tui, plain or jsonl (default: auto, the viewer when the terminal allows it)
   --max-records <n>      records the viewer keeps (default: 50000)
   --max-bytes <n>        bytes of records the viewer keeps (default: 67108864)
@@ -36,6 +37,9 @@ options:
   --log <file>           write the terminal library's debug log
   -h, --help             show this help
   --version              show the version
+
+Without --config, the first of these files configures the run: jlv.config.json and then .json-log-viewer in the
+working directory, then both in the home directory. Options on the command line win over the file.
 
 Exit codes: 0 done, 1 an input or the output failed, 2 usage error, 130 interrupted.
 `
@@ -50,6 +54,8 @@ const optionDefinitions = {
   level: { type: 'string', short: 'l' },
   'timestamp-unit': { type: 'string' },
   strict: { type: 'boolean' },
+  config: { type: 'string', short: 'c' },
+  'no-config': { type: 'boolean' },
   output: { type: 'string' },
   'max-records': { type: 'string' },
   'max-bytes': { type: 'string' },
@@ -93,13 +99,6 @@ const timestampUnitValue = (text: string | undefined): TimestampUnit | undefined
     return text
   }
   throw new UsageError(`--timestamp-unit takes ${timestampUnits.join(', ')}, not '${text}'`)
-}
-
-const formatValue = (text: string | undefined): string | undefined => {
-  if (text === undefined || text === 'auto' || builtInFormatIdentifiers.includes(text)) {
-    return text
-  }
-  throw new UsageError(`--format takes auto, ${builtInFormatIdentifiers.join(', ')}, not '${text}'`)
 }
 
 // The store's limits are positive integers below 2^32.
@@ -155,9 +154,11 @@ const readOptions = (): ApplicationOptions | 'help' | 'version' => {
     sort,
     level: levelValue(values.level),
     output: output as OutputMode,
-    format: formatValue(values.format),
+    format: values.format,
     timestampUnit: timestampUnitValue(values['timestamp-unit']),
     isStrict: values.strict === true,
+    configuration: values.config,
+    isConfigurationDisabled: values['no-config'] === true,
     maximumRecords: limitValue('max-records', values['max-records']),
     maximumBytes: limitValue('max-bytes', values['max-bytes']),
     save: values.save,

@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { after, describe, it } from 'node:test'
-import { readHomeMapping } from '../src/configuration.js'
+import { loadConfiguration } from '../src/configuration.js'
 import type { LogRow } from '../src/tui/log-row.js'
 import { readUpstreamFixture } from './support/fixtures.js'
 import { readRecords, rowsOf } from './support/records.js'
@@ -28,9 +28,9 @@ writeFileSync(logFile, `${JSON.stringify(monolog)}\n${JSON.stringify(withoutDate
 
 // The rows of the log file with the mapping of the home directory, as a run reads them.
 const mappedRows = async (): Promise<LogRow[]> => {
-  const legacy = readHomeMapping(home)
-  const { records } = await readRecords(readFileSync(logFile), { mapping: legacy?.mapping ?? {} })
-  return rowsOf(records, { legacyExtras: legacy?.extras })
+  const configuration = loadConfiguration({ workingDirectory: home, home, isDiscoveryDisabled: false })
+  const { records } = await readRecords(readFileSync(logFile), { mapping: configuration.mapping })
+  return rowsOf(records, { legacyExtras: configuration.legacyExtras })
 }
 
 // The parts of a row that the widgets show.

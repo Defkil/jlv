@@ -8,7 +8,7 @@ import { setImmediate as nextTurn } from 'node:timers/promises'
 import { homedir } from 'node:os'
 import type { Widgets } from 'blessed'
 import type { LogLevel, ParseEvent, SourceInformation } from '../../src/api.js'
-import { readHomeMapping } from '../../src/configuration.js'
+import { loadConfiguration } from '../../src/configuration.js'
 import { jsonLineEvent } from '../../src/formats/json-lines.js'
 import { builtInFormats, jsonLinesFormat } from '../../src/formats/registry.js'
 import { Ingestion, SourceState, chooseFormat, recordAt, type IngestionSettings } from '../../src/ingestion.js'
@@ -68,6 +68,8 @@ export interface ViewerOptions {
   readonly sort?: string
   readonly maximumRecords?: number
   readonly maximumBytes?: number
+  // The configuration file that the status line names.
+  readonly configuration?: string
 }
 
 // The events of framed JSON lines, as the JSON-lines reader gives them, but at once.
@@ -109,12 +111,12 @@ export const openViewer = (context: TestContext, file: string, options: ViewerOp
     warnings: false
   })
   context.after(() => { screen.destroy() })
-  const legacy = readHomeMapping(homedir())
+  const configuration = loadConfiguration({ workingDirectory: process.cwd(), home: homedir() })
   const settings: IngestionSettings = {
     formats: builtInFormats(),
     format: undefined,
     fallback: jsonLinesFormat,
-    mapping: legacy?.mapping ?? {},
+    mapping: configuration.mapping,
     timestampUnit: undefined,
     levels: {},
     maximumRecordSize: defaultMaximumLineBytes
@@ -129,8 +131,10 @@ export const openViewer = (context: TestContext, file: string, options: ViewerOp
   const fileLines = new LineSplitter()
   ingestion.accept({ source, events: jsonEvents([...fileLines.push(contents), ...fileLines.end()]) })
   ingestion.activity = 'done'
-  const view = new RecordView(store, sequence => rowOf(recordAt(store, [source], sequence), { legacyExtras: legacy?.extras }))
-  const panel = new MainPanel({ screen, view, label: file, progress: ingestion, level: options.level, sort: options.sort })
+  const view = new RecordView(store, sequence => rowOf(recordAt(store, [source], sequence), { legacyExtras: configuration.legacyExtras }))
+  const panel = new MainPanel({
+    screen, view, label: file, progress: ingestion, configuration: options.configuration, level: options.level, sort: options.sort
+  })
   const status = new StatusLine({ screen, mainPanel: panel })
   screen.append(status)
   panel.setCurrent()

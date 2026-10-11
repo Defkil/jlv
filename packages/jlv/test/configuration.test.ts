@@ -1,11 +1,12 @@
 // Configuration of src/configuration.ts (plan section 6.3): the legacy [transform] mapping of ~/.json-log-viewer with
-// ini 6, its paths and extra fields, and the errors it reports.
+// ini 6, its paths and extra fields, jlv.config.json and its validation, and the precedence of the files, which are
+// read and never written or run.
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { after, describe, it } from 'node:test'
-import { ConfigurationError, readHomeMapping, readLegacyMapping } from '../src/configuration.js'
+import { ConfigurationError, loadConfiguration, readJsonConfiguration, readLegacyMapping } from '../src/configuration.js'
 import { readUpstreamFixture } from './support/fixtures.js'
 import { readRecords, rowsOf, shownRows } from './support/records.js'
 
@@ -91,11 +92,150 @@ describe('legacy [transform] mapping', () => {
   it('reports a mapping file that cannot be read as a configuration error', () => {
     const home = path.join(directory, 'unreadable-home')
     mkdirSync(path.join(home, '.json-log-viewer'), { recursive: true })
-    assert.throws(() => readHomeMapping(home), /^ConfigurationError: cannot read the mapping file /u)
+    assert.throws(() => loadConfiguration({ workingDirectory: home, home }), /^ConfigurationError: cannot read the configuration file /u)
     const readable = path.join(directory, 'readable-home')
     mkdirSync(readable)
-    assert.equal(readHomeMapping(readable), undefined)
+    assert.equal(loadConfiguration({ workingDirectory: directory, home: readable }).file, undefined)
     writeFileSync(path.join(readable, '.json-log-viewer'), '[transform]\nmessage=msg\n')
-    assert.deepEqual(readHomeMapping(readable)?.mapping, { message: ['msg'] })
+    const configuration = loadConfiguration({ workingDirectory: directory, home: readable })
+    assert.deepEqual([configuration.kind, configuration.mapping], ['ini', { message: ['msg'] }])
+  })
+})
+
+const json = (value: object): string => JSON.stringify(value)
+
+// The message of the configuration error that the text gives.
+const jsonError = (text: string): string => {
+  try {
+    readJsonConfiguration(text, 'jlv.config.json')
+  } catch (error) {
+    assert.ok(error instanceof ConfigurationError)
+    return error.message
+  }
+  return assert.fail('no configuration error')
+}
+
+describe('jlv.config.json', () => {
+  it('reads every setting of version 1', () => {
+    const configuration = readJsonConfiguration(json({
+      $schema: 'https://example.invalid/jlv.schema.json',
+      version: 1,
+      format: 'pino',
+      mapping: { timestamp: ['datetime', 'date'], level: ['log.level'], message: ['msg'], correlationIdentifier: ['ids', 0] },
+      timestampUnit: 'seconds',
+      levels: { 35: 'info', NOTICE: 'warn' },
+      csv: { delimiter: ';' },
+      maxRecords: 1000,
+      maxBytes: 1_048_576,
+      profiles: {
+        errors: { mode: 'any', clauses: [{ field: ['level'], operator: 'equals', value: 50 }, { field: ['msg'], operator: 'contains', value: 'fail' }] }
+      }
+    }), 'jlv.config.json')
+    assert.deepEqual(configuration, {
+      file: 'jlv.config.json',
+      kind: 'json',
+      format: 'pino',
+      mapping: { timestamp: ['datetime', 'date'], level: ['log.level'], message: ['msg'], correlationIdentifier: ['ids', 0] },
+      timestampUnit: 'seconds',
+      levels: { 35: 'info', notice: 'warn' },
+      csvDelimiter: ';',
+      maximumRecords: 1000,
+      maximumBytes: 1_048_576,
+      profiles: {
+        errors: { mode: 'any', clauses: [{ field: ['level'], operator: 'equals', value: 50 }, { field: ['msg'], operator: 'contains', value: 'fail' }] }
+      }
+    })
+  })
+
+  it('refuses misspelled keys with a hint, other versions and invalid JSON', () => {
+    assert.equal(jsonError(json({ version: 1, maping: {} })),
+      'jlv.config.json: the configuration has the unknown key "maping" (did you mean mapping?). Known keys: $schema, version, format, ' +
+      'mapping, timestampUnit, levels, csv, maxRecords, maxBytes, profiles')
+    assert.equal(jsonError(json({ version: 1, mapping: { msg: ['m'] } })),
+      'jlv.config.json: mapping has the unknown key "msg". Known keys: timestamp, level, message, correlationIdentifier')
+    assert.equal(jsonError(json({ version: 2 })), 'jlv.config.json: version must be 1')
+    assert.equal(jsonError(json({})), 'jlv.config.json: version must be 1')
+    assert.match(jsonError('{"version": 1,'), /^jlv\.config\.json is no valid JSON: /u)
+    assert.equal(jsonError('[1]'), 'jlv.config.json: the configuration must be an object')
+  })
+
+  it('takes paths only as lists of segments, so that a dotted text is never split silently', () => {
+    assert.equal(jsonError(json({ version: 1, mapping: { timestamp: 'datetime.date' } })),
+      'jlv.config.json: mapping.timestamp must be a list of keys and indexes, such as ["datetime","date"] for "datetime.date"')
+    assert.equal(jsonError(json({ version: 1, mapping: { level: [] } })),
+      'jlv.config.json: mapping.level must be a list of keys and indexes, such as ["datetime", "date"]')
+    assert.equal(jsonError(json({ version: 1, mapping: { level: ['a', -1] } })),
+      'jlv.config.json: mapping.level[1] must be a key or an index, which is a whole number from 0')
+  })
+
+  it('checks units, levels, the delimiter, the limits and the profiles', () => {
+    assert.equal(jsonError(json({ version: 1, timestampUnit: 'hours' })),
+      'jlv.config.json: timestampUnit must be one of seconds, milliseconds, microseconds, nanoseconds')
+    assert.equal(jsonError(json({ version: 1, levels: { 35: 'notice' } })),
+      'jlv.config.json: levels.35 must be one of trace, debug, info, warn, error, fatal, unknown')
+    assert.equal(jsonError(json({ version: 1, csv: { delimiter: ';;' } })), 'jlv.config.json: csv.delimiter must be one ASCII character other than a quote')
+    assert.equal(jsonError(json({ version: 1, maxRecords: 0 })), 'jlv.config.json: maxRecords must be a whole number from 1 to 4294967295')
+    assert.equal(jsonError(json({ version: 1, profiles: { p: { mode: 'some', clauses: [] } } })), 'jlv.config.json: profiles.p.mode must be one of all, any')
+    assert.equal(jsonError(json({ version: 1, profiles: { p: { mode: 'all', clauses: [{ field: ['m'], operator: 'contains', value: 1 }] } } })),
+      'jlv.config.json: profiles.p.clauses[0].value must be text')
+    assert.equal(jsonError(json({ version: 1, profiles: { p: { mode: 'all', clauses: [{ field: ['m'], operator: 'matches', value: 'x' }] } } })),
+      'jlv.config.json: profiles.p.clauses[0].operator must be one of equals, contains')
+  })
+})
+
+// The names, sizes and modification times of a directory's entries, to see that nothing wrote into it.
+const snapshot = (folder: string): string[] => readdirSync(folder, { recursive: true }).map(name => {
+  const status = statSync(path.join(folder, String(name)))
+  return `${String(name)} ${String(status.size)} ${String(status.mtimeMs)}`
+}).toSorted((left, right) => left.localeCompare(right))
+
+describe('configuration precedence', () => {
+  const project = path.join(directory, 'project')
+  const home = path.join(directory, 'home')
+  mkdirSync(project, { recursive: true })
+  mkdirSync(home, { recursive: true })
+  const write = (folder: string, name: string, text: string): string => {
+    const file = path.join(folder, name)
+    writeFileSync(file, text)
+    return file
+  }
+
+  it('discovers the first of the project\'s and then the home\'s files, never merges them, and writes nothing', () => {
+    write(home, '.json-log-viewer', '[transform]\nmessage=home_ini\n')
+    const homeBefore = snapshot(home)
+    assert.deepEqual(loadConfiguration({ workingDirectory: project, home }).mapping, { message: ['home_ini'] })
+    write(home, 'jlv.config.json', json({ version: 1, mapping: { message: ['home_json'] } }))
+    assert.deepEqual(loadConfiguration({ workingDirectory: project, home }).mapping, { message: ['home_json'] })
+    write(project, '.json-log-viewer', '[transform]\nlevel=project_ini\n')
+    const projectIni = loadConfiguration({ workingDirectory: project, home })
+    assert.deepEqual([projectIni.file, projectIni.mapping], ['.json-log-viewer', { level: ['project_ini'] }])
+    write(project, 'jlv.config.json', json({ version: 1, timestampUnit: 'seconds' }))
+    const projectJson = loadConfiguration({ workingDirectory: project, home })
+    assert.deepEqual([projectJson.file, projectJson.mapping, projectJson.timestampUnit], ['jlv.config.json', {}, 'seconds'])
+    const added = snapshot(home).filter(entry => entry.startsWith('jlv.config.json'))
+    assert.deepEqual(snapshot(home), [...homeBefore, ...added].toSorted((left, right) => left.localeCompare(right)))
+  })
+
+  it('reads only the file of --config, which must exist, and nothing with --no-config', () => {
+    const explicit = write(directory, 'custom.cfg', '{"version": 1, "format": "logfmt"}')
+    const configuration = loadConfiguration({ workingDirectory: project, home, file: explicit })
+    assert.deepEqual([configuration.kind, configuration.format, configuration.mapping], ['json', 'logfmt', {}])
+    const ini = write(directory, 'legacy.ini', '[transform]\nmessage=text\n')
+    assert.deepEqual(loadConfiguration({ workingDirectory: project, home, file: ini }).mapping, { message: ['text'] })
+    assert.throws(() => loadConfiguration({ workingDirectory: project, home, file: 'missing.json' }),
+      { name: 'ConfigurationError', message: 'the configuration file missing.json does not exist' })
+    assert.equal(loadConfiguration({ workingDirectory: project, home, isDiscoveryDisabled: true }).file, undefined)
+    assert.throws(() => loadConfiguration({ workingDirectory: project, home, file: explicit, isDiscoveryDisabled: true }),
+      { message: '--config and --no-config exclude each other' })
+  })
+
+  it('runs no configuration code, such as a jlv.config.js next to the inputs', () => {
+    const scripted = path.join(directory, 'scripted')
+    mkdirSync(scripted)
+    const marker = path.join(scripted, 'ran.txt')
+    write(scripted, 'jlv.config.js', `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'ran')`)
+    write(scripted, 'jlv.config.mjs', `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(marker)}, 'ran')`)
+    assert.equal(loadConfiguration({ workingDirectory: scripted, home: scripted }).file, undefined)
+    assert.deepEqual(readdirSync(scripted).toSorted((left, right) => left.localeCompare(right)), ['jlv.config.js', 'jlv.config.mjs'])
   })
 })

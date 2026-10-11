@@ -131,6 +131,16 @@ describe('help, version and usage errors', () => {
     }
   })
 
+  it('reports a configuration file that is missing or excluded with 2', async () => {
+    const missing = await run(['--config', 'missing.json', 'characterization.log'], { preload: pretendedTerminal })
+    assert.equal(missing.code, 2)
+    assert.equal(missing.errors, 'jv: the configuration file missing.json does not exist\n')
+    assert.equal(missing.output, '')
+    const both = await run(['-c', 'characterization.log', '--no-config', 'characterization.log'])
+    assert.equal(both.code, 2)
+    assert.equal(both.errors, 'jv: --config and --no-config exclude each other\n')
+  })
+
   // Upstream printed "error: missing log file" to standard output and ended with 1.
   it('reports a missing input on a terminal with 2 and a missing file with 1', async () => {
     const none = await run([], { preload: pretendedTerminal })

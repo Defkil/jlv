@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import { setImmediate as nextTurn } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
-import { fixturePath, legacyViewerFixtures } from '../../format-fixtures/src/catalog.js'
+import { fixturePath, legacyViewerFixtures, pinoFixtures } from '../../format-fixtures/src/catalog.js'
 import { upstreamFixture } from './support/fixtures.js'
 import { readRecords, rowsOf } from './support/records.js'
 import { cellStyle, keys, openFileViewer, press, screenText, topBorder, visibleEntries } from './support/terminal.js'
@@ -148,6 +148,17 @@ describe('upstream workflow-engine fixture', () => {
     // so the visible text ends with the remains of a cut sequence.
     assert.equal(screenText(viewer.screen)[1], '│ 2017-09-25T22:48:46.651Z  info   *  POST /workflows/hemo/instances[39        │')
     assert.equal(cellStyle(viewer.screen, 38, 1).foreground, 8)
+  })
+})
+
+describe('formats and configuration', () => {
+  // jlv-pino's fixture needs no transformer: the levels come from pino's numbers.
+  it('shows pino records with their levels and names the format and the configuration file in the status line', t => {
+    const viewer = openFileViewer(t, fixturePath(pinoFixtures.levels), { configuration: 'jlv.config.json' })
+    const rows = screenText(viewer.screen)
+    assert.equal(rows[1], '│ 2026-10-11T10:00:05.000Z  fatal  *  fatal message                            │')
+    assert.equal(rows[6], '│ 2026-10-11T10:00:00.000Z  trace  *  trace message                            │')
+    assert.equal(rows[23], '  NORMAL  1/6 | 20 | sort: -timestamp | format: pino | config: jlv.config.json')
   })
 })
 
