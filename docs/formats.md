@@ -82,7 +82,14 @@ $ jv --output jsonl --level fatal pino.log
 
 `--output plain` writes one line per record: the timestamp in UTC, the level, the message and the other fields as
 one JSON object. For a level that jlv does not know, the viewer and `--output plain` show the original level; for a
-time that jlv cannot read, its original text; and `-` for what a record lacks. Line breaks in a message show as `\n`.
+time that jlv cannot read, its original text; and `-` for what a record lacks.
+
+The viewer, `--output plain` and the messages on standard error show the text of records as text, so that a log can
+neither color nor move nor clear the terminal, set its title or write its clipboard: escape sequences are removed, and
+line breaks, tabs and other control characters show as JSON escapes such as `\n`, `\t` or `\u001b`. In the viewer,
+blessed tags such as `{red-fg}` show as they are written. `--output jsonl` and `--save` keep the original values; they
+also write DEL and the other control characters that JSON leaves as they are as escapes, which read back as the same
+values.
 
 ## Timestamps
 

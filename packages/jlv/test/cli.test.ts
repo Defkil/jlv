@@ -10,6 +10,7 @@ import { after, describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { stripVTControlCharacters } from 'node:util'
 import { fixturePath, legacyViewerFixtures, pinoFixtures } from '../../format-fixtures/src/catalog.js'
+import { hasControls } from '../src/terminal-text.js'
 
 const cli = fileURLToPath(new URL('../src/cli.js', import.meta.url))
 const characterization = fixturePath(legacyViewerFixtures.characterization)
@@ -287,6 +288,38 @@ describe('viewer on a pretended terminal', () => {
     })
     assert.equal(result.code, 0)
     assert.doesNotMatch(result.output, /characterization\.log/u)
+  })
+})
+
+// The fields of JSON lines of records.
+const fieldsOf = (text: string): unknown[] => text.trimEnd().split('\n').map(line => Reflect.get(JSON.parse(line) as object, 'fields') as unknown)
+
+// Plan section 6.3: sanitizing is for the terminal only. JSON lines and saved records keep every original value, and
+// still hold no character that a terminal acts on.
+describe('original values', () => {
+  const lines = [
+    JSON.stringify({
+      message: '\u{1B}[31mred\u{1B}[0m bell\u{7} title \u{1B}]0;pwned\u{7} tab\tline\nend',
+      tags: '{red-fg}{/}{bold}',
+      path: String.raw`C:\temp\new/x`,
+      controls: 'delete\u{7F} next\u{85} csi\u{9B} separators\u{2028}\u{2029} bidi\u{202E}\u{2066}',
+      text: '😀 漢字 é'
+    }),
+    JSON.stringify({ zero: 0, no: false, nothing: null, empty: '', nested: { list: [0, false, null, '', { deep: [[]] }] }, small: -1.5e-7 }),
+    '{"__proto__":{"level":"error"},"constructor":"y","message":"proto"}'
+  ]
+
+  it('writes them unchanged as JSON lines and into the save file', async () => {
+    const file = path.join(directory, 'values.log')
+    writeFileSync(file, lines.map(line => `${line}\n`).join(''))
+    const saved = path.join(directory, 'values.jsonl')
+    const result = await run(['--output=jsonl', '--save', saved, file])
+    assert.equal(result.code, 0)
+    const values = lines.map(line => JSON.parse(line) as unknown)
+    assert.deepEqual(fieldsOf(result.output), values)
+    assert.deepEqual(fieldsOf(readFileSync(saved, 'utf8')), values)
+    assert.equal(hasControls(result.output.replaceAll('\n', '')), false)
+    assert.equal(result.errors, '')
   })
 })
 
