@@ -1,0 +1,2 @@
+{"level":30,"time":1791712800000,"pid":1,"hostname":"c1","msg":"raw docker logs output"}
+{"level":40,"time":1791712801000,"pid":1,"hostname":"c1","msg":"is no envelope"}

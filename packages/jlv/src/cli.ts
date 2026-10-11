@@ -22,7 +22,7 @@ text or JSON lines when there is no terminal.
 options:
   -f, --files <glob>     read the files that a pattern matches; repeatable
   --follow               keep reading files that grow, are truncated or replaced
-  --format <format>      auto, bunyan, pino, logfmt, csv, winston or jsonl (default: auto, for each input)
+  --format <format>      auto, docker, bunyan, pino, logfmt, csv, winston or jsonl (default: auto)
   --sort <order>         timestamp, level, message or arrival; a leading - sorts descending, as in
                          --sort=-level (default: -timestamp for files, arrival for pipes and --follow)
   -l, --level <level>    show only records of this level: trace, debug, info, warn, error, fatal or unknown

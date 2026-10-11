@@ -4,6 +4,7 @@
 import type { LogFormat } from '../api.js'
 import { bunyanFormat } from './bunyan.js'
 import { createCsvFormat } from './csv.js'
+import { dockerFormat } from './docker.js'
 import { jsonLinesFormat } from './json-lines.js'
 import { logfmtFormat } from './logfmt.js'
 import { pinoFormat } from './pino.js'
@@ -16,6 +17,7 @@ interface BuiltInOptions {
 }
 
 const builtInFormats = (options: BuiltInOptions = {}): readonly LogFormat[] => [
+  dockerFormat,
   bunyanFormat,
   pinoFormat,
   logfmtFormat,

@@ -1,0 +1,8 @@
+{"log":"{\"level\":30,\"time\":1791712800000,\"pid\":1,\"hostname\":\"c1\",\"msg\":\"pino inside docker\"}\n","stream":"stdout","time":"2026-10-11T10:00:00.500000000Z"}
+{"log":"plain text from the container\n","stream":"stdout","time":"2026-10-11T10:00:01.123456789Z"}
+{"log":"error: something failed\n","stream":"stderr","time":"2026-10-11T10:00:02Z"}
+{"log":"line one\nline two\n","stream":"stdout","time":"2026-10-11T10:00:03Z"}
+{"log":"{\"level\":\"warn\",\"message\":\"generic json\",\"timestamp\":\"2026-10-11T10:00:04.000Z\",\"docker\":\"its own docker field\"}\n","stream":"stdout","time":"2026-10-11T10:00:04.900Z"}
+{"log":"{\"level\":30,\"msg\":\"cut json\n","stream":"stdout","time":"2026-10-11T10:00:05Z"}
+{"log":"{\"name\":\"svc\",\"hostname\":\"c1\",\"pid\":1,\"level\":50,\"msg\":\"bunyan inside docker\",\"time\":\"2026-10-11T10:00:06.000Z\",\"v\":0}\n","stream":"stderr","time":"2026-10-11T10:00:06.700Z"}
+{"log":"no time in the inner record\n","stream":"stdout","time":"2026-10-11T10:00:07Z","attrs":{"tag":"web"}}

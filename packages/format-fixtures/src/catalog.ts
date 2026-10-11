@@ -275,6 +275,33 @@ export const formatFixtures = {
       { level: 'error', message: 'Zahlung abgelehnt', timestamp: at(1) }
     ],
     diagnostics: []
+  },
+  docker: {
+    path: 'docker/container.log',
+    description: 'Docker json-file envelopes: pino and bunyan inside, plain text, stderr, an escaped line break, ' +
+      'nanosecond times, generic JSON with its own docker field, malformed inner JSON and driver attributes.',
+    format: 'docker',
+    records: [
+      { level: 'info', message: 'pino inside docker', timestamp: at(0) },
+      { level: 'unknown', message: 'plain text from the container', timestamp: '2026-10-11T10:00:01.123Z' },
+      { level: 'unknown', message: 'error: something failed', timestamp: at(2) },
+      { level: 'unknown', message: 'line one\nline two', timestamp: at(3) },
+      { level: 'warn', message: 'generic json', timestamp: at(4) },
+      { level: 'unknown', message: '{"level":30,"msg":"cut json', timestamp: at(5) },
+      { level: 'error', message: 'bunyan inside docker', timestamp: at(6) },
+      { level: 'unknown', message: 'no time in the inner record', timestamp: at(7) }
+    ],
+    diagnostics: []
+  },
+  dockerLogsRaw: {
+    path: 'docker/docker-logs-raw.log',
+    description: 'What docker logs prints: the container\'s pino lines without envelopes, which pino reads.',
+    format: 'pino',
+    records: [
+      { level: 'info', message: 'raw docker logs output', timestamp: at(0) },
+      { level: 'warn', message: 'is no envelope', timestamp: at(1) }
+    ],
+    diagnostics: []
   }
 } as const satisfies Readonly<Record<string, FormatFixture>>
 
