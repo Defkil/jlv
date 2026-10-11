@@ -53,4 +53,4 @@ const stripEscapeSequences = (text: string): string => text.replaceAll(escapeSeq
 // characters, so a second pass changes nothing.
 const visibleText = (text: string): string => hasControls(text) ? escapeControls(stripEscapeSequences(text)) : text
 
-export { escapeControls, hasControls, stripEscapeSequences, visibleText }
+export { escapeControls, hasControls, visibleText }
