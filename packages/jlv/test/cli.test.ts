@@ -112,8 +112,8 @@ describe('help, version and usage errors', () => {
 
   it('reports usage errors with 2 on standard error and opens no screen', async () => {
     const cases: readonly [readonly string[], RegExp][] = [
-      [['--transformer', 'jlv-pino'], /^jv: --transformer is gone in jlv 2: transformers are gone: pino is built in \(--format pino\), and other formats come from plugins \(--plugin <file>\)\n/u],
-      [['-tjs', 'transform.js'], /^jv: -tjs is gone in jlv 2: transformers are gone: /u],
+      [['--transformer', 'jlv-pino'], /^jv: --transformer is gone in jlv 2: pino is built in \(--format pino\), and other formats come from plugins \(--plugin <file>\)\n/u],
+      [['-tjs', 'transform.js'], /^jv: -tjs is gone in jlv 2: pino is built in /u],
       [['--transformer-js=transform.js'], /^jv: --transformer-js is gone in jlv 2: /u],
       [['--param', '--sort=level'], /^jv: --param is gone in jlv 2: jlv 2 is the viewer itself and takes its options directly; see --help\n/u],
       [['-o'], /^jv: -o is gone in jlv 2: jlv 2 runs in the current terminal and opens no other shell\n/u],

@@ -118,7 +118,7 @@ const limitValue = (name: string, text: string | undefined): number | undefined 
 
 // The options of the jlv 1 wrapper that jlv 2 dropped (plan section 6.1), with what replaces them. They fail with this
 // hint instead of a bare "Unknown option".
-const transformerHint = 'transformers are gone: pino is built in (--format pino), and other formats come from plugins (--plugin <file>)'
+const transformerHint = 'pino is built in (--format pino), and other formats come from plugins (--plugin <file>)'
 const removedOptions: ReadonlyMap<string, string> = new Map([
   ['--param', 'jlv 2 is the viewer itself and takes its options directly; see --help'],
   ['-p', 'jlv 2 is the viewer itself and takes its options directly; see --help'],
