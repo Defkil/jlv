@@ -1,27 +1,31 @@
-// The examples of the documentation (plan section 8, phase 6, upstream issue #7): every console block in docs/*.md
-// runs its jlv commands in docs/examples with an empty home directory and must print what the block shows. A command
-// line starts with "$ jlv"; the lines after it, up to the next command, are its output. A terminal shows standard
-// output and standard error together, so the output may interleave them in any order that keeps the order of each.
-// "; echo $?" after a command adds its exit code as the last line.
+// The examples of the documentation (plan sections 8, phases 6 and 8, upstream issue #7): every console block in
+// docs/*.md and in the package's README runs its jlv commands in docs/examples with an empty home directory and must
+// print what the block shows. A command line starts with "$ jlv", or with "$ cat <file> | jlv" for records on standard
+// input; the lines after it, up to the next command, are its output. A terminal shows standard output and standard
+// error together, so the output may interleave them in any order that keeps the order of each. "; echo $?" after a
+// command adds its exit code as the last line. The README also lists every key of the viewer's key help.
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { keySections } from '../src/tui/key-help.js'
 
 // The repository, from the emitted test in .test-dist/packages/jlv/test.
 const repository = fileURLToPath(new URL('../../../../', import.meta.url))
 const documentation = path.join(repository, 'docs')
 const examples = path.join(documentation, 'examples')
 const cli = fileURLToPath(new URL('../src/cli.js', import.meta.url))
+const readme = 'packages/jlv/README.md'
 
 interface Example {
   readonly command: string
   readonly output: string[]
 }
 
-const readDocument = (name: string): string => readFileSync(path.join(documentation, name), 'utf8')
+// A document by its path in the repository.
+const readDocument = (name: string): string => readFileSync(path.join(repository, name), 'utf8')
 
 // The commands of a document's console blocks, each with the lines that it prints.
 const examplesOf = (text: string): readonly Example[] => {
@@ -47,13 +51,18 @@ const exitCodeSuffix = '; echo $?'
 
 const linesOf = (text: string): string[] => text === '' ? [] : text.replace(/\n$/u, '').split('\n')
 
+// "cat <file> | " before a command line pipes the file into it.
+const pipedFile = /^cat (\S+) \| /u
+
 // Runs a command line of the documentation, which may quote an argument in single quotes, and gives its output lines.
 const run = async (command: string): Promise<{ readonly output: readonly string[], readonly errors: readonly string[] }> => {
   const isExitCodeShown = command.endsWith(exitCodeSuffix)
-  const line = isExitCodeShown ? command.slice(0, -exitCodeSuffix.length) : command
+  const pipe = pipedFile.exec(command)
+  const line = command.slice(pipe?.[0].length ?? 0, isExitCodeShown ? -exitCodeSuffix.length : undefined)
   const [program, ...parameters] = Array.from(line.matchAll(/'([^']*)'|(\S+)/gu), ([, quoted, plain]) => quoted ?? plain ?? '')
   assert.equal(program, 'jlv', `the documentation runs only jlv: ${command}`)
-  const child = spawn(process.execPath, [cli, ...parameters], { cwd: examples, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+  const child = spawn(process.execPath, [cli, ...parameters], { cwd: examples, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
+  child.stdin.end(pipe?.[1] === undefined ? '' : readFileSync(path.join(examples, pipe[1])))
   let output = ''
   let errors = ''
   child.stdout.setEncoding('utf8').on('data', (chunk: string) => { output += chunk })
@@ -81,12 +90,25 @@ const isInterleaving = (shown: readonly string[], output: readonly string[], err
   return outputIndex === output.length && errorIndex === errors.length
 }
 
-const documents = readdirSync(documentation).filter(name => name.endsWith('.md') && !name.startsWith('v2-'))
+// The package's README and the guides; the plan and the results of its phases are records of their time.
+const documents = [
+  readme,
+  ...readdirSync(documentation).filter(name => name.endsWith('.md') && !name.startsWith('v2-')).map(name => `docs/${name}`)
+]
 
 describe('documentation examples', () => {
-  it('finds the examples of the format, configuration and migration guides', () => {
-    for (const name of ['formats.md', 'configuration.md', 'migration.md']) {
+  it('finds the examples of the README and of the format, configuration and migration guides', () => {
+    for (const name of [readme, 'docs/formats.md', 'docs/configuration.md', 'docs/migration.md']) {
       assert.ok(examplesOf(readDocument(name)).length > 0, name)
+    }
+  })
+
+  it('lists every key of the key help in the README', () => {
+    const text = readDocument(readme)
+    for (const [title, rows] of keySections) {
+      for (const [keys, action] of rows) {
+        assert.ok(text.includes(`\n| ${keys} | ${action} |\n`), `${title}: ${keys}`)
+      }
     }
   })
 

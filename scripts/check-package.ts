@@ -304,7 +304,9 @@ const checkTarball = (tarball: string): Indexed => {
   check(license.startsWith('MIT License') && license.includes('Oliver Grüttner') && license.includes('Felipe Coury and json-log-viewer contributors'),
     'LICENSE is the MIT license with both copyright lines')
   check((files.get('NOTICE.md')?.toString('utf8') ?? '').includes('json-log-viewer'), 'NOTICE.md credits json-log-viewer')
-  check((files.get('README.md')?.toString('utf8') ?? '').includes('json-log-viewer'), 'README.md credits json-log-viewer')
+  const readme = (files.get('README.md')?.toString('utf8') ?? '').replaceAll(/\s+/gu, ' ')
+  check(readme.includes('npm install --global jlv') && readme.includes('json-log-viewer') && readme.includes('Felipe Coury and contributors'),
+    'README.md tells how to install jlv and credits json-log-viewer, Felipe Coury and contributors')
   const maps = [...files].filter(([name]) => name.endsWith('.js.map'))
   check(maps.every(([, content]) => !/(?:[A-Za-z]:\\\\|\/home\/|\/Users\/|\/tmp\/)/u.test(content.toString('utf8'))),
     'the source maps hold no paths of the machine that built them')
@@ -338,6 +340,12 @@ const csvLines = [
 ]
 const fatalRecord = '{"identifier":"1:4","source":{"identifier":"1","label":"logs/pino.log","order":0},"position":{"recordNumber":4,"firstLine":4,"lastLine":4},"timestamp":1791712803000,"level":"fatal","message":"shutting down","fields":{"level":60,"time":1791712803000,"pid":4120,"hostname":"api-1","msg":"shutting down"}}'
 const acmeLog = '{"sev":3,"text":"slow request","at":1791712800,"ms":1500}\n{"sev":2,"text":"fast request","at":1791712801,"ms":20}\n'
+// The README's plugin reads no time and calls only severity 4 an error.
+const readmePluginOutput = [
+  '- info slow request {"sev":3,"text":"slow request","at":1791712800,"ms":1500}',
+  '- info fast request {"sev":2,"text":"fast request","at":1791712801,"ms":20}',
+  ''
+].join('\n')
 
 const lines = (text: string): string[] => text === '' ? [] : text.replace(/\n$/u, '').split('\n')
 
@@ -544,7 +552,11 @@ const checkConsumer = async (project: string): Promise<void> => {
     'the consumers compile with strict settings and skipLibCheck off')
   copyFileSync(path.join(authorFixture, 'plugin.ts'), path.join(consumer, 'plugin.ts'))
   writeFileSync(path.join(consumer, 'consumer.ts'), consumerSource)
-  writeFileSync(path.join(consumer, 'tsconfig.json'), JSON.stringify({ compilerOptions, files: ['plugin.ts', 'consumer.ts'] }))
+  // The plugin that the installed README shows compiles and runs too.
+  const readmePlugin = /```ts\n(.*?)```/su.exec(readFileSync(path.join(project, 'node_modules', 'jlv', 'README.md'), 'utf8'))?.[1]
+  check(readmePlugin !== undefined, 'README.md shows a plugin in TypeScript')
+  writeFileSync(path.join(consumer, 'readme-plugin.ts'), readmePlugin ?? '')
+  writeFileSync(path.join(consumer, 'tsconfig.json'), JSON.stringify({ compilerOptions, files: ['plugin.ts', 'consumer.ts', 'readme-plugin.ts'] }))
   const consumerDiagnostics = compile(path.join(consumer, 'tsconfig.json'))
   check(consumerDiagnostics === '', 'an ECMAScript consumer and plugin compile against \'jlv\' and \'jlv/formats\'', consumerDiagnostics)
   writeFileSync(path.join(commonJs, 'plugin.cts'), commonJsPluginSource)
@@ -575,6 +587,10 @@ const checkConsumer = async (project: string): Promise<void> => {
     { cwd: project, environment })
   check(notes.code === 0 && notes.output === '- info backup started\n- info backup finished\n',
     'jlv runs the compiled CommonJS plugin', `exit code ${String(notes.code)}\n${notes.output}${notes.errors}`)
+  const shown = await run(process.execPath, [command, '--output', 'plain', '--plugin', './consumer/dist/readme-plugin.js', 'acme.log'],
+    { cwd: project, environment })
+  check(shown.code === 0 && shown.output === readmePluginOutput, 'jlv runs the plugin of README.md, which recognizes its format',
+    `exit code ${String(shown.code)}\n${shown.output}${shown.errors}`)
 }
 
 const main = async (): Promise<number> => {
