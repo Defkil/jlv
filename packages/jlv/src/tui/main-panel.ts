@@ -93,8 +93,12 @@ const levelStyles: ReadonlyMap<LogLevel, Omit<Cell, 'text'>> = new Map([
 
 // The columns of a row: the timestamp, the level, the correlation identifier when the input has them, a mark for a
 // record with details, and the message, which takes the rest of the width.
-const rowColumns: readonly Column[] = [{ maximumWidth: 32 }, { maximumWidth: 12 }, { maximumWidth: 1 }, { maximumWidth: 0 }]
-const correlatedColumns: readonly Column[] = [{ maximumWidth: 32 }, { maximumWidth: 12 }, { maximumWidth: 16 }, { maximumWidth: 1 }, { maximumWidth: 0 }]
+const rowColumns: readonly Column[] = [
+  { maximumWidth: 32 }, { maximumWidth: 12 }, { maximumWidth: 1 }, { maximumWidth: 0 }
+]
+const correlatedColumns: readonly Column[] = [
+  { maximumWidth: 32 }, { maximumWidth: 12 }, { maximumWidth: 16 }, { maximumWidth: 1 }, { maximumWidth: 0 }
+]
 
 // A record without data counts as empty, as lodash.isEmpty did for the objects that readLog creates.
 const hasData = (data: unknown): boolean => typeof data === 'object' && data !== null && Object.keys(data).length > 0
