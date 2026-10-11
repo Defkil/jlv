@@ -3,7 +3,7 @@
 // and errors that are reported before a screen opens (plan sections 6.1 and 8, phase 5).
 import assert from 'node:assert/strict'
 import { EventEmitter, once } from 'node:events'
-import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, chmodSync, linkSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { PassThrough, Writable } from 'node:stream'
@@ -82,6 +82,8 @@ const applicationOptions = (overrides: Partial<ApplicationOptions> = {}): Applic
   output: 'auto',
   maximumRecords: undefined,
   maximumBytes: undefined,
+  save: undefined,
+  isOverwriting: false,
   debugLog: undefined,
   ...overrides
 })
@@ -300,6 +302,72 @@ describe('following files', () => {
     assert.equal(await running, 0)
     assert.equal(state.isKeyboardClosed, true)
     assert.equal(signalListeners(signals), 0)
+  })
+})
+
+// The messages of the JSON lines in a saved file.
+const savedMessages = (file: string): unknown[] => readFileSync(file, 'utf8').trimEnd().split('\n')
+  .map(line => Reflect.get(JSON.parse(line) as object, 'message') as unknown)
+
+describe('saving records', () => {
+  it('saves every matching record while the viewer keeps only the last ones', async () => {
+    const saved = path.join(directory, 'viewer-save.jsonl')
+    const { stdout, keyboard, environment } = harness()
+    const running = runApplication(applicationOptions({
+      inputs: ['characterization.log'], level: 'warn', maximumRecords: 3, save: saved
+    }), environment)
+    // None of the three records that the viewer keeps is a warning, so the screen shows no row to wait for.
+    await waitFor(() => shown(stdout).includes('level:warn'), 'the viewer')
+    await delay(300)
+    keyboard.write('q')
+    assert.equal(await running, 0)
+    // All seven warnings of the file, in the order of the file.
+    assert.deepEqual(savedMessages(saved), ['charlie 14', 'charlie 26', 'kilo 10\nsecond line', 'alpha 06', 'alpha 18', 'no timestamp', 'charlie 02'])
+  })
+
+  it('saves what arrived before the viewer quit, also from a live input that never ended', async () => {
+    const saved = path.join(directory, 'live-save.jsonl')
+    const { stdin, stdout, keyboard, environment } = harness()
+    const running = runApplication(applicationOptions({ save: saved }), environment)
+    stdin.write(record(1, 'one') + record(2, 'two'))
+    await waitFor(() => shown(stdout).includes('two'), 'the records')
+    keyboard.write('q')
+    assert.equal(await running, 0)
+    assert.deepEqual(savedMessages(saved), ['one', 'two'])
+  })
+
+  it('saves next to plain output and refuses an existing file without --overwrite', async () => {
+    const saved = path.join(directory, 'plain-save.jsonl')
+    const first = harness({ stdout: new TextOutput() })
+    const firstRun = runApplication(applicationOptions({ output: 'plain', save: saved }), first.environment)
+    first.stdin.end(record(1, 'first run'))
+    assert.equal(await firstRun, 0)
+    assert.deepEqual(savedMessages(saved), ['first run'])
+    const refused = harness({ stdout: new TextOutput() })
+    assert.equal(await runApplication(applicationOptions({ output: 'plain', save: saved }), refused.environment), 2)
+    assert.equal(refused.stderr.text, `jv: cannot save to '${saved}': the file exists; --overwrite replaces it\n`)
+    const replaced = harness({ stdout: new TextOutput() })
+    const replacing = runApplication(applicationOptions({ output: 'plain', save: saved, isOverwriting: true }), replaced.environment)
+    replaced.stdin.end(record(2, 'second run'))
+    assert.equal(await replacing, 0)
+    assert.deepEqual(savedMessages(saved), ['second run'])
+  })
+
+  it('never saves into an input, also with --overwrite, another spelling of its name or a hard link', async () => {
+    const input = path.join(directory, 'input.log')
+    writeFileSync(input, record(1, 'kept'))
+    const hardLink = path.join(directory, 'hard-link.log')
+    linkSync(input, hardLink)
+    for (const save of [input, `${directory}${path.sep}.${path.sep}input.log`, hardLink, path.join(directory, 'INPUT.LOG')]) {
+      if (save.endsWith('INPUT.LOG') && process.platform !== 'win32') {
+        continue
+      }
+      const { stdout, stderr, environment } = harness({ stdout: new TextOutput() })
+      assert.equal(await runApplication(applicationOptions({ inputs: [input], save, isOverwriting: true }), environment), 2)
+      assert.equal(stderr.text, `jv: cannot save to '${save}': it is one of the inputs\n`)
+      assert.equal(shown(stdout), '')
+    }
+    assert.equal(readFileSync(input, 'utf8'), record(1, 'kept'))
   })
 })
 

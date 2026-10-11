@@ -3,7 +3,7 @@
 // pretended terminal, and the plain fallback of a process without a console (plan sections 6.1 and 8, phase 5).
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { appendFileSync, copyFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { after, describe, it } from 'node:test'
@@ -119,7 +119,8 @@ describe('help, version and usage errors', () => {
       [['--output', 'html'], /^jv: --output takes auto, tui, plain or jsonl, not 'html'\n/u],
       [['--output=plain', '--sort=level'], /^jv: --output plain writes the records in arrival order; --sort level needs the viewer\n/u],
       [['--max-records', '0'], /^jv: --max-records needs a whole number from 1 to 4294967295, not '0'\n/u],
-      [['--max-bytes=1e3'], /^jv: --max-bytes needs a whole number from 1 to 4294967295, not '1e3'\n/u]
+      [['--max-bytes=1e3'], /^jv: --max-bytes needs a whole number from 1 to 4294967295, not '1e3'\n/u],
+      [['--overwrite', 'a.log'], /^jv: --overwrite needs --save\n/u]
     ]
     for (const [parameters, message] of cases) {
       const result = await run(parameters, { preload: pretendedTerminal })
@@ -252,6 +253,31 @@ describe('viewer on a pretended terminal', () => {
     })
     assert.equal(result.code, 0)
     assert.doesNotMatch(result.output, /characterization\.log/u)
+  })
+})
+
+describe('saving records', () => {
+  // -s meant sort in upstream's command line; plan section 6.1 gives it to --save.
+  it('saves the records of the level with -s into a new file and refuses to replace it', async () => {
+    const saved = path.join(directory, 'errors.jsonl')
+    const result = await run(['-l', 'error', '-s', saved, '--output=plain', 'characterization.log'])
+    assert.equal(result.code, 0)
+    const lines = readFileSync(saved, 'utf8').trimEnd().split('\n')
+    assert.equal(lines.length, 7)
+    assert.equal(lines[0], '{"timestamp":"2026-10-11T10:07:00.000Z","level":"error","message":"bravo 07","requestId":"req-07","user":{"id":7,"name":"user 07"}}')
+    const again = await run(['-s', saved, 'characterization.log'])
+    assert.equal(again.code, 2)
+    assert.equal(again.errors, `jv: cannot save to '${saved}': the file exists; --overwrite replaces it\n`)
+    assert.equal(again.output, '')
+    const replaced = await run(['--save', saved, '--overwrite', 'numeric-levels.log'])
+    assert.equal(replaced.code, 0)
+    assert.equal(readFileSync(saved, 'utf8').trimEnd().split('\n').length, 3)
+  })
+
+  it('refuses to save into an input', async () => {
+    const result = await run(['--save=characterization.log', '--overwrite', 'characterization.log'])
+    assert.equal(result.code, 2)
+    assert.equal(result.errors, 'jv: cannot save to \'characterization.log\': it is one of the inputs\n')
   })
 })
 

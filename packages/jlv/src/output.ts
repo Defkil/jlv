@@ -1,6 +1,8 @@
-// Writes records as text lines for machine output modes (plan section 6.1): plain text or JSON lines on standard
-// output. Writes wait for the destination to drain, so a slow reader slows the input down instead of filling the
-// memory, and a reader that goes away early (EPIPE) ends the output normally.
+// Writes records as text lines (plan section 6.1): plain text or JSON lines on standard output for the machine output
+// modes, and JSON lines into the file of --save. Writes wait for the destination to drain, so a slow reader slows the
+// input down instead of filling the memory, and a reader that goes away early (EPIPE) ends the output normally.
+import type { BigIntStats } from 'node:fs'
+import { open, realpath, stat } from 'node:fs/promises'
 import type { Writable } from 'node:stream'
 import { toEntry } from './log.js'
 
@@ -90,7 +92,81 @@ class LineWriter {
       })
     }
   }
+
+  // Ends a stream that the writer owns, such as a file, and waits until it is closed.
+  async end (): Promise<void> {
+    if (this.#stream.closed) {
+      return
+    }
+    await new Promise<void>(resolve => {
+      this.#stream.once('close', resolve)
+      this.#stream.end()
+    })
+  }
 }
 
-export { LineWriter, formatLine, jsonLine, plainLine }
-export type { MachineFormat }
+// A save file that cannot be used, with the exit code of plan section 6.1: 2 when the command line asks for something
+// that would destroy data, 1 when the file cannot be created.
+class SaveFileError extends Error {
+  readonly exitCode: 1 | 2
+
+  constructor (message: string, exitCode: 1 | 2) {
+    super(message)
+    this.name = 'SaveFileError'
+    this.exitCode = exitCode
+  }
+}
+
+interface SaveFileOptions {
+  // How the command line named the file, for messages.
+  readonly label: string
+  // Replace an existing file instead of refusing it.
+  readonly isOverwriting: boolean
+  // The input files, which the save file must not be.
+  readonly inputs: readonly string[]
+}
+
+const statOrUndefined = async (file: string): Promise<BigIntStats | undefined> => {
+  try {
+    return await stat(file, { bigint: true })
+  } catch {
+    return undefined
+  }
+}
+
+// Two names of one file: the same device and file number, or the same real path where there are no file numbers.
+const isSameFile = async (file: string, status: BigIntStats, other: string): Promise<boolean> => {
+  const otherStatus = await statOrUndefined(other)
+  if (otherStatus === undefined) {
+    return false
+  }
+  return status.ino !== 0n && otherStatus.ino !== 0n
+    ? status.dev === otherStatus.dev && status.ino === otherStatus.ino
+    : await realpath(file) === await realpath(other)
+}
+
+// Creates the file that --save writes the matching records to (plan section 6.1). An existing file is refused unless
+// it is to be overwritten, and an input is refused always, also through another spelling, a link or a hard link.
+// The file is created exclusively, so that a file created in the meantime is not replaced either.
+const openSaveFile = async (file: string, options: SaveFileOptions): Promise<Writable> => {
+  const status = await statOrUndefined(file)
+  if (status !== undefined) {
+    for (const input of options.inputs) {
+      if (await isSameFile(file, status, input)) {
+        throw new SaveFileError(`cannot save to '${options.label}': it is one of the inputs`, 2)
+      }
+    }
+    if (!options.isOverwriting) {
+      throw new SaveFileError(`cannot save to '${options.label}': the file exists; --overwrite replaces it`, 2)
+    }
+  }
+  try {
+    const handle = await open(file, options.isOverwriting ? 'w' : 'wx')
+    return handle.createWriteStream()
+  } catch (error) {
+    throw new SaveFileError(`cannot save to '${options.label}': ${error instanceof Error ? error.message : String(error)}`, 1)
+  }
+}
+
+export { LineWriter, SaveFileError, formatLine, jsonLine, openSaveFile, plainLine }
+export type { MachineFormat, SaveFileOptions }

@@ -3,6 +3,7 @@
 // writes them to standard output. It ends cleanly on q, Ctrl-C, a signal, the end of the input or a reader that goes
 // away, and never ends the process itself: it returns the exit code.
 import fs from 'node:fs'
+import path from 'node:path'
 import { addAbortSignal, type Readable, type Writable } from 'node:stream'
 import type { Widgets } from 'blessed'
 import type { ScreenOptions } from 'neo-blessed'
@@ -10,7 +11,7 @@ import { InputError, readFileChunks, resolveInputs, type InputSource, type Sourc
 import { followFiles } from './input/follow.js'
 import { readLines, type LineEvent } from './input/lines.js'
 import { MappingFileError, parseEntry, parseLine, readMapping, timeKey, type Mapping } from './log.js'
-import { LineWriter, formatLine, type MachineFormat } from './output.js'
+import { LineWriter, SaveFileError, formatLine, jsonLine, openSaveFile, type MachineFormat } from './output.js'
 import { RecordStore } from './store.js'
 import type { Keyboard, KeyboardOptions } from './terminal.js'
 import { createScreen } from './tui/blessed-boundary.js'
@@ -31,6 +32,9 @@ interface ApplicationOptions {
   readonly output: OutputMode
   readonly maximumRecords: number | undefined
   readonly maximumBytes: number | undefined
+  // The file that receives every matching record as a JSON line, whatever the viewer keeps or shows.
+  readonly save: string | undefined
+  readonly isOverwriting: boolean
   // The terminal library's debug log.
   readonly debugLog: string | undefined
 }
@@ -297,13 +301,25 @@ const inputsLabel = (sources: readonly InputSource[]): string => {
   return sources.length === 1 ? first.information.label : `${first.information.label} and ${String(sources.length - 1)} more`
 }
 
-// Everything that a run needs once the inputs and the mapping are known.
+// Everything that a run needs once the inputs, the mapping and the save file are known.
 interface Run {
   readonly options: ApplicationOptions
   readonly environment: ApplicationEnvironment
   readonly sources: readonly InputSource[]
   readonly mapping: Mapping | undefined
   readonly isLive: boolean
+  readonly saveFile: Writable | undefined
+}
+
+// The JSON lines of the records that match, for the save file.
+const saveText = (records: readonly unknown[], isMatch: (record: unknown) => boolean): string => {
+  let text = ''
+  for (const record of records) {
+    if (isMatch(record)) {
+      text += jsonLine(record)
+    }
+  }
+  return text
 }
 
 // Listens for the signals that end a run, until the returned function stops listening.
@@ -348,6 +364,13 @@ const runMachineOutput = async (run: Run, format: MachineFormat): Promise<number
     exitCode = signalCode
     controller.abort()
   })
+  const saveWriter = run.saveFile === undefined
+    ? undefined
+    : new LineWriter(run.saveFile, error => {
+      stderr.write(`jv: cannot save the records: ${error?.message ?? 'the file was closed'}\n`)
+      exitCode = exitCodes.failure
+      controller.abort()
+    })
   const isMatch = levelMatcher(options.level)
   const onFailure = (source: SourceInformation, error: unknown): void => {
     ingestion.failed += 1
@@ -355,13 +378,14 @@ const runMachineOutput = async (run: Run, format: MachineFormat): Promise<number
   }
   try {
     for await (const batch of readSources(run, controller.signal, onFailure)) {
+      const records = ingestion.accept(batch.source, batch.events)
       let text = ''
-      for (const record of ingestion.accept(batch.source, batch.events)) {
+      for (const record of records) {
         if (isMatch(record)) {
           text += formatLine(format, record)
         }
       }
-      await writer.write(text)
+      await Promise.all([writer.write(text), saveWriter?.write(saveText(records, isMatch))])
     }
   } catch (error) {
     if (!isAbortError(error) && !controller.signal.aborted) {
@@ -371,7 +395,7 @@ const runMachineOutput = async (run: Run, format: MachineFormat): Promise<number
     stopListening()
     controller.abort()
   }
-  await writer.flush()
+  await Promise.all([writer.flush(), saveWriter?.end()])
   if (reported > diagnosticLimit) {
     stderr.write(`jv: skipped ${String(reported)} lines in total, the first ${String(diagnosticLimit)} of them shown above\n`)
   }
@@ -429,11 +453,21 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
     failures.push(`jv: cannot read '${source.label}': ${errorMessage(error)}\n`)
     refresh.schedule()
   }
+  // A save file that fails is reported after the viewer closed; the viewer goes on.
+  const saveWriter = run.saveFile === undefined
+    ? undefined
+    : new LineWriter(run.saveFile, error => {
+      ingestion.failed += 1
+      failures.push(`jv: cannot save the records: ${error?.message ?? 'the file was closed'}\n`)
+      refresh.schedule()
+    })
+  const isMatch = levelMatcher(options.level)
   const reading = (async () => {
     try {
       for await (const batch of readSources(run, controller.signal, onFailure)) {
-        ingestion.accept(batch.source, batch.events)
+        const records = ingestion.accept(batch.source, batch.events)
         refresh.schedule()
+        await saveWriter?.write(saveText(records, isMatch))
       }
       ingestion.activity = 'done'
       if (!state.isFinished) {
@@ -466,6 +500,7 @@ const runViewer = async (run: Run, keyboard: Keyboard): Promise<number> => {
     keyboard.stream.on('error', () => { finish(exitCodes.failure) })
   })
   await reading
+  await saveWriter?.end()
   for (const failure of failures) {
     environment.stderr.write(failure)
   }
@@ -502,8 +537,24 @@ const runApplication = async (options: ApplicationOptions, environment: Applicat
     }
     throw error
   }
+  let saveFile: Writable | undefined
+  if (options.save !== undefined) {
+    try {
+      saveFile = await openSaveFile(path.resolve(environment.workingDirectory, options.save), {
+        label: options.save,
+        isOverwriting: options.isOverwriting,
+        inputs: sources.flatMap(source => source.kind === 'stdin' ? [] : source.path)
+      })
+    } catch (error) {
+      if (error instanceof SaveFileError) {
+        return fail(error.exitCode, error.message)
+      }
+      throw error
+    }
+  }
   const isStdinSource = sources.some(source => source.kind === 'stdin')
-  const run: Run = { options, environment, sources, mapping, isLive: options.isFollowing || sources.some(source => source.kind !== 'file') }
+  const isLive = options.isFollowing || sources.some(source => source.kind !== 'file')
+  const run: Run = { options, environment, sources, mapping, isLive, saveFile }
   if (options.output === 'plain' || options.output === 'jsonl') {
     return runMachineOutput(run, options.output)
   }

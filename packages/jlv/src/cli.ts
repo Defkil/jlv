@@ -25,6 +25,8 @@ options:
   --output <mode>        auto, tui, plain or jsonl (default: auto, the viewer when the terminal allows it)
   --max-records <n>      records the viewer keeps (default: 50000)
   --max-bytes <n>        bytes of records the viewer keeps (default: 67108864)
+  -s, --save <file>      also write every record that matches -l as a JSON line to a new file
+  --overwrite            let --save replace an existing file
   --log <file>           write the terminal library's debug log
   -h, --help             show this help
   --version              show the version
@@ -42,6 +44,8 @@ const optionDefinitions = {
   output: { type: 'string' },
   'max-records': { type: 'string' },
   'max-bytes': { type: 'string' },
+  save: { type: 'string', short: 's' },
+  overwrite: { type: 'boolean' },
   log: { type: 'string' },
   help: { type: 'boolean', short: 'h' },
   version: { type: 'boolean' }
@@ -90,6 +94,9 @@ const readOptions = (): ApplicationOptions | 'help' | 'version' => {
   if (!outputModes.has(output)) {
     throw new UsageError(`--output takes auto, tui, plain or jsonl, not '${output}'`)
   }
+  if (values.overwrite === true && values.save === undefined) {
+    throw new UsageError('--overwrite needs --save')
+  }
   const sort = values.sort
   if (sort !== undefined && sort !== 'arrival' && (output === 'plain' || output === 'jsonl')) {
     throw new UsageError(`--output ${output} writes the records in arrival order; --sort ${sort} needs the viewer`)
@@ -110,6 +117,8 @@ const readOptions = (): ApplicationOptions | 'help' | 'version' => {
     output: output as OutputMode,
     maximumRecords: limitValue('max-records', values['max-records']),
     maximumBytes: limitValue('max-bytes', values['max-bytes']),
+    save: values.save,
+    isOverwriting: values.overwrite === true,
     debugLog: values.log
   }
 }
