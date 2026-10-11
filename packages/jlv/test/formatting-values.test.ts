@@ -2,7 +2,7 @@
 // cell whose formatting fails shows its raw value. The expectations were recorded from the upstream module.
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { formatRows, maxLengths, padEnd, spaces, stripColors, textLength, trunc } from '../src/tui/formatting.js'
+import { formatRows, hasColors, maxLengths, padEnd, spaces, stripColors, textLength, trunc } from '../src/tui/formatting.js'
 
 const failingFormat = (): string => { throw new Error('no format') }
 
@@ -55,6 +55,17 @@ describe('formatRows with values other than text', () => {
   it('throws a TypeError without columns', () => {
     assert.throws(() => formatRows([{ a: 1 }], [], 1, 30), TypeError)
     assert.deepEqual(formatRows([], [{ key: 'a' }], 1, 30), [])
+  })
+})
+
+describe('blessed tag detection', () => {
+  // Upstream tested with a global regular expression, which continues where the previous match ended: the second
+  // call below answered false, and trunc then cut through the tag and returned {fg.
+  it('answers the same for the same text, whatever was tested before', () => {
+    assert.equal(hasColors('{bold}a'), true)
+    assert.equal(hasColors('{bold}a'), true)
+    assert.equal(hasColors('{bold}a'), true)
+    assert.equal(trunc('{fg-green}felipe', 3), '{fg-green}fel{/}')
   })
 })
 

@@ -1,6 +1,7 @@
-// Upstream test/utils.test.js (for src/utils.js), moved to node:test with unchanged assertions and in the same order:
-// hasColors keeps state in a global regular expression, so the order is part of the behavior. The tests run against
-// the TypeScript port in src/tui/formatting.ts, where upstream's len is named textLength.
+// Upstream test/utils.test.js (for src/utils.js), moved to node:test with unchanged assertions and in the same order.
+// Upstream's hasColors kept state in a global regular expression, which made the order part of the behavior; since
+// phase 4 it does not. The tests run against the TypeScript port in src/tui/formatting.ts, where upstream's len is
+// named textLength.
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { formatRows, maxLengths, stripColors, hasColors, spaces, padEnd, textLength, trunc } from '../src/tui/formatting.js'

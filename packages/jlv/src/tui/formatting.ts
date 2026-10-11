@@ -1,9 +1,11 @@
 // Successor of upstream src/utils.js: the column layout of the main panel and its blessed markup. Cells whose value
 // is not text keep upstream's behavior: they fail inside padEnd, and formatRows then shows the raw value.
 
-// A blessed tag such as {bold} or {/red-fg}. The pattern is global, so test() continues where the previous match
-// ended: like upstream, the result of hasColors depends on the calls made before it.
+// A blessed tag such as {bold} or {/red-fg}, for replaceAll().
 const colorTagPattern = /{\/?[\w\-,;!#]+}/g
+// The same tag for test(). Without the global flag the pattern keeps no position between calls; upstream tested with
+// the global one, so its hasColors depended on the calls made before it.
+const colorTagTest = /{\/?[\w\-,;!#]+}/
 
 type Row = Readonly<Record<string, unknown>>
 
@@ -20,7 +22,7 @@ interface Column {
 const markup = (literals: TemplateStringsArray, ...values: readonly string[]): string =>
   String.raw({ raw: literals }, ...values)
 
-const hasColors = (text: unknown): boolean => colorTagPattern.test(String(text))
+const hasColors = (text: unknown): boolean => colorTagTest.test(String(text))
 
 // Upstream evaluated (text || '').replace(...): empty values give '', and values other than text have no replace.
 const stripColors = (text: unknown): string => {
