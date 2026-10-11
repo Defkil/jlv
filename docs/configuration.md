@@ -56,12 +56,12 @@ $ jv --output plain -c monolog.config.json monolog.log
 2026-10-11T10:00:09.500Z fatal Database unreachable {"context":{},"level":550,"channel":"db","extra":{}}
 ```
 
-These are the keys of version 1; jlv refuses any other key, and names the nearest known one:
+These are the keys of version 1; jlv refuses any other key and suggests a known key that is spelled almost alike:
 
 | Key | Value |
 | --- | --- |
 | `version` | `1`, required |
-| `$schema` | text, for editors; jlv does not read it |
+| `$schema` | text, for editors; jlv only checks that it is text |
 | `format` | `auto` or a format's identifier, as for `--format`, also a plugin's |
 | `mapping` | where the parts of a record are: `timestamp`, `level`, `message` and `correlationIdentifier`, each a [path](#mapping) |
 | `timestampUnit` | the unit of numeric timestamps: `seconds`, `milliseconds`, `microseconds` or `nanoseconds` |
@@ -79,7 +79,7 @@ part, and jlv warns once per input when records lack the mapped field. Paths rea
 
 ### Levels
 
-`levels` names levels that jlv does not know, or reads a level differently: each key is a level as the records write
+`levels` adds levels that jlv does not know and changes how it reads others: each key is a level as the records write
 it, a name in any case or a number, and each value is one of `trace`, `debug`, `info`, `warn`, `error`, `fatal` and
 `unknown`. `{ "NOTICE": "info", "200": "info" }` reads `"notice"` and the number 200 as `info`. These names win over
 the names of the format and the [usual names](formats.md#levels).
