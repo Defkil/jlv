@@ -22,7 +22,7 @@ npm install --global jlv
 
 `npx jlv app.log` runs it without installing. A global install adds the command `jlv` only; installed into a
 project, npm also links `neo-blessed`, the terminfo helper of jlv's terminal library, into `node_modules/.bin`. No
-package of jlv runs an install script or needs a compiler.
+package that jlv installs runs an install script or needs a compiler.
 
 ## Quick start
 
@@ -225,9 +225,10 @@ $ jlv --output plain -c monolog.config.json monolog.log
 ```
 
 The legacy `.json-log-viewer` of json-log-viewer and jlv 1, an INI file with a `[transform]` section, still maps
-`timestamp`, `level`, `message` and `correlationId`, and its other keys choose the fields of the details. An unknown
-key in `jlv.config.json` is an error with a suggestion. [Configuration](https://github.com/Defkil/jlv/blob/master/docs/configuration.md)
-describes every key, the mapping paths, levels, profiles, the legacy file and the command line.
+`timestamp`, `level`, `message` and `correlationId`, and its other keys choose the fields that the details and plain
+output show. An unknown key in `jlv.config.json` is an error with a suggestion.
+[Configuration](https://github.com/Defkil/jlv/blob/master/docs/configuration.md) describes every key, the mapping
+paths, levels, profiles, the legacy file and the command line.
 
 ## Plugins
 
@@ -261,9 +262,10 @@ const plugin: FormatPlugin = { apiVersion: 1, formats: [acme] }
 export default plugin
 ```
 
-Both exports are ECMAScript modules with declarations; importing them has no effects. CommonJS code loads
-`jlv/formats` with `await import('jlv/formats')`. [Formats from plugins](https://github.com/Defkil/jlv/blob/master/docs/formats.md#formats-from-plugins)
-describes the contract.
+Both exports are ECMAScript modules with declarations, which compile with `skipLibCheck` off and need only Node's types
+(`@types/node`); importing them has no effects. CommonJS code loads `jlv/formats` with `await import('jlv/formats')`.
+[Formats from plugins](https://github.com/Defkil/jlv/blob/master/docs/formats.md#formats-from-plugins) describes the
+contract.
 
 ## Limits
 
@@ -280,8 +282,9 @@ describes the contract.
 ## Windows
 
 jlv works on Windows; its tests run on Windows on ARM64 and on Linux. Quote glob patterns as on other systems, so that
-jlv expands them itself. With a pipe such as `node app.js | jlv`, jlv reads the keys from the
-console; a process without a console, such as a service, gets plain output instead of the viewer.
+jlv expands them itself; on Windows they may also use backslashes, as in `jlv 'logs\*.log'`. With a pipe such as
+`node app.js | jlv`, jlv reads the keys from the console; a process without a console, such as a service, gets plain
+output instead of the viewer.
 
 ## Exit codes
 
