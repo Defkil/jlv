@@ -1,0 +1,6 @@
+{"level":10,"time":1791712800000,"pid":4242,"hostname":"example-host","msg":"trace message"}
+{"level":20,"time":1791712801000,"pid":4242,"hostname":"example-host","msg":"debug message"}
+{"level":30,"time":1791712802000,"pid":4242,"hostname":"example-host","msg":"info message"}
+{"level":40,"time":1791712803000,"pid":4242,"hostname":"example-host","msg":"warn message"}
+{"level":50,"time":1791712804000,"pid":4242,"hostname":"example-host","msg":"error message"}
+{"level":60,"time":1791712805000,"pid":4242,"hostname":"example-host","msg":"fatal message"}
