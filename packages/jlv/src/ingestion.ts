@@ -415,6 +415,22 @@ class Ingestion {
     }
   }
 
+  // An error from normalization loses the entry too; strict mode reports only through its first error.
+  #diagnoseNormalization (source: SourceState, entry: ParsedEntry, diagnostics: readonly ParseDiagnostic[]): boolean {
+    let isRejected = false
+    for (const diagnostic of diagnostics) {
+      this.#diagnose(source, atEntry(diagnostic, entry))
+      if (diagnostic.severity !== 'error') {
+        continue
+      }
+      isRejected = true
+      if (this.isStrict) {
+        return true
+      }
+    }
+    return isRejected
+  }
+
   // Normalizes the entries of the batch, keeps them in the store and returns their records when collecting.
   accept (batch: SourceBatch): NormalizedRecord[] {
     const { source, events } = batch
@@ -449,8 +465,8 @@ class Ingestion {
         })
         continue
       }
-      for (const diagnostic of result.diagnostics) {
-        this.#diagnose(source, atEntry(diagnostic, event))
+      if (this.#diagnoseNormalization(source, event, result.diagnostics)) {
+        continue
       }
       source.recordNumber += 1
       this.records += 1

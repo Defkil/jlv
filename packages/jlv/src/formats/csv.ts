@@ -108,7 +108,10 @@ class CsvFramer {
     const bytes = Buffer.concat(pieces, this.#pendingLength)
     this.#pendingLength = 0
     const length = bytes.at(-1) === carriageReturn ? bytes.length - 1 : bytes.length
-    frames.push({ kind: 'record', bytes: bytes.subarray(0, length), position })
+    // The extra byte held above is allowed only for a CRLF ending, not for another content byte.
+    frames.push(length > this.maximumBytes
+      ? { kind: 'oversized', byteLength: bytes.length, position }
+      : { kind: 'record', bytes: bytes.subarray(0, length), position })
   }
 
   // Follows the quote state through one byte other than a line feed.

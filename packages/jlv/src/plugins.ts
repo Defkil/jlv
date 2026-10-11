@@ -215,11 +215,22 @@ const validatePlugin = (plugin: unknown, specifier: string): LoadedPlugin => {
   if (!isIndexed(predicates)) {
     return fail('its predicates are no object')
   }
-  const checkedPredicates: Record<string, RecordPredicate> = {}
-  for (const [name, predicate] of Object.entries(predicates)) {
+  const checkedPredicates = Object.fromEntries(Object.entries(predicates).map(([name, predicate]): [string, RecordPredicate] => {
     const callable = isCallable(predicate) ? predicate : fail(`its predicate ${name} is no function`)
-    checkedPredicates[name] = record => Boolean(Reflect.apply(callable, predicates, [record]))
-  }
+    // fromEntries defines own properties, including a predicate named __proto__.
+    return [name, record => {
+      const result = Reflect.apply(callable, predicates, [record])
+      if (typeof result !== 'boolean') {
+        if (isIndexed(result) && isCallable(result['then'])) {
+          // Predicates are synchronous. Observe a mistakenly returned promise so its rejection cannot escape.
+          // eslint-disable-next-line unicorn/prefer-await -- a synchronous predicate cannot await its invalid asynchronous output
+          Promise.resolve(result).catch(() => {})
+        }
+        throw new TypeError(`the predicate ${name} of the plugin ${specifier} gave no boolean; predicates must return true or false synchronously`)
+      }
+      return result
+    }]
+  }))
   return { specifier, formats: checked, predicates: checkedPredicates }
 }
 

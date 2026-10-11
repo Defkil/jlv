@@ -132,7 +132,7 @@ export interface FormatContext {
   readonly signal: AbortSignal
   readonly source: SourceInformation
   /**
-   * The largest record a reader keeps: bytes of a line, or characters of a CSV record.
+   * The largest record a reader keeps in bytes, including a CSV record that spans lines.
    */
   readonly maximumRecordSize: number
   readonly mapping: FieldMapping
@@ -190,7 +190,7 @@ export interface ParsedEntry {
 export type ParseEvent = ParseDiagnostic | ParsedEntry
 
 /**
- * A normalized record and the problems that normalization found, which keep the record.
+ * A normalized record and the problems that normalization found. Warnings keep the record; errors discard it.
  */
 export interface NormalizationResult {
   readonly record: LogDraft

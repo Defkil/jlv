@@ -240,7 +240,7 @@ const mappingKeys = ['timestamp', 'level', 'message', 'correlationIdentifier'] a
 const readJsonConfiguration = (text: string, label: string): Configuration => {
   let parsed: unknown
   try {
-    parsed = JSON.parse(text)
+    parsed = JSON.parse(text.replace(/^\u{FEFF}/u, ''))
   } catch (error) {
     throw new ConfigurationError(`${label} is no valid JSON: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
   }

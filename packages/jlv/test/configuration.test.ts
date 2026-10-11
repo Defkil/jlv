@@ -116,6 +116,15 @@ const jsonError = (text: string): string => {
 }
 
 describe('jlv.config.json', () => {
+  it('reads a UTF-8 byte order mark written by Windows editors', () => {
+    const file = path.join(directory, 'bom.config')
+    writeFileSync(file, '\u{FEFF}{"version":1,"format":"pino"}')
+    const configuration = loadConfiguration({ workingDirectory: directory, home: directory, file })
+    assert.equal(configuration.kind, 'json')
+    assert.equal(configuration.format, 'pino')
+    assert.equal(readJsonConfiguration('\u{FEFF}{"version":1}', 'jlv.config.json').kind, 'json')
+  })
+
   it('reads every setting of version 1', () => {
     const configuration = readJsonConfiguration(json({
       $schema: 'https://example.invalid/jlv.schema.json',

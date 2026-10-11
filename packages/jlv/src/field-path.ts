@@ -68,10 +68,15 @@ const childOf = (value: JsonValue, segment: string | number): JsonValue | undefi
   }
   if (isJsonArray(value)) {
     const index = typeof segment === 'number' || !indexPattern.test(segment) ? segment : Number(segment)
-    return typeof index === 'number' && Number.isSafeInteger(index) && index >= 0 ? value[index] : undefined
+    if (typeof index !== 'number' || !Number.isSafeInteger(index) || index < 0) {
+      return undefined
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, index)
+    return descriptor !== undefined && Object.hasOwn(descriptor, 'value') ? value[index] : undefined
   }
   const key = String(segment)
-  return Object.hasOwn(value, key) ? value[key] : undefined
+  const descriptor = Object.getOwnPropertyDescriptor(value, key)
+  return descriptor !== undefined && Object.hasOwn(descriptor, 'value') ? value[key] : undefined
 }
 
 // The value at a path of segments in parsed JSON; an empty path or a missing step gives undefined.

@@ -264,6 +264,24 @@ describe('normalizeFields', () => {
 const nested = (arrays: number): unknown => JSON.parse(`{"a":${'['.repeat(arrays)}${']'.repeat(arrays)}}`)
 
 describe('parsed JSON', () => {
+  it('rejects plugin values that would change shape during JSON serialization, without invoking getters', () => {
+    const values: readonly unknown[] = [new Date(0), new Map([['a', 1]]), new Set([1]), Object.create({ inherited: 1 })]
+    for (const value of values) {
+      assert.equal(jsonProblem({ value }), 'not-json')
+    }
+    const nullPrototype: unknown = Object.assign(Object.create(null), { message: 'data' })
+    assert.equal(jsonProblem(nullPrototype), undefined)
+    let reads = 0
+    const accessor = { get message (): string { reads += 1; return 'value' } }
+    assert.equal(jsonProblem(accessor), 'not-json')
+    const array = Object.defineProperty([], 0, { get: () => { reads += 1; return 'value' }, enumerable: true })
+    assert.equal(jsonProblem(array), 'not-json')
+    const sparse: unknown[] = []
+    sparse.length = 1
+    assert.equal(jsonProblem(sparse), 'not-json')
+    assert.equal(reads, 0)
+  })
+
   it('rejects numbers beyond the range of doubles', () => {
     assert.equal(jsonProblem(JSON.parse('{"a":[1,{"b":1e400}]}')), 'number-out-of-range')
     assert.equal(jsonProblem(JSON.parse('{"a":-1e400}')), 'number-out-of-range')

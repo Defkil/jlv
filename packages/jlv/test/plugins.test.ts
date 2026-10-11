@@ -71,6 +71,18 @@ const loadError = async (specifiers: readonly string[], workingDirectory = direc
 }
 
 describe('loading plugins', () => {
+  it('keeps a predicate named __proto__ as an own key and checks duplicate names', async () => {
+    const source = 'export default { apiVersion: 1, formats: [], predicates: Object.fromEntries([["__proto__", () => true]]) }\n'
+    write('prototype-predicate.mjs', source)
+    write('prototype-predicate-again.mjs', source)
+    const [plugin] = await load(['./prototype-predicate.mjs'])
+    assert.ok(plugin)
+    assert.deepEqual(Object.keys(plugin.predicates), ['__proto__'])
+    const { records } = await readRecords('{"message":"record"}\n')
+    assert.equal(Object.values(plugin.predicates)[0]?.(records[0]?.record ?? assert.fail('no record')), true)
+    assert.match(await loadError(['./prototype-predicate.mjs', './prototype-predicate-again.mjs']), /its predicate __proto__ has the name of a predicate/u)
+  })
+
   it('loads ES modules, CommonJS modules and compiled TypeScript by path, relative or absolute', async () => {
     const plugins = await load(['./key-value.mjs', commonJs, 'compiled.cjs'])
     assert.deepEqual(plugins.map(plugin => [plugin.specifier, plugin.formats.map(format => format.identifier)]), [
@@ -222,5 +234,16 @@ describe('plugins in a run', () => {
   it('end with 1 when a plugin cannot be loaded', async () => {
     const failed = await run({ plugins: ['./version-2.mjs'] })
     assert.deepEqual([failed.code, failed.errors], [1, 'jlv: cannot load the plugin ./version-2.mjs: it has the apiVersion 2, and this jlv takes plugins of apiVersion 1\n'])
+  })
+
+  it('reports asynchronous and non-boolean predicates instead of matching records or leaving rejections unhandled', async () => {
+    for (const [name, predicate] of [['async', 'async () => { throw new Error("rejected promise") }'], ['number', '() => 1']] as const) {
+      const file = `predicate-${name}.mjs`
+      write(file, `export default { apiVersion: 1, formats: [], predicates: { invalid: ${predicate} } }\n`)
+      const failed = await run({ plugins: ['./key-value.mjs', `./${file}`], predicates: ['invalid'], format: 'keyvalue' })
+      assert.equal(failed.code, 1)
+      assert.equal(failed.output, '')
+      assert.match(failed.errors, /predicates must return true or false synchronously/u)
+    }
   })
 })

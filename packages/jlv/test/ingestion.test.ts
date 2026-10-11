@@ -7,6 +7,7 @@ import { describe, it } from 'node:test'
 import { setTimeout as delay, setImmediate as nextTurn } from 'node:timers/promises'
 import type { FormatContext, JsonValue, LogFormat, ParseEvent } from '../src/api.js'
 import { builtInFormats, jsonLinesFormat } from '../src/formats/registry.js'
+import { RecordStore } from '../src/store.js'
 import {
   Ingestion, SourceState, chooseFormat, liveSampleWait, maximumBatchEvents, readBatches, sampleInput, sourceBatches,
   type IngestionSettings
@@ -235,6 +236,36 @@ describe('reading in batches', () => {
 })
 
 describe('the sources of a run', () => {
+  it('discards normalization errors and stops strict mode before storing or emitting that record', () => {
+    const format: LogFormat = {
+      ...fixedFormat('diagnosing', 100),
+      normalize: value => ({
+        record: { level: 'unknown', message: textOf(value['text']), fields: value },
+        diagnostics: value['text'] === 'bad'
+          ? [{ kind: 'diagnostic', severity: 'error', code: 'rejected', message: 'cannot normalize this record' }]
+          : []
+      })
+    }
+    const settings = { ...settingsWith([format]), format }
+    for (const isStrict of [false, true]) {
+      const source = new SourceState(context.source, 'input', settings, context.signal)
+      const store = new RecordStore()
+      const ingestion = new Ingestion({ store, isCollecting: true, isStrict })
+      const records = ingestion.accept({
+        source,
+        events: ['before', 'bad', 'after'].map((text, index): ParseEvent => ({
+          kind: 'entry', value: { text }, position: { firstLine: index + 1, lastLine: index + 1 }
+        }))
+      })
+      assert.deepEqual(records.map(({ record }) => [record.message, record.identifier]),
+        isStrict ? [['before', '1:1']] : [['before', '1:1'], ['after', '1:2']])
+      assert.equal(store.retained, isStrict ? 1 : 2)
+      assert.equal(ingestion.records, isStrict ? 1 : 2)
+      assert.equal(ingestion.skipped, 1)
+      assert.equal(ingestion.strictFailure !== undefined, isStrict)
+    }
+  })
+
   it('chooses a format per source and numbers its records', async () => {
     const settings = settingsWith(builtInFormats())
     const ingestion = new Ingestion({ isCollecting: true })

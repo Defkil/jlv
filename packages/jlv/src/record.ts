@@ -434,17 +434,29 @@ const jsonProblem = (value: unknown, depth: number = maximumJsonDepth): JsonProb
     return 'too-deep'
   }
   if (Array.isArray(value)) {
-    for (const child of value) {
-      const problem = jsonProblem(child, depth - 1)
+    for (let index = 0; index < value.length; index += 1) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, index)
+      if (descriptor === undefined || !Object.hasOwn(descriptor, 'value')) {
+        return 'not-json'
+      }
+      const problem = jsonProblem(descriptor.value, depth - 1)
       if (problem !== undefined) {
         return problem
       }
     }
     return undefined
   }
+  const prototype: unknown = Object.getPrototypeOf(value)
+  if (prototype !== null && prototype !== Object.prototype) {
+    return 'not-json'
+  }
   // JSON.parse gives objects with own enumerable properties only, which for...in visits without a copy.
   for (const key in value) {
-    const problem = jsonProblem(Reflect.get(value, key), depth - 1)
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)
+    if (descriptor === undefined || !Object.hasOwn(descriptor, 'value')) {
+      return 'not-json'
+    }
+    const problem = jsonProblem(descriptor.value, depth - 1)
     if (problem !== undefined) {
       return problem
     }

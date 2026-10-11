@@ -30,6 +30,27 @@ const probe = (text: string, extension?: string, mapping = {}): number =>
   csvFormat.probe(extension === undefined ? { text } : { text, extension }, { ...context, mapping })
 
 describe('CSV records', () => {
+  it('enforces the exact byte limit with LF, CRLF, EOF and split UTF-8 chunks', async () => {
+    const limited = { ...context, maximumRecordSize: 8 }
+    for (const ending of ['\n', '\r\n', '']) {
+      for (const chunkBytes of [1, 1024]) {
+        const text = `message\n12345678\n123456789\n${'é'.repeat(4)}\n${'é'.repeat(4)}x${ending}`
+        const bytes = Buffer.from(text)
+        const chunks: Buffer[] = []
+        for (let offset = 0; offset < bytes.length; offset += chunkBytes) {
+          chunks.push(bytes.subarray(offset, offset + chunkBytes))
+        }
+        const events = await Array.fromAsync(csvFormat.read(Readable.from(chunks), limited))
+        assert.deepEqual(describeEvents(events), [
+          '2:{"message":"12345678"}', '3:record-too-large', `4:{"message":"${'é'.repeat(4)}"}`, '5:record-too-large'
+        ], `ending ${JSON.stringify(ending)}, chunk size ${String(chunkBytes)}`)
+      }
+    }
+    const input = Readable.from([Buffer.from('message\n12345678\r\n')])
+    const events = await Array.fromAsync(csvFormat.read(input, limited))
+    assert.deepEqual(describeEvents(events), ['2:{"message":"12345678"}'])
+  })
+
   it('skips a record over the size limit and keeps the rows around it', async () => {
     const huge = `"${'x'.repeat(1024 * 1024 + 10)}"`
     assert.deepEqual(await readAll(`message\nbefore\n${huge}\nafter\n`), [

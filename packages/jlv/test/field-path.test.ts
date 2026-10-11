@@ -122,6 +122,10 @@ describe('field paths', () => {
       }
     })
     assert.equal(valueAtField(withAccessor, 'computed'), undefined)
+    assert.equal(valueAtPath(asJsonObject(withAccessor), ['computed']), undefined)
+    const array: string[] = []
+    Object.defineProperty(array, 0, { get: () => { reads += 1; return 'value' } })
+    assert.equal(valueAtPath(array, [0]), undefined)
     assert.equal(reads, 0)
   })
 })
