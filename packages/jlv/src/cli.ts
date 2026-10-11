@@ -113,9 +113,47 @@ const limitValue = (name: string, text: string | undefined): number | undefined 
   return value
 }
 
+// The options of the jlv 1 wrapper that jlv 2 dropped (plan section 6.1), with what replaces them. They fail with this
+// hint instead of a bare "Unknown option".
+const transformerHint = 'transformers are gone: pino is built in (--format pino), and other formats come from plugins (--plugin <file>)'
+const removedOptions: ReadonlyMap<string, string> = new Map([
+  ['--param', 'jlv 2 is the viewer itself and takes its options directly; see --help'],
+  ['-p', 'jlv 2 is the viewer itself and takes its options directly; see --help'],
+  ['--open', 'jlv 2 runs in the current terminal and opens no other shell'],
+  ['-o', 'jlv 2 runs in the current terminal and opens no other shell'],
+  ['--reset', 'jlv 2 never writes configuration into the home directory, so there is nothing to reset'],
+  ['-r', 'jlv 2 never writes configuration into the home directory, so there is nothing to reset'],
+  ['--backup', 'jlv 2 never writes configuration into the home directory, so there is nothing to back up'],
+  ['-b', 'jlv 2 never writes configuration into the home directory, so there is nothing to back up'],
+  ['--transformer', transformerHint],
+  ['-t', transformerHint],
+  ['--transformer-js', transformerHint],
+  ['-tjs', transformerHint]
+])
+
+// The first removed option before --, as it was written.
+const removedOption = (parameters: readonly string[]): { readonly name: string, readonly hint: string } | undefined => {
+  for (const parameter of parameters) {
+    if (parameter === '--') {
+      return undefined
+    }
+    const [name = parameter] = parameter.startsWith('--') ? parameter.split('=', 1) : [parameter]
+    const hint = removedOptions.get(name)
+    if (hint !== undefined) {
+      return { name, hint }
+    }
+  }
+  return undefined
+}
+
 const readOptions = (): ApplicationOptions | 'help' | 'version' => {
+  const parameters = process.argv.slice(2)
+  const removed = removedOption(parameters)
+  if (removed !== undefined) {
+    throw new UsageError(`${removed.name} is gone in jlv 2: ${removed.hint}`)
+  }
   const { values, tokens } = parseArgs({
-    args: process.argv.slice(2),
+    args: parameters,
     options: optionDefinitions,
     allowPositionals: true,
     tokens: true

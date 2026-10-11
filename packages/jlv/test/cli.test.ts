@@ -112,7 +112,14 @@ describe('help, version and usage errors', () => {
 
   it('reports usage errors with 2 on standard error and opens no screen', async () => {
     const cases: readonly [readonly string[], RegExp][] = [
-      [['--transformer', 'pino'], /^jv: Unknown option '--transformer'\./u],
+      [['--transformer', 'jlv-pino'], /^jv: --transformer is gone in jlv 2: transformers are gone: pino is built in \(--format pino\), and other formats come from plugins \(--plugin <file>\)\n/u],
+      [['-tjs', 'transform.js'], /^jv: -tjs is gone in jlv 2: transformers are gone: /u],
+      [['--transformer-js=transform.js'], /^jv: --transformer-js is gone in jlv 2: /u],
+      [['--param', '--sort=level'], /^jv: --param is gone in jlv 2: jlv 2 is the viewer itself and takes its options directly; see --help\n/u],
+      [['-o'], /^jv: -o is gone in jlv 2: jlv 2 runs in the current terminal and opens no other shell\n/u],
+      [['--reset'], /^jv: --reset is gone in jlv 2: jlv 2 never writes configuration into the home directory, so there is nothing to reset\n/u],
+      [['-b', 'backup.ini'], /^jv: -b is gone in jlv 2: jlv 2 never writes configuration into the home directory, so there is nothing to back up\n/u],
+      [['--unknown'], /^jv: Unknown option '--unknown'\./u],
       [['--__proto__.polluted=yes'], /^jv: Unknown option '--__proto__\.polluted'\./u],
       [['--sort'], /^jv: Option '--sort <value>' argument missing/u],
       [['--sort', '-timestamp', 'a.log'], /^jv: Option '--sort' argument is ambiguous\./u],
