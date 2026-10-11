@@ -48,7 +48,7 @@ describe('level filter', () => {
     const rows = screenText(viewer.screen)
     assert.equal(rows[0], topBorder('characterization.log', '1/7'))
     assert.equal(rows[1], '│ 2026-10-11T10:29:00.000Z  info  req-29  *  foxtrot 29                        │')
-    assert.equal(rows[23], '  NORMAL  1/7 | 20 | sort: -timestamp | filters: level=info | 4 skipped')
+    assert.equal(rows[23], '  NORMAL  1/7 | 20 | sort: -timestamp | filters: level=info | 4 skipped | ? help')
   })
 
   it('chooses a level with the arrow keys and Enter', async t => {
@@ -56,7 +56,7 @@ describe('level filter', () => {
     await press(viewer, 'l', keys.down, keys.down, keys.down, keys.enter)
     assert.equal(viewer.panel.filter.level, 'info')
     assert.equal(visibleEntries(viewer.panel).length, 7)
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/7 | 20 | sort: -timestamp | filters: level=info | 4 skipped')
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/7 | 20 | sort: -timestamp | filters: level=info | 4 skipped | ? help')
   })
 
   it('keeps the records of an unknown or missing level with unknown', async t => {
@@ -84,7 +84,7 @@ describe('level filter', () => {
   it('accepts the initial level from the options', t => {
     const viewer = openFileViewer(t, characterization, { level: 'warn' })
     assert.equal(visibleEntries(viewer.panel).length, 7)
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/7 | 20 | sort: -timestamp | filters: level=warn | 4 skipped')
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/7 | 20 | sort: -timestamp | filters: level=warn | 4 skipped | ? help')
   })
 })
 
@@ -120,7 +120,8 @@ describe('filter manager', () => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, 'f', 'a', 'c', 'REQ-2', keys.enter)
     assert.deepEqual(messages(viewer), ['foxtrot 29', 'echo 28', 'charlie 26', 'bravo 25', 'foxtrot 23', 'echo 22', 'charlie 20'])
-    assert.match(screenText(viewer.screen)[23] ?? '', /\| filters: correlationIdentifier~REQ-2 \|/u)
+    // The line is too long for 80 columns: the page height goes, and the filters give way to the count.
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/7 | sort: -timestamp | filters: correlationIdentifier~R… | 4 skipped')
   })
 
   it('filters original fields given as key:value', async t => {
@@ -130,7 +131,7 @@ describe('filter manager', () => {
     await press(viewer, 'requestId:REQ-2', keys.enter)
     assert.deepEqual(messages(viewer), ['foxtrot 29', 'echo 28', 'charlie 26', 'bravo 25', 'foxtrot 23', 'echo 22', 'charlie 20'])
     assert.deepEqual(viewer.panel.filterDescriptions, ['fields.requestId~REQ-2'])
-    assert.ok(screenText(viewer.screen)[23]?.startsWith('  NORMAL  1/7 | 20 | sort: -timestamp | filters: fields.requestId~REQ-2 |'))
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/7 | sort: -timestamp | filters: fields.requestId~REQ-2 | 4 skipped')
   })
 
   it('asks for the term when other gets a nested field name only', async t => {

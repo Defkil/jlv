@@ -74,6 +74,6 @@ describe('transform configuration', () => {
     assert.equal(rows[0], topBorder('monolog.log', '1/2'))
     assert.equal(rows[1], '│ 2017-12-06 09:23:42.253060  info   *  Matched route "**_heartbeat_check" (…  │')
     assert.equal(rows[2], '│                             debug  *  no datetime                            │')
-    assert.match(rows[23] ?? '', /\| 2 warnings$/u)
+    assert.match(rows[23] ?? '', /\| 2 warnings \| \? help$/u)
   })
 })

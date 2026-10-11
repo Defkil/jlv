@@ -47,7 +47,7 @@ describe('initial load', () => {
       String.raw`│ 2026-10-11T10:10:00.000Z  warn   req-10  *  kilo 10\nsecond line             │`,
       '│ 2026-10-11T10:09:00.000Z  info              delta 09                         │',
       '└──────────────────────────────────────────────────────────────────────────────┘',
-      '  NORMAL  1/31 | 20 | sort: -timestamp | 4 skipped'
+      '  NORMAL  1/31 | 20 | sort: -timestamp | 4 skipped | ? help'
     ])
     assert.equal(viewer.panel.sort, '-timestamp')
     assert.equal(viewer.panel.pageHeight, 20)
@@ -119,10 +119,10 @@ describe('empty log', () => {
     const viewer = openFileViewer(t, empty)
     const rows = screenText(viewer.screen)
     assert.equal(rows[0], topBorder('empty.log', '1/0'))
-    assert.equal(rows[23], '  NORMAL  1/0 | 20 | sort: -timestamp')
+    assert.equal(rows[23], '  NORMAL  1/0 | 20 | sort: -timestamp | ? help')
     await press(viewer, keys.down)
     assert.equal(viewer.panel.row, 0)
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/0 | 20 | sort: -timestamp')
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/0 | 20 | sort: -timestamp | ? help')
     viewer.panel.displayDetails()
     assert.equal(viewer.screen.children.length, 2)
   })
@@ -172,7 +172,7 @@ describe('resize', () => {
     const rows = screenText(viewer.screen)
     assert.equal(rows.length, 30)
     assert.equal(rows[0], topBorder('characterization.log', '1/31', 100))
-    assert.equal(rows[29], '  NORMAL  1/31 | 26 | sort: -timestamp | 4 skipped')
+    assert.equal(rows[29], '  NORMAL  1/31 | 26 | sort: -timestamp | 4 skipped | ? help')
     assert.equal(viewer.panel.pageHeight, 26)
   })
 })

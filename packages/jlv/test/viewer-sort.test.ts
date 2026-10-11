@@ -23,7 +23,7 @@ describe('sort', () => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, 's')
     assert.equal(viewer.panel.mode, 'sort')
-    assert.equal(screenText(viewer.screen)[23], '  SORT  1/31 | 20 | sort: -timestamp | 4 skipped')
+    assert.equal(screenText(viewer.screen)[23], '  SORT  1/31 | 20 | sort: -timestamp | 4 skipped | ? help')
     assert.deepEqual(dialog(screenText(viewer.screen), 6, 11), [
       '┌── Sort by ───────────────────────────┐',
       '│                                      │',
@@ -40,7 +40,7 @@ describe('sort', () => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, 's', 'l')
     assert.equal(viewer.panel.sort, 'level')
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  14/31 | 20 | sort: level | 4 skipped')
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  14/31 | 20 | sort: level | 4 skipped | ? help')
     assert.equal(screenText(viewer.screen)[1], '│ 2026-10-11T10:29:00.000Z  info   req-29  *  foxtrot 29                       │')
     await press(viewer, '0')
     assert.deepEqual(screenText(viewer.screen).slice(1, 4), [
@@ -53,7 +53,7 @@ describe('sort', () => {
     // their arrival order (plan section 5): the fatal record leads, and the last debug record of the file is the
     // last but one.
     await press(viewer, 's', 'l')
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  31/31 | 20 | sort: -level | 4 skipped')
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  31/31 | 20 | sort: -level | 4 skipped | ? help')
     assert.equal(visibleEntries(viewer.panel)[0]?.message, 'bravo 13')
     assert.deepEqual(visibleEntries(viewer.panel).slice(-2).map(entry => [entry.level, entry.message]), [['debug', 'echo 16'], ['trace', 'echo 22']])
   })
@@ -70,7 +70,7 @@ describe('sort', () => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, 's', 'l', 's', 'l')
     assert.equal(viewer.panel.sort, '-level')
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  20/31 | 20 | sort: -level | 4 skipped')
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  20/31 | 20 | sort: -level | 4 skipped | ? help')
   })
 
   it('keeps the sort when the picker is closed with Escape', async t => {

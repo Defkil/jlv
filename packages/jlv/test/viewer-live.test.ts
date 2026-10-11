@@ -50,17 +50,17 @@ describe('arriving records', () => {
     await press(viewer, '$')
     viewer.append(record(3, 'third new'))
     assert.deepEqual([viewer.panel.row, viewer.panel.entryAt(viewer.panel.row)?.message], [33, 'third new'])
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  34/34 | 20 | sort: arrival | 4 skipped')
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  34/34 | 20 | sort: arrival | 4 skipped | ? help')
   })
 
   it('reports the retained and the seen records once the store evicts and keeps the newest ones', t => {
     const viewer = openFileViewer(t, characterization, { maximumRecords: 10 })
     assert.equal(visibleEntries(viewer.panel).length, 10)
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/10 | 20 | sort: -timestamp | kept 10 of 31 | 4 skipped')
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/10 | 20 | sort: -timestamp | kept 10 of 31 | 4 skipped | ? help')
     viewer.append(record(1, 'one more'))
     assert.deepEqual([viewer.store.retained, viewer.store.seen, viewer.store.evicted], [10, 32, 22])
     assert.equal(viewer.panel.entryAt(0)?.message, 'one more')
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/10 | 20 | sort: -timestamp | kept 10 of 32 | 4 skipped')
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/10 | 20 | sort: -timestamp | kept 10 of 32 | 4 skipped | ? help')
   })
 
   it('moves the cursor to the nearest row when its record is evicted', async t => {
@@ -76,7 +76,7 @@ describe('arriving records', () => {
     const viewer = openFileViewer(t, characterization)
     viewer.ingestion.activity = 'live'
     viewer.panel.refresh()
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/31 | 20 | sort: -timestamp | live | 4 skipped')
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/31 | 20 | sort: -timestamp | live | 4 skipped | ? help')
     viewer.ingestion.activity = 'loading'
     viewer.panel.refresh()
     assert.match(screenText(viewer.screen)[23] ?? '', /\| loading \|/u)

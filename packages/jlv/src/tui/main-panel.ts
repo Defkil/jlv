@@ -23,10 +23,12 @@ import {
 import {
   composeMarkup, cutStartToWidth, displayText, displayWidth, layoutRows, markup, type Cell, type Column
 } from './formatting.js'
+import { KeyHelp } from './key-help.js'
 import { LogDetails } from './log-details.js'
 import type { LogRow } from './log-row.js'
 import { Picker } from './picker.js'
 import type { RecordView, ViewOrder, ViewQuery } from './record-view.js'
+import type { StatusPart } from './status-line.js'
 
 type PanelMode = 'normal' | 'sort' | 'filter' | 'search' | 'GOTO'
 
@@ -293,34 +295,35 @@ class MainPanel extends BaseWidget {
 
   // What the status line reports about the input: whether records still arrive, the formats other than generic JSON
   // lines, the configuration file, how many records the store keeps of those that arrived, how many records were
-  // skipped, the warnings and how many inputs failed.
-  get inputStatus (): string {
+  // skipped, the warnings and how many inputs failed. The names of formats and of the file are cut on a narrow screen,
+  // the counts never.
+  get inputStatus (): StatusPart[] {
     const { store } = this.view
     const { progress } = this
-    const parts: string[] = []
+    const parts: StatusPart[] = []
     if (progress !== undefined && progress.activity !== 'done') {
-      parts.push(progress.activity)
+      parts.push({ value: progress.activity })
     }
     const formats = [...progress?.formats ?? []].filter(format => format !== 'jsonl')
     if (formats.length > 0) {
-      parts.push(`format: ${formats.join(', ')}`)
+      parts.push({ label: 'format: ', value: formats.join(', '), giveWay: 'cut' })
     }
     if (this.configuration !== undefined) {
-      parts.push(`config: ${this.configuration}`)
+      parts.push({ label: 'config: ', value: this.configuration, giveWay: 'cut-start' })
     }
     if (store.evicted > 0) {
-      parts.push(`kept ${String(store.retained)} of ${String(store.seen)}`)
+      parts.push({ value: `kept ${String(store.retained)} of ${String(store.seen)}` })
     }
     if (progress !== undefined && progress.skipped > 0) {
-      parts.push(`${String(progress.skipped)} skipped`)
+      parts.push({ value: `${String(progress.skipped)} skipped` })
     }
     if (progress !== undefined && progress.warnings > 0) {
-      parts.push(`${String(progress.warnings)} ${progress.warnings === 1 ? 'warning' : 'warnings'}`)
+      parts.push({ value: `${String(progress.warnings)} ${progress.warnings === 1 ? 'warning' : 'warnings'}` })
     }
     if (progress !== undefined && progress.failed > 0) {
-      parts.push(`${String(progress.failed)} failed`)
+      parts.push({ value: `${String(progress.failed)} failed` })
     }
-    return parts.join(' | ')
+    return parts
   }
 
   // Shows the records that arrived since the last render, or the end of the input. An open dialog keeps its mode.
@@ -388,11 +391,12 @@ class MainPanel extends BaseWidget {
       return
     }
     if (character === '/') {
-      this.openSearch(true)
+      this.openSearch()
       return
     }
     if (character === '?') {
-      this.openSearch()
+      // Upstream's undocumented ? searched again with the last term; n does that.
+      new KeyHelp(this.screen).showKeys()
       return
     }
     if (character === 'n') {
@@ -667,11 +671,10 @@ class MainPanel extends BaseWidget {
     })
   }
 
-  openSearch (shouldClear = false): void {
+  // Asks for a new search term; n searches with the last one again.
+  openSearch (): void {
     this.setMode('search')
-    if (shouldClear) {
-      this.lastSearchTerm = undefined
-    }
+    this.lastSearchTerm = undefined
     this.prompt('Search:', this.lastSearchTerm, value => {
       this.search(value)
     })

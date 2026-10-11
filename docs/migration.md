@@ -85,6 +85,11 @@ $ jv --output plain -l INFO pino.log
 - Correlation identifiers have a column, and `c` shows only the records of the selected record's identifier; see
   [Correlation identifiers](formats.md#correlation-identifiers). The cursor stays on its record when the sort or the
   filters change.
+- `?` shows the keys. json-log-viewer's undocumented `?` opened the search with the last term; `n` searches with it
+  again, and `/` starts a new search.
+- Text of the records shows as text: blessed tags such as `{red-fg}`, slashes and backslashes stay as they are, colors
+  and other escape sequences of a log are removed, and line breaks and other control characters show as `\n`, `\t`
+  or `\u001b`. json-log-viewer showed only the first line of a message.
 
 ## Programs
 

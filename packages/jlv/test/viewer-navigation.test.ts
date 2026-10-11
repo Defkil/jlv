@@ -39,7 +39,7 @@ describe('arrows', () => {
     assert.equal(viewer.panel.initialRow, 0)
     const rows = screenText(viewer.screen)
     assert.equal(rows[0], topBorder('characterization.log', '4/31'))
-    assert.equal(rows[23], '  NORMAL  4/31 | 20 | sort: -timestamp | 4 skipped')
+    assert.equal(rows[23], '  NORMAL  4/31 | 20 | sort: -timestamp | 4 skipped | ? help')
     // The fourth record sits on screen row 4.
     assert.equal(cellStyle(viewer.screen, 2, 4).background, 7)
     await press(viewer, keys.up)
@@ -92,7 +92,7 @@ describe('paging', () => {
     await press(viewer, keys.down, keys.down, keys.down, keys.pageUp)
     assert.equal(viewer.panel.row, 0)
     assert.equal(viewer.panel.initialRow, 0)
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/31 | 20 | sort: -timestamp | 4 skipped')
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/31 | 20 | sort: -timestamp | 4 skipped | ? help')
     await press(viewer, '$', keys.up, keys.pageUp, keys.pageUp)
     assert.equal(viewer.panel.row, 0)
     assert.equal(viewer.panel.initialRow, 0)
@@ -128,7 +128,7 @@ describe('go to line', () => {
       '│                                      │',
       '└──────────────────────────────────────┘'
     ])
-    assert.equal(screenText(viewer.screen)[23], '  GOTO  1/31 | 20 | sort: -timestamp | 4 skipped')
+    assert.equal(screenText(viewer.screen)[23], '  GOTO  1/31 | 20 | sort: -timestamp | 4 skipped | ? help')
     await press(viewer, '5', keys.enter)
     assert.equal(viewer.panel.row, 4)
     assert.equal(viewer.panel.initialRow, 4)

@@ -41,7 +41,7 @@ describe('empty log', () => {
     await press(viewer, keys.enter)
     assert.equal(viewer.screen.children.length, 2)
     assert.equal(screenText(viewer.screen)[0], topBorder('empty.log', '1/0'))
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/0 | 20 | sort: -timestamp')
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  1/0 | 20 | sort: -timestamp | ? help')
   })
 })
 

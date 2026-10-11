@@ -72,7 +72,7 @@ const cycle = async (viewer: Viewer): Promise<void> => {
   await press(viewer, keys.enter, 'j', keys.pageDown, keys.escape)
   await press(viewer, 's', keys.escape, 'l', keys.escape)
   await press(viewer, '/', 'zzz', keys.enter, keys.enter)
-  await press(viewer, 'g', keys.escape)
+  await press(viewer, 'g', keys.escape, '?', keys.pageDown, keys.escape, 'f', keys.escape)
   viewer.output.resizeTo(100, 30)
   await nextTurn()
   viewer.output.resizeTo(80, 24)
@@ -95,7 +95,7 @@ describe('main panel lifecycle', () => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, ...Array.from({ length: 10 }, () => keys.down))
     assert.equal(screenText(viewer.screen)[0], topBorder('characterization.log', '11/31'))
-    assert.equal(screenText(viewer.screen)[23], '  NORMAL  11/31 | 20 | sort: -timestamp | 4 skipped')
+    assert.equal(screenText(viewer.screen)[23], '  NORMAL  11/31 | 20 | sort: -timestamp | 4 skipped | ? help')
   })
 
   it('destroys a prompt and a message when they close', async t => {
@@ -137,11 +137,12 @@ describe('main panel lifecycle', () => {
 
   it(`keeps widget and listener counts bounded over ${String(cycles)} cycles of navigation, renders, resizes and dialogs`, async t => {
     const viewer = openFileViewer(t, characterization)
-    // blessed keeps the last ten focused elements; two cycles fill that history.
+    // blessed keeps the last ten focused elements; two cycles bring that history to its steady size, which closing
+    // dialogs shortens again.
     await cycle(viewer)
     await cycle(viewer)
     const before = census(viewer)
-    assert.equal(before.focusHistory, 10)
+    assert.ok(before.focusHistory > 0 && before.focusHistory <= 10, String(before.focusHistory))
     for (let round = 0; round < cycles; round += 1) {
       await cycle(viewer)
     }

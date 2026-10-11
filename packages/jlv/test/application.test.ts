@@ -677,8 +677,9 @@ describe('filters of the command line', () => {
     const subject = harness()
     const options = applicationOptions({ inputs: ['app.log'], where: [{ field: ['message'], operator: 'contains', value: 'alpha' }], save: saved })
     const running = runApplication(options, inProject(subject))
-    await waitFor(() => hasShown(subject.stdout, 'filters: message~alpha'), 'the filter in the status line')
+    // Without the filter, foxtrot 29 would be the first record.
     await waitFor(() => hasShown(subject.stdout, 'alpha 24'), 'the records')
+    assert.equal(hasShown(subject.stdout, 'foxtrot 29'), false)
     subject.keyboard.write('f')
     await delay(50)
     subject.keyboard.write('c')
