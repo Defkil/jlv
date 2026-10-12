@@ -114,7 +114,7 @@ Run once per runtime, against the packed package as users install it. In the rep
 pack the tarball and keep the scratch project that the package check installs it into:
 
 ```powershell
-pnpm run check:package -- --keep
+pnpm run check:package --keep
 ```
 
 The last line names the kept directory; `jlv` is installed in its `project` folder. Set the
@@ -130,6 +130,11 @@ In the steps, `<ticks>` stands for `& $node -e $ticks` and `<viewer>` for
 `& $node $jlv`. The status line names what the viewer knows about the input: `live`
 while records still arrive, `loading` while files are read, `kept <retained> of <seen>`
 once the store evicts, and the numbers of skipped lines and failed inputs.
+
+**Windows pipes:** in the PowerShell 7 checks recorded below, a pipe between two
+native commands batched records; this also reproduced with PowerShell 7.6.4.
+For live input, use `cmd /c "node app.js | jlv"`, or let the app write a log file
+and run `jlv --follow app.log`.
 
 1. **Keys with a live pipe.** `<ticks> | <viewer>`: records appear before the producer
    ends, newest at the bottom (arrival order). Arrows, PageUp, PageDown, `0`, `$`,
@@ -223,13 +228,38 @@ once the store evicts, and the numbers of skipped lines and failed inputs.
 
 ### Record, Part B
 
-| Runtime | Console path | Keys (1) | Follow newest (2) | Ctrl-C and q (3) | Input ends (4) | Eviction (5) | Follow (6) | Save (7) | Plain (8) | No console (9) | Typed (10) | Formats (12) | Filters (13) | Wide (14) | Debug (15) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 22.9.0 | | | | | | | | | | | | | | | |
-| 22.x latest: | | | | | | | | | | | | | | | |
-| 24.x latest: | | | | | | | | | | | | | | | |
-| 26.x latest: | | | | | | | | | | | | | | | |
-| Linux, Node: | | | | | | | | | | | | | | | |
+The coordinator ran these checks on **2026-10-12**. Setup: Windows 11 ARM64,
+Node 26.10.0, with the packed `jlv-2.0.0.tgz` installed by
+`node .test-dist/scripts/check-package.js --keep`. The terminal was the Claude Code
+desktop app's terminal panel (ConPTY, PowerShell 7, about 60 columns), rather than
+the Windows Terminal setup above. Keys were injected as console key events with
+`WriteConsoleInputW` on `CONIN$`, and the screen was read back as text. Ctrl-C was
+also sent as a real terminal Ctrl-C.
+
+All checks run below passed; the table records the actual coverage, rather than
+claiming that every subcase in a checklist step ran.
+
+| Step | What was checked | Result |
+| --- | --- | --- |
+| 1, 2 | Live pipe over `cmd /c "node ticks.js \| node cli.js"`: records appear at once, newest at the bottom; the cursor follows the newest (54/54); Up keeps it (17/38 while more arrive); `$` follows again (46/46) | pass |
+| 1 | PgUp (32/60), PgDn, `0` (1/70), `$`, Enter (details), `j` (JSON `{}`), Escape; `/` search for "slow request" lands on 3/4; `s` sort picker (timestamp, level, message, arrival); `l` level picker (all, trace … fatal, unknown) | pass |
+| 3 | Ctrl-C ends with exit code 130 and a restored prompt; `q` ends with 0 | pass |
+| 4 | Input that ends: the viewer stays open, `live` disappears, `q` ends with 0 | pass |
+| 5 | 200,000 records: the status shows `kept 50000 of …`; keys respond while loading; working set 95 MiB (peak 104 MiB) | pass |
+| 6 | `--follow` (changes made by a background job): append, rotation (late record of `app.log.1` before the new file's record), truncation plus a new record, delete and recreate; `q` ends with 0 | pass |
+| 12 | `pino.log`: levels fatal/error/warn/info, descending time, `format: pino` | pass |
+| 13 | `-c profiles.config.json pino.log`: `f` offers `add a filter`, `profile problems`, `profile api-1 errors`; `p` applies `problems` (1/2); an added message filter combines with it (0 records); `f` lists `remove profile problems` and `clear all filters`; `?` shows the keys and scrolls; `q` ends with 0. `characterization.log`: `c` on the `req-29` record shows 1/1, `c` again shows 31 records with the cursor kept; `/` then Ctrl-C ends with 130. The escape-text record shows `red {bold}x` literally, with no color and no title change | pass |
+| 14 | `wide.log`: CJK, fullwidth and Hangul shown, emoji `?`, flag `??`, heart `❤`, decomposed umlauts combined; columns and the right border line up; the details show the same text | pass |
+
+**Not run manually:** Node 22.9.0, latest 22, 24; Linux (no Linux terminal here;
+covered by the headless suite and Linux CI); steps 7–10 and 15 (covered by
+spawned-CLI tests); window resizing.
+
+The PowerShell native-command pipe (`node app.js | jlv`) delivered records in
+bursts of about 4 KB: the first 54 records arrived together after about 27 seconds,
+although the producer wrote one every 500 ms. The same producer streamed every
+record at once through `cmd /c "... | ..."`; the delay came from the PowerShell
+pipeline, not jlv.
 
 ## Probe
 

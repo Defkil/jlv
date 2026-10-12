@@ -296,6 +296,11 @@ jlv expands them itself; on Windows they may also use backslashes, as in `jlv 'l
 `node app.js | jlv`, jlv reads the keys from the console; a process without a console, such as a service, gets plain
 output instead of the viewer.
 
+PowerShell can buffer a pipe between native commands: checks with PowerShell 7.6.4 delivered records in roughly
+4 KiB batches. PowerShell 7.4 and later [preserve the native byte stream](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_pipelines?view=powershell-7.6),
+but records can still arrive with a delay. For live logs, use `cmd /c "node app.js | jlv"`, or have the app write a
+file and open it with `jlv --follow app.log`.
+
 ## Exit codes
 
 | Code | Meaning |
