@@ -77,6 +77,8 @@ and contributors, whose history it imports, and replaces the jlv 1 wrapper and j
 
 ### Fixed
 
+- Message dialogs keep their buttons below wrapped text on narrow terminals, and the details of a record without
+  extra fields show `(no other fields)`.
 - json-log-viewer's memory leak and slow navigation: the viewer keeps one row element, computes the order once per
   change of the data, the sort or the filters, and never reads a whole file at once, so files beyond V8's maximum
   string length open.

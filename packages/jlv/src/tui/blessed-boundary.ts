@@ -94,7 +94,19 @@ const createList = (options: Widgets.ListOptions<Widgets.ListElementStyle>): Wid
 
 const createPrompt = (options: Widgets.PromptOptions): Widgets.PromptElement => terminalLibrary.prompt(options)
 
-const createQuestion = (options: Widgets.QuestionOptions): Widgets.QuestionElement => terminalLibrary.question(options)
+const createQuestion = (options: Widgets.QuestionOptions): Widgets.QuestionElement => {
+  const question = terminalLibrary.question(options)
+  // The backend puts both buttons on the third content row, over text that wraps to three or more lines. Keep
+  // them one blank row below the wrapped text; a shrinking question then includes their row in its height.
+  question.on('parsed content', () => {
+    for (const child of question.children) {
+      if (child instanceof Box && child.type === 'button') {
+        child.top = question.getScreenLines().length + 1
+      }
+    }
+  })
+  return question
+}
 
 // Shows the prompt and reports the entered text. blessed reports a cancelled prompt with null, which the declarations
 // do not admit; it arrives here as undefined.

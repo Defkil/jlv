@@ -52,6 +52,9 @@ const formatEntry = (key: string, value: unknown, padding: number, depth: number
 // The entries of an object or an array, one per line below an empty first line.
 const formatObject = (object: object, depth = 0): string => {
   const keys = Object.keys(object)
+  if (depth === 0 && keys.length === 0) {
+    return '\n(no other fields)'
+  }
   const shown = keys.slice(0, maximumEntries)
   let padding = 0
   for (const key of shown) {

@@ -76,12 +76,13 @@ describe('details', () => {
     assert.deepEqual(screenText(viewer.screen), main)
   })
 
-  it('shows an empty tree and {} for a record without extra data', async t => {
+  it('explains a record without extra data and shows {} as JSON', async t => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, keys.down, keys.down, keys.enter)
-    assert.deepEqual(detailsBox(screenText(viewer.screen), 3, 5), [
+    assert.deepEqual(detailsBox(screenText(viewer.screen), 3, 6), [
       '┌─ 2026-10-11T10:27:00.000Z - error - delta 27 ────────────────────────┐',
-      '│                                                                      │'
+      '│                                                                      │',
+      '│ (no other fields)                                                    │'
     ])
     await press(viewer, 'j')
     assert.equal(detailsBox(screenText(viewer.screen), 4, 5)[0], '│ {}                                                                   │')

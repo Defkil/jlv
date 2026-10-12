@@ -714,7 +714,7 @@ class MainPanel extends BaseWidget {
       parent: this,
       border: 'line',
       height: 'shrink',
-      width: 'half',
+      width: '80%',
       top: 'center',
       left: 'center',
       label: ' {blue-fg}Message{/blue-fg} ',

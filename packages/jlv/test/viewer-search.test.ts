@@ -6,6 +6,8 @@ import { keys, openFileViewer, press, screenText } from './support/terminal.js'
 
 const characterization = fixturePath(legacyViewerFixtures.characterization)
 const dialog = (rows: readonly string[], from: number, to: number): string[] => rows.slice(from, to).map(row => row.slice(20, 60))
+const messageDialog = (rows: readonly string[], from: number, to: number): string[] => rows.slice(from, to).map(row => row.slice(8, 72))
+const messageLine = (text: string): string => `│ ${text.padEnd(60)} │`
 
 describe('search', () => {
   it('opens a prompt with / and moves to the first case-insensitive match below the cursor', async t => {
@@ -36,14 +38,14 @@ describe('search', () => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, '/', 'zzz', keys.enter)
     assert.equal(viewer.panel.row, 0)
-    assert.deepEqual(dialog(screenText(viewer.screen), 8, 15), [
-      '┌─ Message ────────────────────────────┐',
-      '│                                      │',
-      '│  No matches for \'zzz\'                │',
-      '│                                      │',
-      '│    Okay   Cancel                     │',
-      '│                                      │',
-      '└──────────────────────────────────────┘'
+    assert.deepEqual(messageDialog(screenText(viewer.screen), 8, 15), [
+      `┌─ Message ${'─'.repeat(52)}┐`,
+      messageLine(''),
+      messageLine(' No matches for \'zzz\''),
+      messageLine(''),
+      messageLine('   Okay   Cancel'),
+      messageLine(''),
+      `└${'─'.repeat(62)}┘`
     ])
     await press(viewer, keys.enter)
     assert.ok(screenText(viewer.screen).every(row => !row.includes('No matches')))
@@ -52,7 +54,7 @@ describe('search', () => {
   it('reports n without a previous search', async t => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, 'n')
-    assert.equal(dialog(screenText(viewer.screen), 10, 11)[0], '│  No previous search                  │')
+    assert.equal(messageDialog(screenText(viewer.screen), 10, 11)[0], messageLine(' No previous search'))
   })
 
   // Upstream's undocumented ? opened the search with the last term; ? shows the keys now, and n searches again.
@@ -74,6 +76,6 @@ describe('search', () => {
     const viewer = openFileViewer(t, characterization)
     await press(viewer, '/', 'req-28', keys.enter)
     assert.equal(viewer.panel.row, 0)
-    assert.equal(dialog(screenText(viewer.screen), 10, 11)[0], '│  No matches for \'req-28\'             │')
+    assert.equal(messageDialog(screenText(viewer.screen), 10, 11)[0], messageLine(' No matches for \'req-28\''))
   })
 })

@@ -6,6 +6,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, it, type TestContext } from 'node:test'
+import { setImmediate as nextTurn } from 'node:timers/promises'
 import { fixturePath, legacyViewerFixtures } from '../../format-fixtures/src/catalog.js'
 import { correlationColor, correlationPalette } from '../src/tui/correlation-colors.js'
 import { cellStyle, keys, openFileViewer, press, screenText, visibleEntries, type Viewer } from './support/terminal.js'
@@ -44,6 +45,26 @@ const record = (minute: number, message: string, requestId: string): string =>
   `${JSON.stringify({ timestamp: `2026-10-11T11:${String(minute).padStart(2, '0')}:00.000Z`, level: 'info', message, requestId })}\n`
 
 const selectedMessage = (viewer: Viewer): string | undefined => viewer.panel.entryAt(viewer.panel.row)?.message
+
+// The informational dialog occupies 80% of the terminal, with one cell of padding inside its border.
+const messageBox = (viewer: Viewer, columns: number, lines: readonly string[]): void => {
+  const width = Math.floor(columns * 0.8)
+  const left = Math.floor((columns - width) / 2)
+  const blank = `│${' '.repeat(width - 2)}│`
+  const content = (text: string): string => `│ ${text.padEnd(width - 4)} │`
+  const rows = screenText(viewer.screen)
+  const start = rows.findIndex(row => row.includes('Message'))
+  assert.ok(start !== -1)
+  assert.deepEqual(rows.slice(start, start + lines.length + 6).map(row => row.slice(left, left + width)), [
+    `┌─ Message ${'─'.repeat(width - 12)}┐`,
+    blank,
+    ...lines.map(line => content(line)),
+    blank,
+    content('   Okay   Cancel'),
+    blank,
+    `└${'─'.repeat(width - 2)}┘`
+  ])
+}
 
 // The screen row of a message and the color of its identifier cell.
 const identifierColor = (viewer: Viewer, message: string): number => {
@@ -121,6 +142,36 @@ describe('filtering by correlation identifier', () => {
     assert.ok(screenText(viewer.screen).some(row => row.includes('The record has no correlation')))
     assert.equal(visibleEntries(viewer.panel).length, 31)
     await press(viewer, keys.enter)
+    assert.equal(selectedMessage(viewer), 'delta 27')
+  })
+
+  for (const [columns, lines] of [
+    [40, [' The record has no', 'correlation identifier to', 'filter by']],
+    [60, [' The record has no correlation identifier', 'to filter by']],
+    [80, [' The record has no correlation identifier to filter by']]
+  ] as const) {
+    it(`keeps the message above its buttons at ${String(columns)} columns and restores focus on Escape`, async t => {
+      const viewer = openFileViewer(t, characterization, { columns })
+      await press(viewer, keys.down, keys.down, 'c')
+      messageBox(viewer, columns, lines)
+      assert.equal(visibleEntries(viewer.panel).length, 31)
+      assert.deepEqual(viewer.panel.filterDescriptions, [])
+      await press(viewer, keys.escape)
+      assert.equal(viewer.screen.focused, viewer.panel)
+      assert.equal(selectedMessage(viewer), 'delta 27')
+      assert.ok(screenText(viewer.screen).every(row => !row.includes('Message')))
+    })
+  }
+
+  it('moves message buttons below its text when resizing to a narrow terminal', async t => {
+    const viewer = openFileViewer(t, characterization)
+    await press(viewer, keys.down, keys.down, 'c')
+    messageBox(viewer, 80, [' The record has no correlation identifier to filter by'])
+    viewer.output.resizeTo(40, 24)
+    await nextTurn()
+    messageBox(viewer, 40, [' The record has no', 'correlation identifier to', 'filter by'])
+    await press(viewer, keys.enter)
+    assert.equal(viewer.screen.focused, viewer.panel)
     assert.equal(selectedMessage(viewer), 'delta 27')
   })
 
