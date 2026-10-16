@@ -15,14 +15,15 @@ Every push to `master`, pull request against `master` and manual run starts the 
    into an empty project with production dependencies only and lifecycle scripts off, where it runs the `jlv` command,
    a strict TypeScript consumer and plugins, and `npm audit`. A dry run of
    [`scripts/publish-package.ts`](../scripts/publish-package.ts) then makes the publish decision without publishing.
-   The job uploads the tarball and passes its file name and SHA-256 on.
+   The job passes only its file name and SHA-256 on; it uploads no CI artifact.
 2. **Runtime** runs on Node 22.9.0 (the `engines` floor), the latest 22, 24 and 26: it compiles the tests with Node 24,
-   verifies the downloaded tarball against the SHA-256 of the quality job, and runs the whole test suite and the
+   rebuilds and packs from the same commit with the quality job's Node/npm toolchain, requires an identical SHA-256,
+   and runs the whole test suite and the
    package check of that tarball with the Node and npm under test.
 3. **Publish** runs only after a push or manual run on `Defkil/jlv`'s `master`, after both checks, with `id-token: write`
-   as its only extra permission and one publication at a time. It downloads the tarball and runs
+   as its only extra permission and one publication at a time. It reproduces the tarball from the same commit and runs
    `scripts/publish-package.ts`, which:
-   - verifies the SHA-256 against the quality job's output, so that the tested file is published, never a new pack;
+   - verifies the SHA-256 against the quality job's output, so that only the byte-identical archive tested by every runtime can be published;
    - requires the manifest to name `jlv` with a stable version and `CHANGELOG.md` to have `## [X.Y.Z] - YYYY-MM-DD`;
    - requires npm 11.5.1 or later, the first release with trusted publishing (the job installs 12.2.0);
    - reads the published versions with `npm view jlv versions --json --registry https://registry.npmjs.org/`.
